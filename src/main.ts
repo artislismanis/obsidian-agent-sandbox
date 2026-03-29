@@ -6,9 +6,9 @@ import {
 } from "./settings";
 
 export default class PkmClaudeTerminalPlugin extends Plugin {
-	settings: PkmClaudeTerminalSettings;
+	settings: PkmClaudeTerminalSettings = { ...DEFAULT_SETTINGS };
 
-	debouncedSaveSettings = debounce(
+	private debouncedSaveSettings = debounce(
 		async () => {
 			await this.saveData(this.settings);
 		},
@@ -21,7 +21,10 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 		this.addSettingTab(new PkmClaudeTerminalSettingTab(this.app, this));
 	}
 
-	async onunload() {}
+	onunload() {
+		// Flush any pending debounced save
+		this.debouncedSaveSettings();
+	}
 
 	async loadSettings() {
 		this.settings = Object.assign(
@@ -31,7 +34,7 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 		);
 	}
 
-	async saveSettings() {
+	saveSettings() {
 		this.debouncedSaveSettings();
 	}
 }

@@ -16,7 +16,7 @@ export const DEFAULT_SETTINGS: PkmClaudeTerminalSettings = {
 	wslDistroName: "Ubuntu",
 	ttydPort: 7681,
 	ttydUsername: "user",
-	ttydPassword: "changeme",
+	ttydPassword: "",
 	autoStartContainer: false,
 	autoStopContainer: false,
 };
@@ -44,7 +44,7 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.dockerComposeFilePath)
 					.onChange(async (value) => {
 						this.plugin.settings.dockerComposeFilePath = value;
-						await this.plugin.saveSettings();
+						this.plugin.saveSettings();
 					})
 			);
 
@@ -58,7 +58,7 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.wslDistroName)
 					.onChange(async (value) => {
 						this.plugin.settings.wslDistroName = value;
-						await this.plugin.saveSettings();
+						this.plugin.saveSettings();
 					})
 			);
 
@@ -74,7 +74,7 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 						const port = parseInt(value, 10);
 						if (!isNaN(port) && port > 0 && port <= 65535) {
 							this.plugin.settings.ttydPort = port;
-							await this.plugin.saveSettings();
+							this.plugin.saveSettings();
 						}
 					})
 			);
@@ -87,19 +87,19 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.ttydUsername)
 					.onChange(async (value) => {
 						this.plugin.settings.ttydUsername = value;
-						await this.plugin.saveSettings();
+						this.plugin.saveSettings();
 					})
 			);
 
 		new Setting(containerEl)
 			.setName("ttyd password")
-			.setDesc("Password for ttyd basic authentication.")
+			.setDesc("Password for ttyd basic authentication. Stored in plaintext in the vault.")
 			.addText((text) => {
 				text.inputEl.type = "password";
 				text.setValue(this.plugin.settings.ttydPassword).onChange(
 					async (value) => {
 						this.plugin.settings.ttydPassword = value;
-						await this.plugin.saveSettings();
+						this.plugin.saveSettings();
 					}
 				);
 			});
@@ -114,7 +114,7 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.autoStartContainer)
 					.onChange(async (value) => {
 						this.plugin.settings.autoStartContainer = value;
-						await this.plugin.saveSettings();
+						this.plugin.saveSettings();
 					})
 			);
 
@@ -128,7 +128,7 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.autoStopContainer)
 					.onChange(async (value) => {
 						this.plugin.settings.autoStopContainer = value;
-						await this.plugin.saveSettings();
+						this.plugin.saveSettings();
 					})
 			);
 	}
