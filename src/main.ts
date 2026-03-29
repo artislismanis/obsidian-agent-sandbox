@@ -1,30 +1,22 @@
 import { Plugin, WorkspaceLeaf } from "obsidian";
-import { TerminalView, VIEW_TYPE_TERMINAL } from "./terminal-view";
+import {
+	TerminalView,
+	type TerminalViewSettings,
+	VIEW_TYPE_TERMINAL,
+} from "./terminal-view";
 
-interface TerminalSettings {
-	ttydPort: number;
-	ttydUser: string;
-	ttydPassword: string;
-}
-
-const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
+const DEFAULT_TERMINAL_SETTINGS: TerminalViewSettings = {
 	ttydPort: 7681,
 	ttydUser: "user",
 	ttydPassword: "changeme",
 };
 
 export default class PkmClaudeTerminalPlugin extends Plugin {
-	settings: TerminalSettings = DEFAULT_TERMINAL_SETTINGS;
+	settings: TerminalViewSettings = DEFAULT_TERMINAL_SETTINGS;
 
 	async onload() {
-		console.log("Loading PKM Claude Terminal plugin");
-
 		this.registerView(VIEW_TYPE_TERMINAL, (leaf: WorkspaceLeaf) => {
-			return new TerminalView(leaf, {
-				ttydPort: this.settings.ttydPort,
-				ttydUser: this.settings.ttydUser,
-				ttydPassword: this.settings.ttydPassword,
-			});
+			return new TerminalView(leaf, this.settings);
 		});
 
 		this.addRibbonIcon("terminal", "Open Claude Terminal", () => {
@@ -33,16 +25,14 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-claude-terminal",
-			name: "PKM: Open Claude Terminal",
+			name: "Open Claude Terminal",
 			callback: () => {
 				this.activateTerminalView();
 			},
 		});
 	}
 
-	async onunload() {
-		console.log("Unloading PKM Claude Terminal plugin");
-	}
+	async onunload() {}
 
 	async activateTerminalView(): Promise<void> {
 		const existing =

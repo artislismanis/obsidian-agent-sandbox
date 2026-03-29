@@ -2,7 +2,7 @@ import { ItemView, WorkspaceLeaf } from "obsidian";
 
 export const VIEW_TYPE_TERMINAL = "pkm-claude-terminal-view";
 
-interface TerminalViewSettings {
+export interface TerminalViewSettings {
 	ttydPort: number;
 	ttydUser: string;
 	ttydPassword: string;
@@ -11,6 +11,8 @@ interface TerminalViewSettings {
 export class TerminalView extends ItemView {
 	private settings: TerminalViewSettings;
 	private iframe: HTMLIFrameElement | null = null;
+	private destroyed = false;
+	private connecting = false;
 
 	constructor(leaf: WorkspaceLeaf, settings: TerminalViewSettings) {
 		super(leaf);
@@ -30,31 +32,43 @@ export class TerminalView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
-		const container = this.contentEl;
-		container.empty();
-		container.addClass("pkm-terminal-container");
-
-		const loading = container.createDiv({ cls: "pkm-terminal-loading" });
-		loading.setText("Connecting to terminal...");
-
-		const baseUrl = `http://localhost:${this.settings.ttydPort}`;
-		const connected = await this.pollTtyd(baseUrl, 30, 1000);
-
-		if (connected) {
-			loading.remove();
-			this.createIframe(container);
-		} else {
-			loading.remove();
-			this.showError(container);
-		}
+		this.destroyed = false;
+		await this.connect();
 	}
 
 	async onClose(): Promise<void> {
-		if (this.iframe) {
-			this.iframe.remove();
-			this.iframe = null;
-		}
+		this.destroyed = true;
+		this.iframe = null;
 		this.contentEl.empty();
+	}
+
+	private async connect(): Promise<void> {
+		if (this.connecting) return;
+		this.connecting = true;
+
+		try {
+			const container = this.contentEl;
+			container.empty();
+			container.addClass("pkm-terminal-container");
+
+			const loading = container.createDiv({ cls: "pkm-terminal-loading" });
+			loading.setText("Connecting to terminal...");
+
+			const baseUrl = `http://localhost:${this.settings.ttydPort}`;
+			const connected = await this.pollTtyd(baseUrl, 30, 1000);
+
+			if (this.destroyed) return;
+
+			loading.remove();
+
+			if (connected) {
+				this.createIframe(container);
+			} else {
+				this.showError(container);
+			}
+		} finally {
+			this.connecting = false;
+		}
 	}
 
 	private async pollTtyd(
@@ -63,18 +77,20 @@ export class TerminalView extends ItemView {
 		delayMs: number
 	): Promise<boolean> {
 		for (let i = 0; i < maxRetries; i++) {
+			if (this.destroyed) return false;
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => controller.abort(), 5000);
 			try {
-				const controller = new AbortController();
-				const timeoutId = setTimeout(() => controller.abort(), 5000);
 				const response = await fetch(url, {
 					signal: controller.signal,
 				});
-				clearTimeout(timeoutId);
 				if (response.ok || response.status === 401) {
 					return true;
 				}
 			} catch {
 				// Connection not ready yet
+			} finally {
+				clearTimeout(timeoutId);
 			}
 			if (i < maxRetries - 1) {
 				await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -92,11 +108,9 @@ export class TerminalView extends ItemView {
 			cls: "pkm-terminal-iframe",
 			attr: {
 				src: url,
+				sandbox: "allow-scripts allow-same-origin allow-forms",
 			},
 		});
-		this.iframe.style.width = "100%";
-		this.iframe.style.height = "100%";
-		this.iframe.style.border = "none";
 	}
 
 	private showError(container: HTMLElement): void {
@@ -106,7 +120,7 @@ export class TerminalView extends ItemView {
 		});
 		const retryBtn = errorDiv.createEl("button", { text: "Retry" });
 		retryBtn.addEventListener("click", () => {
-			this.onOpen();
+			this.connect();
 		});
 	}
 }
