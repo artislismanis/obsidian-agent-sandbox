@@ -1,4 +1,4 @@
-import { Notice, Plugin, debounce } from "obsidian";
+import { Notice, Plugin, WorkspaceLeaf, debounce } from "obsidian";
 import {
 	type PkmClaudeTerminalSettings,
 	DEFAULT_SETTINGS,
@@ -6,6 +6,7 @@ import {
 } from "./settings";
 import { DockerManager } from "./docker";
 import { StatusBarManager } from "./status-bar";
+import { TerminalView, VIEW_TYPE_TERMINAL } from "./terminal-view";
 
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -35,6 +36,26 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 
 		const statusBarEl = this.addStatusBarItem();
 		this.statusBar = new StatusBarManager(statusBarEl);
+
+		this.registerView(VIEW_TYPE_TERMINAL, (leaf: WorkspaceLeaf) => {
+			return new TerminalView(leaf, {
+				ttydPort: this.settings.ttydPort,
+				ttydUser: this.settings.ttydUsername,
+				ttydPassword: this.settings.ttydPassword,
+			});
+		});
+
+		this.addRibbonIcon("terminal", "Open Claude Terminal", () => {
+			this.activateTerminalView();
+		});
+
+		this.addCommand({
+			id: "open-claude-terminal",
+			name: "Open Claude Terminal",
+			callback: () => {
+				this.activateTerminalView();
+			},
+		});
 
 		this.addCommand({
 			id: "pkm-start-container",
@@ -67,6 +88,7 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 
 	onunload() {
 		this.debouncedSaveSettings();
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
 
 		if (this.settings.autoStopContainer) {
 			try {
@@ -87,6 +109,25 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 
 	saveSettings() {
 		this.debouncedSaveSettings();
+	}
+
+	async activateTerminalView(): Promise<void> {
+		const existing =
+			this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL);
+
+		if (existing.length > 0) {
+			this.app.workspace.revealLeaf(existing[0]);
+			return;
+		}
+
+		const leaf = this.app.workspace.getRightLeaf(false);
+		if (leaf) {
+			await leaf.setViewState({
+				type: VIEW_TYPE_TERMINAL,
+				active: true,
+			});
+			this.app.workspace.revealLeaf(leaf);
+		}
 	}
 
 	private async startContainer(): Promise<void> {
