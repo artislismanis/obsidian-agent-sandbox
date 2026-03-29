@@ -56,7 +56,7 @@ export class TerminalView extends ItemView {
 		this.connecting = true;
 
 		try {
-			const container = this.containerEl.children[1] as HTMLElement;
+			const container = this.contentEl;
 			container.empty();
 
 			const loading = container.createDiv({ cls: "pkm-terminal-loading" });
@@ -95,7 +95,7 @@ export class TerminalView extends ItemView {
 			container.empty();
 
 			if (connected) {
-				this.initTerminal(container);
+				await this.initTerminal(container);
 			} else {
 				this.showError(container, "Could not connect to ttyd. Make sure the container is running.");
 			}
@@ -145,6 +145,7 @@ export class TerminalView extends ItemView {
 		const wrapper = container.createDiv({ cls: "pkm-terminal-container" });
 
 		const styles = getComputedStyle(document.body);
+		const fontFamily = styles.getPropertyValue("--font-monospace").trim() || "monospace";
 		const theme = {
 			background: styles.getPropertyValue("--background-primary").trim() || "#1e1e1e",
 			foreground: styles.getPropertyValue("--text-normal").trim() || "#d4d4d4",
@@ -155,7 +156,7 @@ export class TerminalView extends ItemView {
 		const term = new Terminal({
 			cursorBlink: true,
 			fontSize: 14,
-			fontFamily: "var(--font-monospace)",
+			fontFamily,
 			theme,
 		});
 
@@ -244,7 +245,6 @@ export class TerminalView extends ItemView {
 			this.term.dispose();
 			this.term = null;
 		}
-		const container = this.containerEl.children[1] as HTMLElement;
-		container.empty();
+		this.contentEl.empty();
 	}
 }
