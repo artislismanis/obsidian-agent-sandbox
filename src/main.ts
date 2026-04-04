@@ -132,21 +132,12 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 	}
 
 	async activateTerminalView(): Promise<void> {
-		const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL);
-
-		if (existing.length > 0) {
-			this.app.workspace.revealLeaf(existing[0]);
-			return;
-		}
-
-		const leaf = this.app.workspace.getRightLeaf(false);
-		if (leaf) {
-			await leaf.setViewState({
-				type: VIEW_TYPE_TERMINAL,
-				active: true,
-			});
-			this.app.workspace.revealLeaf(leaf);
-		}
+		const leaf = this.app.workspace.getLeaf("split", "horizontal");
+		await leaf.setViewState({
+			type: VIEW_TYPE_TERMINAL,
+			active: true,
+		});
+		this.app.workspace.revealLeaf(leaf);
 	}
 
 	private async runDockerCommand(opts: {

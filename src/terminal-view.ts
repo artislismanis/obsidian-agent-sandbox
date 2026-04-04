@@ -19,8 +19,11 @@ const CMD_RESIZE = "1";
 
 const textEncoder = new TextEncoder();
 
+let nextInstanceId = 1;
+
 export class TerminalView extends ItemView {
 	private getSettings: () => TerminalSettings;
+	private instanceId: number;
 	private generation = 0;
 	private connecting = false;
 	private term: Terminal | null = null;
@@ -32,6 +35,7 @@ export class TerminalView extends ItemView {
 	constructor(leaf: WorkspaceLeaf, getSettings: () => TerminalSettings) {
 		super(leaf);
 		this.getSettings = getSettings;
+		this.instanceId = nextInstanceId++;
 	}
 
 	getViewType(): string {
@@ -39,7 +43,7 @@ export class TerminalView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return "Claude Terminal";
+		return `Claude Terminal ${this.instanceId}`;
 	}
 
 	getIcon(): string {
