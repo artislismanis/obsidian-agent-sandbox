@@ -154,6 +154,15 @@ export class TerminalView extends ItemView {
 		ws.binaryType = "arraybuffer";
 		this.ws = ws;
 
+		ws.onopen = () => {
+			const handshake = JSON.stringify({
+				AuthToken: token ?? "",
+				columns: term.cols,
+				rows: term.rows,
+			});
+			ws.send("{" + handshake);
+		};
+
 		ws.onmessage = (event) => {
 			const data = new Uint8Array(event.data as ArrayBuffer);
 			if (data[0] === TTYD_OUTPUT) {
