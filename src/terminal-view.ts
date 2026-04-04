@@ -122,6 +122,7 @@ export class TerminalView extends ItemView {
 			fontSize: 14,
 			fontFamily,
 			theme,
+			rightClickSelectsWord: true,
 		});
 
 		const fitAddon = new FitAddon();
@@ -132,6 +133,24 @@ export class TerminalView extends ItemView {
 		} catch {
 			/* container may not be visible yet */
 		}
+
+		// Clipboard: auto-copy on selection, Ctrl+Shift+C/V for copy/paste
+		term.onSelectionChange(() => {
+			const selection = term.getSelection();
+			if (selection) {
+				navigator.clipboard.writeText(selection);
+			}
+		});
+
+		term.attachCustomKeyEventHandler((event) => {
+			if (event.ctrlKey && event.shiftKey && event.key === "V" && event.type === "keydown") {
+				navigator.clipboard.readText().then((text) => {
+					term.paste(text);
+				});
+				return false;
+			}
+			return true;
+		});
 
 		this.term = term;
 		this.fitAddon = fitAddon;
