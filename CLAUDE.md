@@ -42,13 +42,14 @@ No leaf module imports from another leaf — only `main.ts` wires them together.
 - **Shell escaping**: `buildWslCommand()` in docker.ts handles both bash single-quote escaping and cmd.exe double-quote escaping. Distro names are validated against `/^[\w][\w.-]*$/`.
 - **ttyd protocol**: Binary WebSocket frames with ASCII command prefix. Commands are `'0'` (output/input), `'1'` (title/resize), `'2'` (preferences). Server and client use the same character codes. Connection requires `['tty']` subprotocol and a JSON handshake with `{AuthToken, columns, rows}` on open. Uses Obsidian's `requestUrl` for HTTP (bypasses CORS) and native WebSocket for the terminal stream.
 - **Clipboard**: Auto-copies on text selection via `onSelectionChange`. Paste via `Ctrl+Shift+V`. Designed for `set -g mouse off` in tmux so mouse selection works without Shift.
+- **Vault path injection**: Plugin auto-detects vault path via `FileSystemAdapter.getBasePath()`, converts Windows→WSL format via `windowsToWslPath()`, and passes `PKM_VAULT_PATH` env var to all docker compose commands. `start()` does stop+start to ensure fresh env vars.
 - **Debounced save**: Settings saves are debounced to 500ms and flushed on plugin unload.
 
 ## Testing
 
-33 tests across 4 test files using Vitest:
+42 tests across 4 test files using Vitest:
 - `docker.test.ts` — `parseIsRunning()` static method
-- `docker-command.test.ts` — `buildWslCommand()` escaping and validation
+- `docker-command.test.ts` — `buildWslCommand()` escaping/validation, `windowsToWslPath()` conversion, env var injection
 - `status-bar.test.ts` — `StatusBarManager` state transitions
 - `ttyd-client.test.ts` — Polling, auth token, URL construction (mocks `requestUrl`)
 

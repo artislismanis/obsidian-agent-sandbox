@@ -144,9 +144,10 @@ export class TerminalView extends ItemView {
 
 		term.attachCustomKeyEventHandler((event) => {
 			if (event.ctrlKey && event.shiftKey && event.key === "V" && event.type === "keydown") {
-				navigator.clipboard.readText().then((text) => {
-					term.paste(text);
-				});
+				navigator.clipboard.readText().then(
+					(text) => term.paste(text),
+					() => {},
+				);
 				return false;
 			}
 			return true;
