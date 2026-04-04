@@ -103,6 +103,17 @@ Pre-commit hooks (via husky) automatically lint and format staged files.
 
 4. **Use Claude Code** — You're now in a tmux session inside the container with Claude Code available. Your vault is mounted at `/workspace/vault`.
 
+## Terminal keyboard shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| **Copy** | Select text with mouse — auto-copied to clipboard |
+| **Copy word** | Right-click a word |
+| **Paste** | `Ctrl+Shift+V` |
+| **Interrupt (SIGINT)** | `Ctrl+C` |
+
+Standard `Ctrl+C` sends an interrupt to the shell as expected. tmux keybindings (e.g., `Ctrl+B` then `C` for new window) work normally.
+
 ## Commands
 
 | Command | Description |
