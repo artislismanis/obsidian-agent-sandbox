@@ -134,11 +134,11 @@ export class TerminalView extends ItemView {
 			/* container may not be visible yet */
 		}
 
-		// Clipboard: auto-copy on selection, Ctrl+Shift+C/V for copy/paste
+		// Clipboard: auto-copy on selection, Ctrl+Shift+V to paste
 		term.onSelectionChange(() => {
 			const selection = term.getSelection();
 			if (selection) {
-				navigator.clipboard.writeText(selection);
+				navigator.clipboard.writeText(selection).catch(() => {});
 			}
 		});
 
@@ -187,11 +187,10 @@ export class TerminalView extends ItemView {
 		ws.onmessage = (event) => {
 			const rawData = event.data as ArrayBuffer;
 			const cmd = String.fromCharCode(new Uint8Array(rawData)[0]);
-			const data = rawData.slice(1);
 
 			switch (cmd) {
 				case CMD_OUTPUT:
-					term.write(new Uint8Array(data));
+					term.write(new Uint8Array(rawData, 1));
 					break;
 				case CMD_SET_WINDOW_TITLE:
 					// Could set document title; ignored for Obsidian
