@@ -80,6 +80,15 @@ describe("buildWslCommand", () => {
 		const cmd = buildWslCommand("/home/user/project", "Ubuntu", "docker compose up -d", {});
 		expect(cmd).not.toContain("export");
 	});
+
+	it("includes multiple env vars in the command", () => {
+		const cmd = buildWslCommand("/home/user/project", "Ubuntu", "docker compose up -d", {
+			PKM_VAULT_PATH: "/mnt/c/Users/foo/vault",
+			PKM_WRITE_DIR: "claude-workspace",
+		});
+		expect(cmd).toContain("PKM_VAULT_PATH=");
+		expect(cmd).toContain("PKM_WRITE_DIR='claude-workspace'");
+	});
 });
 
 describe("windowsToWslPath", () => {

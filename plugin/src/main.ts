@@ -38,6 +38,7 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 				this.app.vault.adapter instanceof FileSystemAdapter
 					? this.app.vault.adapter.getBasePath()
 					: undefined,
+			writeDir: this.settings.vaultWriteDir,
 		}));
 
 		const statusBarEl = this.addStatusBarItem();
@@ -67,7 +68,10 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 		const startContainer = () =>
 			this.runDockerCommand({
 				preState: "starting",
-				action: () => this.docker.start(),
+				action: async () => {
+					await this.ensureWriteDir();
+					return this.docker.start();
+				},
 				postState: "running",
 				successMsg: "PKM container started.",
 				failurePrefix: "Failed to start container",
@@ -139,6 +143,14 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 			active: true,
 		});
 		this.app.workspace.revealLeaf(leaf);
+	}
+
+	private async ensureWriteDir(): Promise<void> {
+		const dir = this.settings.vaultWriteDir;
+		if (!dir) return;
+		if (!(await this.app.vault.adapter.exists(dir))) {
+			await this.app.vault.createFolder(dir);
+		}
 	}
 
 	private async runDockerCommand(opts: {

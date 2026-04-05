@@ -10,6 +10,7 @@ export interface DockerManagerSettings {
 	composePath: string;
 	wslDistro: string;
 	vaultPath?: string;
+	writeDir?: string;
 }
 
 export function windowsToWslPath(windowsPath: string): string {
@@ -54,11 +55,14 @@ export class DockerManager {
 	}
 
 	private async run(dockerCmd: string): Promise<string> {
-		const { composePath, wslDistro, vaultPath } = this.getSettings();
+		const { composePath, wslDistro, vaultPath, writeDir } = this.getSettings();
 
 		const envVars: Record<string, string> = {};
 		if (vaultPath) {
 			envVars.PKM_VAULT_PATH = windowsToWslPath(vaultPath);
+		}
+		if (writeDir) {
+			envVars.PKM_WRITE_DIR = writeDir;
 		}
 
 		const command = buildWslCommand(composePath, wslDistro, dockerCmd, envVars);

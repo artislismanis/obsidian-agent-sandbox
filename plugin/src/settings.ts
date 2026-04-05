@@ -7,6 +7,7 @@ export type TerminalThemeMode = "obsidian" | "dark" | "light";
 export interface PkmClaudeTerminalSettings {
 	dockerComposeFilePath: string;
 	wslDistroName: string;
+	vaultWriteDir: string;
 	ttydPort: number;
 	ttydUsername: string;
 	ttydPassword: string;
@@ -23,6 +24,7 @@ export type TerminalSettings = Pick<
 export const DEFAULT_SETTINGS: PkmClaudeTerminalSettings = {
 	dockerComposeFilePath: "",
 	wslDistroName: "Ubuntu",
+	vaultWriteDir: "claude-workspace",
 	ttydPort: 7681,
 	ttydUsername: "user",
 	ttydPassword: "",
@@ -66,6 +68,22 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 					this.plugin.settings.wslDistroName = value;
 					this.plugin.saveSettings();
 				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Vault write directory")
+			.setDesc(
+				"Folder inside the vault where the container can write files. " +
+					"The rest of the vault is read-only. Created automatically on container start.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("claude-workspace")
+					.setValue(this.plugin.settings.vaultWriteDir)
+					.onChange(async (value) => {
+						this.plugin.settings.vaultWriteDir = value;
+						this.plugin.saveSettings();
+					}),
 			);
 
 		new Setting(containerEl)
