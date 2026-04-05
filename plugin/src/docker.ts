@@ -6,7 +6,10 @@ const exec = promisify(execCb);
 const VALID_DISTRO_NAME = /^[\w][\w.-]*$/;
 const EXEC_TIMEOUT = 30_000;
 
+import type { DockerMode } from "./settings";
+
 export interface DockerManagerSettings {
+	dockerMode: DockerMode;
 	composePath: string;
 	wslDistro: string;
 	vaultPath?: string;
@@ -50,6 +53,24 @@ export function buildWslCommand(
 	return `wsl -d ${wslDistro} -- bash -c "${cmdSafe}"`;
 }
 
+export function buildLocalCommand(
+	composePath: string,
+	dockerCmd: string,
+	envVars: Record<string, string> = {},
+): string {
+	const escapedPath = composePath.replace(/'/g, "'\\''");
+
+	const envPrefix = Object.entries(envVars)
+		.map(([key, value]) => {
+			const escapedValue = value.replace(/'/g, "'\\''");
+			return `${key}='${escapedValue}'`;
+		})
+		.join(" ");
+	const envPart = envPrefix ? `export ${envPrefix} && ` : "";
+
+	return `bash -c "${envPart}cd '${escapedPath}' && ${dockerCmd}"`;
+}
+
 export class DockerManager {
 	private getSettings: () => DockerManagerSettings;
 
@@ -59,6 +80,7 @@ export class DockerManager {
 
 	private async run(dockerCmd: string): Promise<string> {
 		const {
+			dockerMode,
 			composePath,
 			wslDistro,
 			vaultPath,
@@ -76,7 +98,7 @@ export class DockerManager {
 
 		const envVars: Record<string, string> = {};
 		if (vaultPath) {
-			envVars.PKM_VAULT_PATH = windowsToWslPath(vaultPath);
+			envVars.PKM_VAULT_PATH = dockerMode === "wsl" ? windowsToWslPath(vaultPath) : vaultPath;
 		}
 		if (writeDir) {
 			envVars.PKM_WRITE_DIR = writeDir;
@@ -91,7 +113,10 @@ export class DockerManager {
 			envVars.TTYD_PASSWORD = ttydPassword;
 		}
 
-		const command = buildWslCommand(composePath, wslDistro, dockerCmd, envVars);
+		const command =
+			dockerMode === "wsl"
+				? buildWslCommand(composePath, wslDistro, dockerCmd, envVars)
+				: buildLocalCommand(composePath, dockerCmd, envVars);
 		try {
 			const { stdout } = await exec(command, { timeout: EXEC_TIMEOUT });
 			return stdout.trim();

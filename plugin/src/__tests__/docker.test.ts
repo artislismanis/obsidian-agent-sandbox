@@ -5,6 +5,7 @@ describe("DockerManager", () => {
 	describe("run rejects when composePath is empty", () => {
 		it("throws when compose path is not configured", async () => {
 			const docker = new DockerManager(() => ({
+				dockerMode: "wsl",
 				composePath: "",
 				wslDistro: "Ubuntu",
 			}));

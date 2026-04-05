@@ -3,8 +3,10 @@ import { PluginSettingTab, Setting } from "obsidian";
 import type PkmClaudeTerminalPlugin from "./main";
 
 export type TerminalThemeMode = "obsidian" | "dark" | "light";
+export type DockerMode = "wsl" | "local";
 
 export interface PkmClaudeTerminalSettings {
+	dockerMode: DockerMode;
 	dockerComposeFilePath: string;
 	wslDistroName: string;
 	vaultWriteDir: string;
@@ -22,6 +24,7 @@ export type TerminalSettings = Pick<
 >;
 
 export const DEFAULT_SETTINGS: PkmClaudeTerminalSettings = {
+	dockerMode: "wsl",
 	dockerComposeFilePath: "",
 	wslDistroName: "Ubuntu",
 	vaultWriteDir: "claude-workspace",
@@ -50,11 +53,39 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName("Container").setHeading();
 
 		new Setting(containerEl)
+			.setName("Docker mode")
+			.setDesc(
+				"How Docker is accessed. WSL runs commands via wsl.exe. " +
+					"Local runs docker compose directly on the host.",
+			)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("wsl", "WSL (Windows)")
+					.addOption("local", "Local (Linux / Mac / Windows)")
+					.setValue(this.plugin.settings.dockerMode)
+					.onChange(async (value) => {
+						this.plugin.settings.dockerMode = value as DockerMode;
+						this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		const isWsl = this.plugin.settings.dockerMode === "wsl";
+
+		new Setting(containerEl)
 			.setName("Docker Compose path")
-			.setDesc("Absolute WSL path to the directory containing docker-compose.yml.")
+			.setDesc(
+				isWsl
+					? "Absolute WSL path to the directory containing docker-compose.yml."
+					: "Absolute path to the directory containing docker-compose.yml.",
+			)
 			.addText((text) =>
 				text
-					.setPlaceholder("/home/user/obsidian-claude-sandbox/docker")
+					.setPlaceholder(
+						isWsl
+							? "/home/user/obsidian-claude-sandbox/docker"
+							: "/opt/obsidian-claude-sandbox/docker",
+					)
 					.setValue(this.plugin.settings.dockerComposeFilePath)
 					.onChange(async (value) => {
 						this.plugin.settings.dockerComposeFilePath = value;
@@ -62,15 +93,17 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(containerEl)
-			.setName("WSL distribution")
-			.setDesc("The WSL distribution used for running Docker commands.")
-			.addText((text) =>
-				text.setValue(this.plugin.settings.wslDistroName).onChange(async (value) => {
-					this.plugin.settings.wslDistroName = value;
-					this.plugin.saveSettings();
-				}),
-			);
+		if (isWsl) {
+			new Setting(containerEl)
+				.setName("WSL distribution")
+				.setDesc("The WSL distribution used for running Docker commands.")
+				.addText((text) =>
+					text.setValue(this.plugin.settings.wslDistroName).onChange(async (value) => {
+						this.plugin.settings.wslDistroName = value;
+						this.plugin.saveSettings();
+					}),
+				);
+		}
 
 		new Setting(containerEl)
 			.setName("Vault write directory")

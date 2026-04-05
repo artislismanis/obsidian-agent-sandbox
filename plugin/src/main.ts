@@ -32,6 +32,7 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 		this.addSettingTab(new PkmClaudeTerminalSettingTab(this.app, this));
 
 		this.docker = new DockerManager(() => ({
+			dockerMode: this.settings.dockerMode,
 			composePath: this.settings.dockerComposeFilePath,
 			wslDistro: this.settings.wslDistroName,
 			vaultPath:

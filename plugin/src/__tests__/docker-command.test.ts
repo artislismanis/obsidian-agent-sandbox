@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildWslCommand, windowsToWslPath } from "../docker";
+import { buildWslCommand, buildLocalCommand, windowsToWslPath } from "../docker";
 
 describe("buildWslCommand", () => {
 	it("builds a basic command", () => {
@@ -104,6 +104,32 @@ describe("buildWslCommand", () => {
 			TTYD_PASSWORD: "p@ss'w0rd",
 		});
 		expect(cmd).toContain("TTYD_PASSWORD='p@ss'\\''w0rd'");
+	});
+});
+
+describe("buildLocalCommand", () => {
+	it("builds a basic command without wsl wrapper", () => {
+		const cmd = buildLocalCommand("/opt/project", "docker compose up -d");
+		expect(cmd).toBe("bash -c \"cd '/opt/project' && docker compose up -d\"");
+		expect(cmd).not.toContain("wsl");
+	});
+
+	it("includes env vars", () => {
+		const cmd = buildLocalCommand("/opt/project", "docker compose up -d", {
+			PKM_VAULT_PATH: "/home/user/vault",
+		});
+		expect(cmd).toContain("export PKM_VAULT_PATH='/home/user/vault'");
+		expect(cmd).toContain("&& cd '/opt/project'");
+	});
+
+	it("escapes single quotes in path", () => {
+		const cmd = buildLocalCommand("/opt/it's a test", "docker compose up -d");
+		expect(cmd).toContain("cd '/opt/it'\\''s a test'");
+	});
+
+	it("omits env prefix when no env vars provided", () => {
+		const cmd = buildLocalCommand("/opt/project", "docker compose up -d", {});
+		expect(cmd).not.toContain("export");
 	});
 });
 
