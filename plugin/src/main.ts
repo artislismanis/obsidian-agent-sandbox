@@ -39,6 +39,7 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 					? this.app.vault.adapter.getBasePath()
 					: undefined,
 			writeDir: this.settings.vaultWriteDir,
+			ttydPort: this.settings.ttydPort,
 			ttydUsername: this.settings.ttydUsername,
 			ttydPassword: this.settings.ttydPassword,
 		}));

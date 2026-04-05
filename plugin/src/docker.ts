@@ -11,6 +11,7 @@ export interface DockerManagerSettings {
 	wslDistro: string;
 	vaultPath?: string;
 	writeDir?: string;
+	ttydPort?: number;
 	ttydUsername?: string;
 	ttydPassword?: string;
 }
@@ -57,8 +58,15 @@ export class DockerManager {
 	}
 
 	private async run(dockerCmd: string): Promise<string> {
-		const { composePath, wslDistro, vaultPath, writeDir, ttydUsername, ttydPassword } =
-			this.getSettings();
+		const {
+			composePath,
+			wslDistro,
+			vaultPath,
+			writeDir,
+			ttydPort,
+			ttydUsername,
+			ttydPassword,
+		} = this.getSettings();
 
 		if (!composePath) {
 			throw new Error(
@@ -72,6 +80,9 @@ export class DockerManager {
 		}
 		if (writeDir) {
 			envVars.PKM_WRITE_DIR = writeDir;
+		}
+		if (ttydPort) {
+			envVars.TTYD_PORT = String(ttydPort);
 		}
 		if (ttydUsername) {
 			envVars.TTYD_USER = ttydUsername;
