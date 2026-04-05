@@ -15,7 +15,7 @@ Docker Container (WSL2)
   ├── ttyd (web terminal on port 7681)
   ├── tmux (independent session per connection)
   ├── Claude Code CLI
-  └── /workspace/vault (bind-mounted Obsidian vault)
+  └── /workspace/vault (read-only mount, writable subfolder)
 ```
 
 Each terminal tab in Obsidian gets its own independent tmux session — run multiple Claude Code instances in parallel.
@@ -33,6 +33,7 @@ Each terminal tab in Obsidian gets its own independent tmux session — run mult
 
 **Container:**
 - **Web terminal** — ttyd with tmux, accessible at `http://localhost:7681`
+- **Read-only vault** — Vault mounted read-only; Claude can only write to a designated folder (`claude-workspace/` by default)
 - **Claude Code CLI** — Pre-installed and ready to use
 - **Dev tools** — Node 22, Python 3.12, ripgrep, fd, git-delta, atuin, fzf, jq, gh
 - **Network sandboxing** — Optional allowlist-based firewall
@@ -58,6 +59,7 @@ git clone https://github.com/artislismanis/obsidian-claude-sandbox.git
 cd obsidian-claude-sandbox/docker
 cp .env.example .env
 # Edit .env — set PKM_VAULT_PATH to your vault's WSL path
+# Optionally set PKM_WRITE_DIR (default: claude-workspace)
 ```
 
 ### 2. Build and start the container

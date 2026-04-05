@@ -11,7 +11,8 @@ services:
       - "${TTYD_PORT:-7681}:7681"
     volumes:
       - .:/workspace
-      - ${PKM_VAULT_PATH:-./vault}:/workspace/vault
+      - ${PKM_VAULT_PATH:-./vault}:/workspace/vault:ro
+      - ${PKM_VAULT_PATH:-./vault}/${PKM_WRITE_DIR:-claude-workspace}:/workspace/vault/${PKM_WRITE_DIR:-claude-workspace}
       - pkm-claude-config:/home/claude/.claude
       - pkm-atuin-history:/home/claude/.local/share/atuin
     environment:

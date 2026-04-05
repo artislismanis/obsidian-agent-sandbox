@@ -47,7 +47,7 @@ docker compose exec pkm bash /workspace/scripts/verify.sh
 
 > **Note:** Hold **Shift** while selecting text in the browser to ensure the browser handles selection (bypassing terminal capture), then copy with `Ctrl+C`.
 
-## 4. Vault Mount
+## 4. Vault Mount (read-only + writable folder)
 
 ```bash
 # Inside the container
@@ -55,10 +55,12 @@ ls /workspace/vault/
 ```
 
 - [ ] Vault files are visible inside container
-- [ ] Create a test file: `echo "test" > /workspace/vault/_test-from-container.md`
+- [ ] Vault is read-only: `echo "test" > /workspace/vault/test.md` **fails** with "Read-only file system"
+- [ ] Writable folder exists: `ls /workspace/vault/claude-workspace/`
+- [ ] Can write to writable folder: `echo "test" > /workspace/vault/claude-workspace/_test.md`
 - [ ] File appears on host filesystem immediately
 - [ ] Edit a file on host — change is visible inside container immediately
-- [ ] Clean up: `rm /workspace/vault/_test-from-container.md`
+- [ ] Clean up: `rm /workspace/vault/claude-workspace/_test.md`
 
 ## 5. Claude Code CLI
 
