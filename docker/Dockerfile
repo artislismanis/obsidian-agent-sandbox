@@ -97,16 +97,16 @@ RUN uv python install "${PYTHON_VERSION}" && uv cache clean
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
 # atuin — configure for local-only mode (no sync) and bash integration
-RUN atuin init bash > /tmp/atuin-init.bash \
-    && echo '' >> /home/claude/.bashrc \
-    && echo '# Atuin shell history' >> /home/claude/.bashrc \
-    && cat /tmp/atuin-init.bash >> /home/claude/.bashrc \
-    && rm /tmp/atuin-init.bash \
+# Use dynamic eval (not static snapshot) so hooks match the runtime binary
+RUN echo '' >> /home/claude/.bashrc \
+    && echo '# Atuin shell history (must be last in .bashrc)' >> /home/claude/.bashrc \
+    && echo 'eval "$(atuin init bash)"' >> /home/claude/.bashrc \
     && mkdir -p /home/claude/.config/atuin \
     && printf '%s\n' \
        '## Local-only — no sync server' \
        'sync_address = ""' \
        'auto_sync = false' \
+       'update_check = false' \
        'search_mode = "fuzzy"' \
        'style = "compact"' \
        'filter_mode = "global"' \

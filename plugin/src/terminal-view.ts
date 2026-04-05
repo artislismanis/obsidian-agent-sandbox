@@ -62,11 +62,16 @@ export class TerminalView extends ItemView {
 
 	onResize(): void {
 		if (this.fitAddon) {
-			try {
-				this.fitAddon.fit();
-			} catch {
-				/* pane not visible */
-			}
+			// Delay fit until after Obsidian finishes layout
+			setTimeout(() => {
+				if (this.fitAddon) {
+					try {
+						this.fitAddon.fit();
+					} catch {
+						/* pane not visible */
+					}
+				}
+			}, 50);
 		}
 	}
 
