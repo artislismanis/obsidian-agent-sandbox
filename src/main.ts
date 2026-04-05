@@ -48,6 +48,7 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 				ttydPort: this.settings.ttydPort,
 				ttydUsername: this.settings.ttydUsername,
 				ttydPassword: this.settings.ttydPassword,
+				terminalTheme: this.settings.terminalTheme,
 			}));
 		});
 

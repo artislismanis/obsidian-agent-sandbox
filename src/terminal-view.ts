@@ -2,7 +2,7 @@ import type { WorkspaceLeaf } from "obsidian";
 import { ItemView } from "obsidian";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import type { TerminalSettings } from "./settings";
+import type { TerminalSettings, TerminalThemeMode } from "./settings";
 import { pollUntilReady, fetchAuthToken, buildWsUrl } from "./ttyd-client";
 
 export const VIEW_TYPE_TERMINAL = "pkm-claude-terminal-view";
@@ -109,17 +109,60 @@ export class TerminalView extends ItemView {
 		});
 	}
 
+	private buildTheme(mode: TerminalThemeMode): {
+		fontFamily: string;
+		theme: {
+			background: string;
+			foreground: string;
+			cursor: string;
+			selectionBackground: string;
+		};
+	} {
+		const styles = getComputedStyle(document.body);
+		const fontFamily = styles.getPropertyValue("--font-monospace").trim() || "monospace";
+
+		if (mode === "dark") {
+			return {
+				fontFamily,
+				theme: {
+					background: "#1e1e1e",
+					foreground: "#d4d4d4",
+					cursor: "#f0f0f0",
+					selectionBackground: "#264f78",
+				},
+			};
+		}
+
+		if (mode === "light") {
+			return {
+				fontFamily,
+				theme: {
+					background: "#ffffff",
+					foreground: "#383a42",
+					cursor: "#526eff",
+					selectionBackground: "#add6ff",
+				},
+			};
+		}
+
+		// "obsidian" — follow current Obsidian theme
+		return {
+			fontFamily,
+			theme: {
+				background: styles.getPropertyValue("--background-primary").trim() || "#1e1e1e",
+				foreground: styles.getPropertyValue("--text-normal").trim() || "#d4d4d4",
+				cursor: styles.getPropertyValue("--text-accent").trim() || "#f0f0f0",
+				selectionBackground:
+					styles.getPropertyValue("--text-selection").trim() || "#264f78",
+			},
+		};
+	}
+
 	private async initTerminal(container: HTMLElement, gen: number): Promise<void> {
 		const wrapper = container.createDiv({ cls: "pkm-terminal-container" });
 
-		const styles = getComputedStyle(document.body);
-		const fontFamily = styles.getPropertyValue("--font-monospace").trim() || "monospace";
-		const theme = {
-			background: styles.getPropertyValue("--background-primary").trim() || "#1e1e1e",
-			foreground: styles.getPropertyValue("--text-normal").trim() || "#d4d4d4",
-			cursor: styles.getPropertyValue("--text-accent").trim() || "#f0f0f0",
-			selectionBackground: styles.getPropertyValue("--text-selection").trim() || "#264f78",
-		};
+		const settings = this.getSettings();
+		const { fontFamily, theme } = this.buildTheme(settings.terminalTheme);
 
 		const term = new Terminal({
 			cursorBlink: true,
@@ -160,7 +203,6 @@ export class TerminalView extends ItemView {
 		this.term = term;
 		this.fitAddon = fitAddon;
 
-		const settings = this.getSettings();
 		let token: string | undefined;
 		try {
 			token = await fetchAuthToken(

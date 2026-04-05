@@ -2,6 +2,8 @@ import type { App } from "obsidian";
 import { PluginSettingTab, Setting } from "obsidian";
 import type PkmClaudeTerminalPlugin from "./main";
 
+export type TerminalThemeMode = "obsidian" | "dark" | "light";
+
 export interface PkmClaudeTerminalSettings {
 	dockerComposeFilePath: string;
 	wslDistroName: string;
@@ -10,11 +12,12 @@ export interface PkmClaudeTerminalSettings {
 	ttydPassword: string;
 	autoStartContainer: boolean;
 	autoStopContainer: boolean;
+	terminalTheme: TerminalThemeMode;
 }
 
 export type TerminalSettings = Pick<
 	PkmClaudeTerminalSettings,
-	"ttydPort" | "ttydUsername" | "ttydPassword"
+	"ttydPort" | "ttydUsername" | "ttydPassword" | "terminalTheme"
 >;
 
 export const DEFAULT_SETTINGS: PkmClaudeTerminalSettings = {
@@ -25,6 +28,7 @@ export const DEFAULT_SETTINGS: PkmClaudeTerminalSettings = {
 	ttydPassword: "",
 	autoStartContainer: false,
 	autoStopContainer: false,
+	terminalTheme: "obsidian",
 };
 
 export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
@@ -97,6 +101,21 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 					this.plugin.saveSettings();
 				});
 			});
+
+		new Setting(containerEl)
+			.setName("Terminal theme")
+			.setDesc("Use Obsidian's current theme colors, or explicitly choose dark or light.")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("obsidian", "Follow Obsidian theme")
+					.addOption("dark", "Dark")
+					.addOption("light", "Light")
+					.setValue(this.plugin.settings.terminalTheme)
+					.onChange(async (value) => {
+						this.plugin.settings.terminalTheme = value as TerminalThemeMode;
+						this.plugin.saveSettings();
+					}),
+			);
 
 		new Setting(containerEl)
 			.setName("Auto-start container on plugin load")
