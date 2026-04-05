@@ -154,7 +154,18 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 	}
 
 	async activateTerminalView(): Promise<void> {
-		const leaf = this.app.workspace.getLeaf("split", "horizontal");
+		const existingLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL);
+
+		let leaf: WorkspaceLeaf;
+		if (existingLeaves.length > 0) {
+			// Open as a tab next to existing terminals
+			this.app.workspace.setActiveLeaf(existingLeaves[0], { focus: false });
+			leaf = this.app.workspace.getLeaf("tab");
+		} else {
+			// First terminal: split to the bottom
+			leaf = this.app.workspace.getLeaf("split", "horizontal");
+		}
+
 		await leaf.setViewState({
 			type: VIEW_TYPE_TERMINAL,
 			active: true,
