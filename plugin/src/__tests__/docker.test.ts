@@ -2,6 +2,16 @@ import { describe, it, expect } from "vitest";
 import { DockerManager } from "../docker";
 
 describe("DockerManager", () => {
+	describe("run rejects when composePath is empty", () => {
+		it("throws when compose path is not configured", async () => {
+			const docker = new DockerManager(() => ({
+				composePath: "",
+				wslDistro: "Ubuntu",
+			}));
+			await expect(docker.start()).rejects.toThrow("Docker Compose path not configured");
+		});
+	});
+
 	describe("parseIsRunning", () => {
 		it("returns true when output contains running state", () => {
 			const output = '{"Name":"pkm-1","State":"running","Status":"Up 2 minutes"}';

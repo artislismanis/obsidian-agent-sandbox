@@ -204,14 +204,12 @@ export class TerminalView extends ItemView {
 		this.fitAddon = fitAddon;
 
 		let token: string | undefined;
-		try {
+		if (settings.ttydPassword) {
 			token = await fetchAuthToken(
 				settings.ttydPort,
 				settings.ttydUsername,
 				settings.ttydPassword,
 			);
-		} catch {
-			// ttyd may not require auth — connect without token
 		}
 
 		if (gen !== this.generation) return;

@@ -57,6 +57,12 @@ export class DockerManager {
 	private async run(dockerCmd: string): Promise<string> {
 		const { composePath, wslDistro, vaultPath, writeDir } = this.getSettings();
 
+		if (!composePath) {
+			throw new Error(
+				"Docker Compose path not configured. Set it in Settings > PKM Claude Terminal.",
+			);
+		}
+
 		const envVars: Record<string, string> = {};
 		if (vaultPath) {
 			envVars.PKM_VAULT_PATH = windowsToWslPath(vaultPath);

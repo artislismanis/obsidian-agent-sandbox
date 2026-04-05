@@ -49,7 +49,13 @@ export async function fetchAuthToken(
 			setTimeout(() => reject(new Error("timeout")), FETCH_TIMEOUT_MS),
 		),
 	]);
-	if (resp.status !== 200) throw new Error("Authentication failed");
+	if (resp.status !== 200) {
+		throw new Error(
+			resp.status === 403 || resp.status === 401
+				? "Authentication failed — check ttyd username and password in settings"
+				: `ttyd auth request failed (HTTP ${resp.status})`,
+		);
+	}
 	const data = resp.json as { token?: string };
 	if (typeof data.token !== "string") {
 		throw new Error("Invalid token response");

@@ -123,6 +123,7 @@ tmux keybindings work normally (e.g., `Ctrl+B` then `C` for new window).
 |---------|---------|-------------|
 | Docker Compose file path | *(empty)* | Absolute WSL path to the `docker/` directory |
 | WSL distro name | `Ubuntu` | WSL distribution for Docker commands |
+| Vault write directory | `claude-workspace` | Folder inside vault where the container can write files |
 | ttyd port | `7681` | Port where ttyd listens |
 | ttyd username | `user` | Username for ttyd basic auth |
 | ttyd password | *(empty)* | Password for ttyd basic auth |

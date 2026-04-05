@@ -75,10 +75,17 @@ describe("fetchAuthToken", () => {
 		expect(token).toBe("abc123");
 	});
 
-	it("throws on non-200 response", async () => {
+	it("throws on 401 response with credential hint", async () => {
 		mockRequestUrl.mockResolvedValueOnce({ status: 401 });
 		await expect(fetchAuthToken(7681, "user", "wrong")).rejects.toThrow(
-			"Authentication failed",
+			"Authentication failed — check ttyd username and password in settings",
+		);
+	});
+
+	it("throws on server error with status code", async () => {
+		mockRequestUrl.mockResolvedValueOnce({ status: 500 });
+		await expect(fetchAuthToken(7681, "user", "pass")).rejects.toThrow(
+			"ttyd auth request failed (HTTP 500)",
 		);
 	});
 

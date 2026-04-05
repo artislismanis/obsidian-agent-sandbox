@@ -31,4 +31,4 @@
 
 ## Vault-Specific Instructions
 
-Each vault carries its own `CLAUDE.md` with methodology, folder structure, tag taxonomy, link conventions, templates, and content workflows. See `vault/CLAUDE.md` for this vault's inner workings.
+If present, each vault may carry its own `CLAUDE.md` with methodology, folder structure, tag taxonomy, link conventions, templates, and content workflows. Check `vault/CLAUDE.md` for vault-specific guidance.
