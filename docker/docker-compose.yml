@@ -17,12 +17,14 @@ services:
       - pkm-atuin-history:/home/claude/.local/share/atuin
     environment:
       - TERM=xterm-256color
+      - TTYD_USER=${TTYD_USER:-}
+      - TTYD_PASSWORD=${TTYD_PASSWORD:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     stdin_open: true
     tty: true
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:7681/"]
+      test: ["CMD", "bash", "-c", "curl -so /dev/null -w '%{http_code}' http://localhost:7681/ | grep -qE '^(200|401)$'"]
       interval: 30s
       timeout: 3s
       retries: 3

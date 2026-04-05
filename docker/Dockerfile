@@ -69,8 +69,9 @@ RUN echo "claude ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" \
 # tmux config
 COPY --chown=claude:claude .tmux.conf /home/claude/.tmux.conf
 
-# Terminal entrypoint — creates a unique tmux session per connection
+# Terminal scripts — entrypoint starts ttyd, session.sh creates per-connection tmux sessions
 COPY --chown=claude:claude --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --chown=claude:claude --chmod=755 session.sh /usr/local/bin/session.sh
 
 # ══════════════════════════════════════════════════════════════
 # Phase 2: claude user — nvm, Node, Python, Claude Code, atuin
@@ -112,4 +113,4 @@ RUN atuin init bash > /tmp/atuin-init.bash \
 
 WORKDIR /workspace
 EXPOSE 7681
-CMD ["ttyd", "-W", "-p", "7681", "/usr/local/bin/entrypoint.sh"]
+CMD ["/usr/local/bin/entrypoint.sh"]

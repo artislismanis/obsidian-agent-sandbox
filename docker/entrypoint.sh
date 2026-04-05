@@ -1,11 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-SESSION_ID="claude-$(date +%s%N)-$$"
+TTYD_ARGS=(-W -p 7681)
 
-cleanup() {
-  tmux kill-session -t "$SESSION_ID" 2>/dev/null || true
-}
-trap cleanup EXIT
+if [[ -n "${TTYD_PASSWORD:-}" ]]; then
+  TTYD_ARGS+=(--credential "${TTYD_USER:-user}:${TTYD_PASSWORD}")
+fi
 
-tmux new-session -s "$SESSION_ID"
+exec ttyd "${TTYD_ARGS[@]}" /usr/local/bin/session.sh

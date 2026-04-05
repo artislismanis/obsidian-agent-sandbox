@@ -11,6 +11,8 @@ export interface DockerManagerSettings {
 	wslDistro: string;
 	vaultPath?: string;
 	writeDir?: string;
+	ttydUsername?: string;
+	ttydPassword?: string;
 }
 
 export function windowsToWslPath(windowsPath: string): string {
@@ -55,7 +57,8 @@ export class DockerManager {
 	}
 
 	private async run(dockerCmd: string): Promise<string> {
-		const { composePath, wslDistro, vaultPath, writeDir } = this.getSettings();
+		const { composePath, wslDistro, vaultPath, writeDir, ttydUsername, ttydPassword } =
+			this.getSettings();
 
 		if (!composePath) {
 			throw new Error(
@@ -69,6 +72,12 @@ export class DockerManager {
 		}
 		if (writeDir) {
 			envVars.PKM_WRITE_DIR = writeDir;
+		}
+		if (ttydUsername) {
+			envVars.TTYD_USER = ttydUsername;
+		}
+		if (ttydPassword) {
+			envVars.TTYD_PASSWORD = ttydPassword;
 		}
 
 		const command = buildWslCommand(composePath, wslDistro, dockerCmd, envVars);

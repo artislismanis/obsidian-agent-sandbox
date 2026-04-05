@@ -1,5 +1,5 @@
 import type { WorkspaceLeaf } from "obsidian";
-import { FileSystemAdapter, Notice, Plugin, debounce } from "obsidian";
+import { FileSystemAdapter, Menu, Notice, Plugin, debounce } from "obsidian";
 import {
 	type PkmClaudeTerminalSettings,
 	DEFAULT_SETTINGS,
@@ -39,10 +39,25 @@ export default class PkmClaudeTerminalPlugin extends Plugin {
 					? this.app.vault.adapter.getBasePath()
 					: undefined,
 			writeDir: this.settings.vaultWriteDir,
+			ttydUsername: this.settings.ttydUsername,
+			ttydPassword: this.settings.ttydPassword,
 		}));
 
 		const statusBarEl = this.addStatusBarItem();
 		this.statusBar = new StatusBarManager(statusBarEl);
+
+		statusBarEl.addEventListener("click", (event: MouseEvent) => {
+			const menu = new Menu();
+			menu.addItem((item) =>
+				item
+					.setTitle("Open in browser")
+					.setIcon("external-link")
+					.onClick(() => {
+						window.open(`http://localhost:${this.settings.ttydPort}`, "_blank");
+					}),
+			);
+			menu.showAtMouseEvent(event);
+		});
 
 		this.registerView(VIEW_TYPE_TERMINAL, (leaf: WorkspaceLeaf) => {
 			return new TerminalView(leaf, () => ({
