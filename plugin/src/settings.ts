@@ -45,14 +45,16 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
+		// ── Container ──────────────────────────────────────────
+
+		new Setting(containerEl).setName("Container").setHeading();
+
 		new Setting(containerEl)
-			.setName("Docker Compose file path")
-			.setDesc(
-				"Absolute WSL path to the docker-compose.yml file (e.g. /home/user/claude-terminal/docker-compose.yml).",
-			)
+			.setName("Docker Compose path")
+			.setDesc("Absolute WSL path to the directory containing docker-compose.yml.")
 			.addText((text) =>
 				text
-					.setPlaceholder("/path/to/docker-compose.yml")
+					.setPlaceholder("/home/user/obsidian-claude-sandbox/docker")
 					.setValue(this.plugin.settings.dockerComposeFilePath)
 					.onChange(async (value) => {
 						this.plugin.settings.dockerComposeFilePath = value;
@@ -61,8 +63,8 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("WSL distro name")
-			.setDesc("The name of the WSL distribution to use for running Docker commands.")
+			.setName("WSL distribution")
+			.setDesc("The WSL distribution used for running Docker commands.")
 			.addText((text) =>
 				text.setValue(this.plugin.settings.wslDistroName).onChange(async (value) => {
 					this.plugin.settings.wslDistroName = value;
@@ -73,8 +75,8 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Vault write directory")
 			.setDesc(
-				"Folder inside the vault where the container can write files. " +
-					"The rest of the vault is read-only. Created automatically on container start.",
+				"Folder inside the vault where the container can write. " +
+					"The rest of the vault is mounted read-only. Created automatically on start.",
 			)
 			.addText((text) =>
 				text
@@ -87,8 +89,32 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("ttyd port")
-			.setDesc("The port on which ttyd exposes the terminal (default: 7681).")
+			.setName("Auto-start on load")
+			.setDesc("Start the container when the plugin loads.")
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.autoStartContainer).onChange(async (value) => {
+					this.plugin.settings.autoStartContainer = value;
+					this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Auto-stop on unload")
+			.setDesc("Stop the container when the plugin is disabled.")
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.autoStopContainer).onChange(async (value) => {
+					this.plugin.settings.autoStopContainer = value;
+					this.plugin.saveSettings();
+				}),
+			);
+
+		// ── Connection ─────────────────────────────────────────
+
+		new Setting(containerEl).setName("Connection").setHeading();
+
+		new Setting(containerEl)
+			.setName("Port")
+			.setDesc("The port ttyd listens on inside the container (default: 7681).")
 			.addText((text) =>
 				text.setValue(String(this.plugin.settings.ttydPort)).onChange(async (value) => {
 					const port = parseInt(value, 10);
@@ -100,8 +126,8 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("ttyd username")
-			.setDesc("Username for ttyd basic authentication.")
+			.setName("Username")
+			.setDesc("Username for ttyd authentication. Leave password empty to disable auth.")
 			.addText((text) =>
 				text.setValue(this.plugin.settings.ttydUsername).onChange(async (value) => {
 					this.plugin.settings.ttydUsername = value;
@@ -110,8 +136,8 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("ttyd password")
-			.setDesc("Password for ttyd basic authentication. Stored in plaintext in the vault.")
+			.setName("Password")
+			.setDesc("Password for ttyd authentication. Stored in plaintext in the vault.")
 			.addText((text) => {
 				text.inputEl.type = "password";
 				text.setValue(this.plugin.settings.ttydPassword).onChange(async (value) => {
@@ -120,9 +146,13 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 				});
 			});
 
+		// ── Appearance ─────────────────────────────────────────
+
+		new Setting(containerEl).setName("Appearance").setHeading();
+
 		new Setting(containerEl)
 			.setName("Terminal theme")
-			.setDesc("Use Obsidian's current theme colors, or explicitly choose dark or light.")
+			.setDesc("Follow Obsidian's current theme, or force dark or light.")
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption("obsidian", "Follow Obsidian theme")
@@ -133,26 +163,6 @@ export class PkmClaudeTerminalSettingTab extends PluginSettingTab {
 						this.plugin.settings.terminalTheme = value as TerminalThemeMode;
 						this.plugin.saveSettings();
 					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Auto-start container on plugin load")
-			.setDesc("Automatically start the Docker container when the plugin is loaded.")
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.autoStartContainer).onChange(async (value) => {
-					this.plugin.settings.autoStartContainer = value;
-					this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName("Auto-stop container on plugin unload")
-			.setDesc("Automatically stop the Docker container when the plugin is unloaded.")
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.autoStopContainer).onChange(async (value) => {
-					this.plugin.settings.autoStopContainer = value;
-					this.plugin.saveSettings();
-				}),
 			);
 	}
 }
