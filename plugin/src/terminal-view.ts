@@ -61,18 +61,25 @@ export class TerminalView extends ItemView {
 	}
 
 	onResize(): void {
-		if (this.fitAddon) {
-			// Delay fit until after Obsidian finishes layout
-			setTimeout(() => {
-				if (this.fitAddon) {
-					try {
-						this.fitAddon.fit();
-					} catch {
-						/* pane not visible */
-					}
-				}
-			}, 50);
+		this.scheduleFit();
+	}
+
+	private scheduleFit(): void {
+		if (this.resizeRafId != null) {
+			cancelAnimationFrame(this.resizeRafId);
 		}
+		// Delay fit to let Obsidian finish layout transitions
+		this.resizeRafId = requestAnimationFrame(() => {
+			this.resizeRafId = null;
+			if (!this.fitAddon || !this.term) return;
+			const el = this.contentEl.querySelector(".pkm-terminal-container");
+			if (!el || el.clientWidth < 10 || el.clientHeight < 10) return;
+			try {
+				this.fitAddon.fit();
+			} catch {
+				/* pane not visible */
+			}
+		});
 	}
 
 	private async connect(): Promise<void> {
@@ -289,17 +296,7 @@ export class TerminalView extends ItemView {
 		});
 
 		this.resizeObserver = new ResizeObserver(() => {
-			if (this.resizeRafId != null) return;
-			this.resizeRafId = requestAnimationFrame(() => {
-				this.resizeRafId = null;
-				if (this.fitAddon) {
-					try {
-						this.fitAddon.fit();
-					} catch {
-						/* pane not visible */
-					}
-				}
-			});
+			this.scheduleFit();
 		});
 		this.resizeObserver.observe(wrapper);
 	}
