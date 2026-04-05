@@ -111,6 +111,9 @@ RUN echo '' >> /home/claude/.bashrc \
        'style = "compact"' \
        'filter_mode = "global"' \
        'filter_mode_shell_up_arrow = "global"' \
+       '' \
+       '## Disable daemon — use inline recording (required in containers)' \
+       'daemon_enabled = false' \
        > /home/claude/.config/atuin/config.toml
 
 WORKDIR /workspace

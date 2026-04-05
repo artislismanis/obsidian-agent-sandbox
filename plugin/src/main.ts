@@ -53,7 +53,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			}));
 		});
 
-		this.addRibbonIcon("terminal", "Open Sandbox Terminal", () => {
+		this.addRibbonIcon("box", "Open Sandbox Terminal", () => {
 			this.activateTerminalView();
 		});
 
