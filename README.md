@@ -135,31 +135,38 @@ tmux keybindings work normally (e.g., `Ctrl+B` then `C` for new window).
 ## Project structure
 
 ```
-plugin/                      Obsidian plugin source
-├── src/
-│   ├── main.ts              Plugin entry point, lifecycle, commands
-│   ├── settings.ts          Settings interface and UI tab
-│   ├── docker.ts            Container management via WSL or local Docker
-│   ├── status-bar.ts        Status bar indicator
-│   ├── terminal-view.ts     xterm.js terminal with ttyd WebSocket
-│   ├── ttyd-client.ts       ttyd polling, auth, URL construction
-│   └── __tests__/           Vitest unit tests
-├── dist/                    Build output (main.js, manifest.json, styles.css)
-└── package.json
-
-docker/                      Docker container configuration
-├── Dockerfile               Container image (Ubuntu 24.04)
-├── docker-compose.yml       Service configuration
-├── entrypoint.sh            Starts ttyd with optional auth
-├── session.sh               Creates unique tmux session per connection
-├── .tmux.conf               tmux defaults (mouse off, 256color)
-├── .env.example             Environment template (optional with plugin)
-└── scripts/
-    ├── verify.sh            Environment validation
-    └── init-firewall.sh     Network sandboxing setup
-
-docs/
-└── TESTING.md               Manual testing checklist
+obsidian-agent-sandbox/
+├── plugin/                          Obsidian plugin (TypeScript, xterm.js, esbuild)
+│   ├── src/
+│   │   ├── main.ts                  Plugin entry point, lifecycle, commands
+│   │   ├── settings.ts              Settings interface and UI tab
+│   │   ├── docker.ts                Container management via WSL or local Docker
+│   │   ├── status-bar.ts            Status bar indicator
+│   │   ├── terminal-view.ts         xterm.js terminal with ttyd WebSocket
+│   │   ├── ttyd-client.ts           ttyd polling, auth, URL construction
+│   │   └── __tests__/               Vitest unit tests
+│   ├── styles.css                   Plugin and xterm.js styles
+│   ├── manifest.json                Obsidian plugin manifest
+│   ├── esbuild.config.mjs           Bundle config (produces dist/)
+│   ├── tsconfig.json                TypeScript config (strict mode)
+│   ├── vitest.config.ts             Test runner config
+│   ├── eslint.config.mjs            Linter config
+│   └── package.json
+│
+├── docker/                          Docker container (Ubuntu 24.04, ttyd, tmux, Claude Code)
+│   ├── Dockerfile                   Container image
+│   ├── docker-compose.yml           Service, ports, volumes
+│   ├── entrypoint.sh                Starts ttyd with optional auth
+│   ├── session.sh                   Creates unique tmux session per connection
+│   ├── .tmux.conf                   tmux defaults (mouse off, 256color)
+│   ├── .env.example                 Environment template (optional with plugin)
+│   ├── .claude/settings.json        Claude Code project settings
+│   └── scripts/
+│       ├── verify.sh                Environment validation
+│       └── init-firewall.sh         Network sandboxing setup
+│
+└── docs/
+    └── TESTING.md                   Manual testing checklist
 ```
 
 ## Development
