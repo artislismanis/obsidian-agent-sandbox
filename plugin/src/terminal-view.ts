@@ -210,6 +210,7 @@ export class TerminalView extends ItemView {
 			fontSize: 14,
 			fontFamily,
 			theme,
+			scrollback: 10000,
 			rightClickSelectsWord: true,
 		});
 
