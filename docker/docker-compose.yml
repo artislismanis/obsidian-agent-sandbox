@@ -12,7 +12,7 @@ services:
     volumes:
       - .:/workspace:ro
       - ${PKM_VAULT_PATH:-./vault}:/workspace/vault:ro
-      - ${PKM_VAULT_PATH:-./vault}/${PKM_WRITE_DIR:-claude-workspace}:/workspace/vault/${PKM_WRITE_DIR:-claude-workspace}:rw
+      - ${PKM_VAULT_PATH:-./vault}/${PKM_WRITE_DIR:-agent-workspace}:/workspace/vault/${PKM_WRITE_DIR:-agent-workspace}:rw
       - sandbox-claude-config:/home/claude/.claude
       - sandbox-atuin-history:/home/claude/.local/share/atuin
     environment:

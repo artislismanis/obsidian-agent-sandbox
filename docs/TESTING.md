@@ -56,11 +56,11 @@ ls /workspace/vault/
 
 - [ ] Vault files are visible inside container
 - [ ] Vault is read-only: `echo "test" > /workspace/vault/test.md` **fails** with "Read-only file system"
-- [ ] Writable folder exists: `ls /workspace/vault/claude-workspace/`
-- [ ] Can write to writable folder: `echo "test" > /workspace/vault/claude-workspace/_test.md`
+- [ ] Writable folder exists: `ls /workspace/vault/agent-workspace/`
+- [ ] Can write to writable folder: `echo "test" > /workspace/vault/agent-workspace/_test.md`
 - [ ] File appears on host filesystem immediately
 - [ ] Edit a file on host — change is visible inside container immediately
-- [ ] Clean up: `rm /workspace/vault/claude-workspace/_test.md`
+- [ ] Clean up: `rm /workspace/vault/agent-workspace/_test.md`
 
 ## 5. Claude Code CLI
 
