@@ -45,7 +45,7 @@ Each terminal tab in Obsidian gets its own independent tmux session — run mult
 - **Read-only source** — container tooling at /workspace is read-only
 - **Localhost-only terminal** — ttyd binds to 127.0.0.1 by default
 - **Firewall toggle** — enable/disable allowlist-based outbound firewall from the status bar (shield icon) or command palette. Auto-enable on start via Advanced settings. Restricts traffic to: Anthropic, npm, GitHub, PyPI, CDNs. Configure `ALLOWED_PRIVATE_HOSTS` for local services (NAS, etc.)
-- **Credentials** — set ttyd username/password in plugin settings or .env
+- **No remote access by default** — ttyd only accepts local connections
 - **Resource limits** — memory and CPU capped by default (configurable)
 
 > **WSL2 note:** Docker inside WSL2 is also limited by `.wslconfig` memory settings.
@@ -74,15 +74,14 @@ cp .env.example .env
 # Optionally set PKM_WRITE_DIR (default: agent-workspace)
 ```
 
-### 2. Build and start the container
+### 2. Build the container
 
 ```bash
 cd docker
 docker compose build
-docker compose up -d
 ```
 
-Verify: `docker compose ps` should show `agent-sandbox` as healthy.
+> **Important:** Start the container from the Obsidian plugin (step 4), not from the command line. The plugin passes required environment variables (`PKM_VAULT_PATH`, `PKM_WRITE_DIR`, etc.) automatically. Running `docker compose up -d` manually without a configured `.env` file will result in missing vault mounts and unexpected behaviour.
 
 ### 3. Build and install the plugin
 
@@ -149,8 +148,7 @@ Settings are organized into three tabs:
 |---------|---------|-------------|
 | Port | `7681` | Host port mapped to ttyd |
 | Bind address | `127.0.0.1` | IP address ttyd binds to (set 0.0.0.0 for network access) |
-| Username | `user` | Username for ttyd auth |
-| Password | *(empty)* | Password for ttyd auth |
+| Use tmux sessions | `on` | Wrap terminals in tmux. Turn off for mouse scrollback support |
 | Terminal theme | Follow Obsidian | Follow Obsidian theme, Dark, or Light |
 | Terminal font | *(auto)* | Custom font family (falls back through common monospace fonts) |
 

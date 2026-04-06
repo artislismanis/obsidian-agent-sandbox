@@ -21,6 +21,12 @@
 | `/workspace/scripts/` | Verification and firewall scripts |
 | `/workspace/.claude/` | Claude Code project settings |
 
+## Starting the Container
+
+**Always start via the Obsidian plugin** (command palette > "Sandbox: Start Container") unless you have a fully configured `.env` file. The plugin passes required environment variables (`PKM_VAULT_PATH`, `PKM_WRITE_DIR`, port, bind address, etc.) automatically. Running `docker compose up -d` manually without these will result in missing vault mounts and broken paths.
+
+For standalone CLI use, copy `.env.example` to `.env` and configure all variables before starting.
+
 ## Safety Constraints
 
 - **Read-only vault**: the vault mount is read-only at the filesystem level. All writes must go to the writable folder (`/workspace/vault/agent-workspace/` by default)
