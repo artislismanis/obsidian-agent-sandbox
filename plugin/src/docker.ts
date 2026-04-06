@@ -245,20 +245,22 @@ export class DockerManager {
 
 	async enableFirewall(): Promise<string> {
 		return this.guardedRun(
-			`docker compose exec ${SERVICE_NAME} sudo /usr/local/bin/init-firewall.sh`,
+			`docker compose exec --user root ${SERVICE_NAME} /usr/local/bin/init-firewall.sh`,
 		);
 	}
 
 	async disableFirewall(): Promise<string> {
-		return this.guardedRun(`docker compose exec ${SERVICE_NAME} sudo iptables -F OUTPUT`);
+		return this.guardedRun(
+			`docker compose exec --user root ${SERVICE_NAME} /usr/local/bin/init-firewall.sh --disable`,
+		);
 	}
 
 	async firewallStatus(): Promise<boolean> {
 		try {
 			const output = await this.run(
-				`docker compose exec ${SERVICE_NAME} sudo iptables -L OUTPUT -n`,
+				`docker compose exec --user root ${SERVICE_NAME} /usr/local/bin/init-firewall.sh --status`,
 			);
-			return output.includes("DROP");
+			return output.trim() === "enabled";
 		} catch {
 			return false;
 		}

@@ -110,26 +110,12 @@ export class TerminalView extends ItemView {
 			if (connected) {
 				await this.initTerminal(container, gen);
 			} else {
-				this.showError(
-					container,
-					"Could not connect to ttyd. Make sure the container is running.",
-				);
+				// Container not reachable — close the tab instead of showing a stale error
+				this.leaf.detach();
 			}
 		} finally {
 			this.connecting = false;
 		}
-	}
-
-	private showError(container: HTMLElement, message: string): void {
-		const errorDiv = container.createDiv({ cls: "sandbox-terminal-error" });
-		const msgEl = errorDiv.createEl("p");
-		msgEl.setText(message);
-
-		const retryBtn = errorDiv.createEl("button");
-		retryBtn.setText("Retry");
-		retryBtn.addEventListener("click", () => {
-			void this.connect();
-		});
 	}
 
 	private buildTheme(
@@ -290,14 +276,12 @@ export class TerminalView extends ItemView {
 
 		ws.onclose = () => {
 			if (gen === this.generation) {
-				term.write("\r\n\x1b[31m[Connection closed]\x1b[0m\r\n");
+				this.leaf.detach();
 			}
 		};
 
 		ws.onerror = () => {
-			if (gen === this.generation) {
-				term.write("\r\n\x1b[31m[Connection error]\x1b[0m\r\n");
-			}
+			// onclose always fires after onerror, so detach is handled there
 		};
 
 		this.termDisposables.push(

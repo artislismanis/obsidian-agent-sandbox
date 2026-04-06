@@ -109,7 +109,7 @@ describe("fetchAuthToken", () => {
 		);
 	});
 
-	it("sends correct request", async () => {
+	it("sends correct request with Basic Auth header", async () => {
 		mockRequestUrl.mockResolvedValueOnce({
 			status: 200,
 			json: { token: "t" },
@@ -118,6 +118,7 @@ describe("fetchAuthToken", () => {
 		const call = mockRequestUrl.mock.calls[0][0];
 		expect(call.url).toBe("http://localhost:7681/token");
 		expect(call.method).toBe("POST");
+		expect(call.headers.Authorization).toBe(`Basic ${btoa("myuser:mypass")}`);
 		const body = JSON.parse(call.body as string);
 		expect(body).toEqual({ username: "myuser", password: "mypass" });
 	});
