@@ -249,8 +249,10 @@ export class DockerManager {
 			args = ["-c", command];
 		}
 
+		// On Windows, child processes survive parent exit naturally.
+		// detached: true on Windows creates a visible console window.
 		const child = spawn(shell, args, {
-			detached: true,
+			detached: process.platform !== "win32",
 			stdio: "ignore",
 			windowsHide: true,
 		});
