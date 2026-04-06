@@ -102,4 +102,12 @@ describe("buildWsUrl", () => {
 	it("uses custom port", () => {
 		expect(buildWsUrl(8080)).toBe("ws://localhost:8080/ws");
 	});
+
+	it("appends token as query parameter", () => {
+		expect(buildWsUrl(7681, "my-jwt-token")).toBe("ws://localhost:7681/ws?token=my-jwt-token");
+	});
+
+	it("encodes special characters in token", () => {
+		expect(buildWsUrl(7681, "a+b=c")).toBe("ws://localhost:7681/ws?token=a%2Bb%3Dc");
+	});
 });

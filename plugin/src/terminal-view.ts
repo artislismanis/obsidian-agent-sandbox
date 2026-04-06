@@ -257,7 +257,7 @@ export class TerminalView extends ItemView {
 
 		if (gen !== this.generation) return;
 
-		const wsUrl = buildWsUrl(settings.ttydPort);
+		const wsUrl = buildWsUrl(settings.ttydPort, token);
 		const ws = new WebSocket(wsUrl, ["tty"]);
 		ws.binaryType = "arraybuffer";
 		this.ws = ws;
