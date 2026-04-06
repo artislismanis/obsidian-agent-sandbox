@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { DockerManager } from "../docker";
+import { isValidWriteDir, DockerManager } from "../docker";
+
+describe("isValidWriteDir", () => {
+	it("rejects '..'", () => expect(isValidWriteDir("..")).toBe(false));
+	it("rejects '../escape'", () => expect(isValidWriteDir("../escape")).toBe(false));
+	it("rejects '/absolute'", () => expect(isValidWriteDir("/absolute")).toBe(false));
+	it("rejects '.'", () => expect(isValidWriteDir(".")).toBe(false));
+	it("rejects 'foo/../bar'", () => expect(isValidWriteDir("foo/../bar")).toBe(false));
+	it("accepts 'claude-workspace'", () => expect(isValidWriteDir("claude-workspace")).toBe(true));
+	it("accepts 'subfolder'", () => expect(isValidWriteDir("subfolder")).toBe(true));
+	it("accepts 'my-dir'", () => expect(isValidWriteDir("my-dir")).toBe(true));
+});
 
 describe("writeDir validation in DockerManager", () => {
 	function createDocker(writeDir: string) {

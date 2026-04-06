@@ -1,7 +1,7 @@
 import type { WorkspaceLeaf } from "obsidian";
 import { FileSystemAdapter, Menu, Notice, Plugin, debounce } from "obsidian";
 import { type AgentSandboxSettings, DEFAULT_SETTINGS, AgentSandboxSettingTab } from "./settings";
-import { DockerManager } from "./docker";
+import { DockerManager, isValidWriteDir } from "./docker";
 import type { ContainerState } from "./status-bar";
 import { FirewallStatusBar, StatusBarManager } from "./status-bar";
 import { TerminalView, VIEW_TYPE_TERMINAL } from "./terminal-view";
@@ -11,11 +11,14 @@ function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
+const TOOLTIP_STOPPED = "Container is not running\nClick for options";
+
 export default class AgentSandboxPlugin extends Plugin {
 	settings: AgentSandboxSettings = { ...DEFAULT_SETTINGS };
 	private docker!: DockerManager;
 	private statusBar!: StatusBarManager;
 	private firewallBar!: FirewallStatusBar;
+	private statusBarClickHandler: ((evt: MouseEvent) => void) | null = null;
 
 	private debouncedSaveSettings = debounce(
 		async () => {
@@ -49,8 +52,9 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		const statusBarEl = this.addStatusBarItem();
 		this.statusBar = new StatusBarManager(statusBarEl);
-		this.statusBar.setDetails("Container is not running\nClick for options");
-		statusBarEl.addEventListener("click", (evt) => this.showStatusMenu(evt));
+		this.statusBar.setDetails(TOOLTIP_STOPPED);
+		this.statusBarClickHandler = (evt) => this.showStatusMenu(evt);
+		statusBarEl.addEventListener("click", this.statusBarClickHandler);
 
 		const fwBarEl = this.addStatusBarItem();
 		this.firewallBar = new FirewallStatusBar(fwBarEl, () => this.toggleFirewall());
@@ -142,7 +146,7 @@ export default class AgentSandboxPlugin extends Plugin {
 	// ── Container actions ──────────────────────────────────
 
 	private async startContainer(): Promise<void> {
-		await this.runDockerCommand({
+		const ok = await this.runDockerCommand({
 			preState: "starting",
 			action: async () => {
 				await this.ensureWriteDir();
@@ -152,17 +156,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			successMsg: "Sandbox container started.",
 			failurePrefix: "Failed to start container",
 		});
-		if (this.settings.autoEnableFirewall) {
-			try {
-				await this.docker.enableFirewall();
-				this.firewallBar.setState("enabled");
-			} catch {
-				this.firewallBar.setState("disabled");
-			}
-		} else {
-			await this.refreshFirewallStatus();
-		}
-		this.updateTooltip();
+		if (ok) await this.applyFirewallAfterStart();
 	}
 
 	private async stopContainer(): Promise<void> {
@@ -173,17 +167,21 @@ export default class AgentSandboxPlugin extends Plugin {
 			failurePrefix: "Failed to stop container",
 		});
 		this.firewallBar.setState("hidden");
-		this.statusBar.setDetails("Container is not running\nClick for options");
+		this.statusBar.setDetails(TOOLTIP_STOPPED);
 	}
 
 	private async restartContainer(): Promise<void> {
-		await this.runDockerCommand({
+		const ok = await this.runDockerCommand({
 			preState: "starting",
 			action: () => this.docker.restart(),
 			postState: "running",
 			successMsg: "Sandbox container restarted.",
 			failurePrefix: "Failed to restart container",
 		});
+		if (ok) await this.applyFirewallAfterStart();
+	}
+
+	private async applyFirewallAfterStart(): Promise<void> {
 		if (this.settings.autoEnableFirewall) {
 			try {
 				await this.docker.enableFirewall();
@@ -296,7 +294,7 @@ export default class AgentSandboxPlugin extends Plugin {
 	private async ensureWriteDir(): Promise<void> {
 		const dir = this.settings.vaultWriteDir;
 		if (!dir) return;
-		if (dir.includes("..") || dir.startsWith("/") || dir === ".") {
+		if (!isValidWriteDir(dir)) {
 			new Notice("Invalid vault write directory.");
 			return;
 		}
@@ -315,7 +313,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		postState: ContainerState;
 		successMsg: string;
 		failurePrefix: string;
-	}): Promise<void> {
+	}): Promise<boolean> {
 		try {
 			if (opts.preState) {
 				this.statusBar.setState(opts.preState);
@@ -324,11 +322,13 @@ export default class AgentSandboxPlugin extends Plugin {
 			await opts.action();
 			this.statusBar.setState(opts.postState);
 			new Notice(opts.successMsg);
+			return true;
 		} catch (error: unknown) {
 			this.statusBar.setState("error");
 			const msg = toErrorMessage(error);
 			this.statusBar.setDetails(`Container error: ${msg}\nClick for options`);
 			new Notice(`${opts.failurePrefix}: ${msg}`);
+			return false;
 		}
 	}
 
@@ -343,7 +343,7 @@ export default class AgentSandboxPlugin extends Plugin {
 				this.updateTooltip();
 			} else {
 				this.firewallBar.setState("hidden");
-				this.statusBar.setDetails("Container is not running\nClick for options");
+				this.statusBar.setDetails(TOOLTIP_STOPPED);
 			}
 
 			const friendly = isRunning ? "Container is running" : "Container is stopped";

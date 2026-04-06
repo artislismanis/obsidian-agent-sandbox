@@ -5,8 +5,13 @@ const exec = promisify(execCb);
 
 const VALID_DISTRO_NAME = /^[\w][\w.-]*$/;
 const EXEC_TIMEOUT = 30_000;
+const SERVICE_NAME = "sandbox";
 
 import type { DockerMode } from "./settings";
+
+export function isValidWriteDir(dir: string): boolean {
+	return !dir.includes("..") && !dir.startsWith("/") && dir !== ".";
+}
 
 export interface DockerManagerSettings {
 	dockerMode: DockerMode;
@@ -31,6 +36,24 @@ export function windowsToWslPath(windowsPath: string): string {
 	return `/mnt/${driveLetter}/${rest}`;
 }
 
+function buildInnerCommand(
+	composePath: string,
+	dockerCmd: string,
+	envVars: Record<string, string>,
+): string {
+	const escapedPath = composePath.replace(/'/g, "'\\''");
+
+	const envPrefix = Object.entries(envVars)
+		.map(([key, value]) => {
+			const escapedValue = value.replace(/'/g, "'\\''");
+			return `${key}='${escapedValue}'`;
+		})
+		.join(" ");
+	const envPart = envPrefix ? `export ${envPrefix} && ` : "";
+
+	return `${envPart}cd '${escapedPath}' && ${dockerCmd}`;
+}
+
 export function buildWslCommand(
 	composePath: string,
 	wslDistro: string,
@@ -42,18 +65,7 @@ export function buildWslCommand(
 			`Invalid WSL distribution name '${wslDistro}'. Only alphanumeric characters, hyphens, underscores, and dots are allowed.`,
 		);
 	}
-	const escapedPath = composePath.replace(/'/g, "'\\''");
-
-	const envPrefix = Object.entries(envVars)
-		.map(([key, value]) => {
-			const escapedValue = value.replace(/'/g, "'\\''");
-			return `${key}='${escapedValue}'`;
-		})
-		.join(" ");
-	const envPart = envPrefix ? `export ${envPrefix} && ` : "";
-
-	const innerCmd = `${envPart}cd '${escapedPath}' && ${dockerCmd}`;
-	const cmdSafe = innerCmd.replace(/"/g, '\\"');
+	const cmdSafe = buildInnerCommand(composePath, dockerCmd, envVars).replace(/"/g, '\\"');
 	return `wsl -d ${wslDistro} -- bash -c "${cmdSafe}"`;
 }
 
@@ -62,18 +74,7 @@ export function buildLocalCommand(
 	dockerCmd: string,
 	envVars: Record<string, string> = {},
 ): string {
-	const escapedPath = composePath.replace(/'/g, "'\\''");
-
-	const envPrefix = Object.entries(envVars)
-		.map(([key, value]) => {
-			const escapedValue = value.replace(/'/g, "'\\''");
-			return `${key}='${escapedValue}'`;
-		})
-		.join(" ");
-	const envPart = envPrefix ? `export ${envPrefix} && ` : "";
-
-	const innerCmd = `${envPart}cd '${escapedPath}' && ${dockerCmd}`;
-	const cmdSafe = innerCmd.replace(/"/g, '\\"');
+	const cmdSafe = buildInnerCommand(composePath, dockerCmd, envVars).replace(/"/g, '\\"');
 	return `bash -c "${cmdSafe}"`;
 }
 
@@ -111,7 +112,7 @@ export class DockerManager {
 			envVars.PKM_VAULT_PATH = dockerMode === "wsl" ? windowsToWslPath(vaultPath) : vaultPath;
 		}
 		if (writeDir) {
-			if (writeDir.includes("..") || writeDir.startsWith("/") || writeDir === ".") {
+			if (!isValidWriteDir(writeDir)) {
 				throw new Error(
 					"Invalid vault write directory. Must be a relative path without '..' components.",
 				);
@@ -189,21 +190,22 @@ export class DockerManager {
 	}
 
 	async restart(): Promise<string> {
-		await this.run("docker compose down").catch(() => {});
-		return this.run("docker compose up -d");
+		return this.start();
 	}
 
 	async enableFirewall(): Promise<string> {
-		return this.run("docker compose exec sandbox sudo /usr/local/bin/init-firewall.sh");
+		return this.run(`docker compose exec ${SERVICE_NAME} sudo /usr/local/bin/init-firewall.sh`);
 	}
 
 	async disableFirewall(): Promise<string> {
-		return this.run("docker compose exec sandbox sudo iptables -F OUTPUT");
+		return this.run(`docker compose exec ${SERVICE_NAME} sudo iptables -F OUTPUT`);
 	}
 
 	async firewallStatus(): Promise<boolean> {
 		try {
-			const output = await this.run("docker compose exec sandbox sudo iptables -L OUTPUT -n");
+			const output = await this.run(
+				`docker compose exec ${SERVICE_NAME} sudo iptables -L OUTPUT -n`,
+			);
 			return output.includes("DROP");
 		} catch {
 			return false;

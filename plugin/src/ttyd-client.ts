@@ -2,6 +2,16 @@ import { requestUrl } from "obsidian";
 
 const FETCH_TIMEOUT_MS = 5000;
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+	let timer: ReturnType<typeof setTimeout>;
+	return Promise.race([
+		promise.finally(() => clearTimeout(timer)),
+		new Promise<never>((_, reject) => {
+			timer = setTimeout(() => reject(new Error("timeout")), ms);
+		}),
+	]);
+}
+
 export async function pollUntilReady(
 	port: number,
 	maxRetries: number,
@@ -12,15 +22,10 @@ export async function pollUntilReady(
 		if (isAborted()) return false;
 
 		try {
-			let timer: ReturnType<typeof setTimeout>;
-			const resp = await Promise.race([
-				requestUrl({ url: `http://localhost:${port}`, throw: false }).finally(() =>
-					clearTimeout(timer),
-				),
-				new Promise<never>((_, reject) => {
-					timer = setTimeout(() => reject(new Error("timeout")), FETCH_TIMEOUT_MS);
-				}),
-			]);
+			const resp = await withTimeout(
+				requestUrl({ url: `http://localhost:${port}`, throw: false }),
+				FETCH_TIMEOUT_MS,
+			);
 			if (resp.status === 200 || resp.status === 401) {
 				return true;
 			}
@@ -40,19 +45,16 @@ export async function fetchAuthToken(
 	username: string,
 	password: string,
 ): Promise<string> {
-	let timer: ReturnType<typeof setTimeout>;
-	const resp = await Promise.race([
+	const resp = await withTimeout(
 		requestUrl({
 			url: `http://localhost:${port}/token`,
 			method: "POST",
 			contentType: "application/json",
 			body: JSON.stringify({ username, password }),
 			throw: false,
-		}).finally(() => clearTimeout(timer)),
-		new Promise<never>((_, reject) => {
-			timer = setTimeout(() => reject(new Error("timeout")), FETCH_TIMEOUT_MS);
 		}),
-	]);
+		FETCH_TIMEOUT_MS,
+	);
 	if (resp.status !== 200) {
 		throw new Error(
 			resp.status === 403 || resp.status === 401

@@ -5,7 +5,11 @@ function createMockElement(): HTMLElement {
 	const el = {
 		setText: vi.fn(),
 		addClass: vi.fn(),
+		toggleClass: vi.fn(),
 		setAttribute: vi.fn(),
+		addEventListener: vi.fn(),
+		removeEventListener: vi.fn(),
+		style: { display: "" },
 	};
 	return el as unknown as HTMLElement;
 }
@@ -57,28 +61,15 @@ describe("StatusBarManager", () => {
 	});
 });
 
-function createFirewallMockElement(): HTMLElement {
-	const el = {
-		setText: vi.fn(),
-		addClass: vi.fn(),
-		toggleClass: vi.fn(),
-		setAttribute: vi.fn(),
-		addEventListener: vi.fn(),
-		removeEventListener: vi.fn(),
-		style: { display: "" },
-	};
-	return el as unknown as HTMLElement;
-}
-
 describe("FirewallStatusBar", () => {
 	it("starts hidden", () => {
-		const el = createFirewallMockElement();
+		const el = createMockElement();
 		new FirewallStatusBar(el, vi.fn());
 		expect(el.style.display).toBe("none");
 	});
 
 	it("shows enabled state with success class", () => {
-		const el = createFirewallMockElement();
+		const el = createMockElement();
 		const bar = new FirewallStatusBar(el, vi.fn());
 		bar.setState("enabled");
 		expect(el.style.display).toBe("");
@@ -88,7 +79,7 @@ describe("FirewallStatusBar", () => {
 	});
 
 	it("shows disabled state with muted class", () => {
-		const el = createFirewallMockElement();
+		const el = createMockElement();
 		const bar = new FirewallStatusBar(el, vi.fn());
 		bar.setState("disabled");
 		expect(el.toggleClass).toHaveBeenCalledWith("firewall-enabled", false);
@@ -96,7 +87,7 @@ describe("FirewallStatusBar", () => {
 	});
 
 	it("hides when set to hidden", () => {
-		const el = createFirewallMockElement();
+		const el = createMockElement();
 		const bar = new FirewallStatusBar(el, vi.fn());
 		bar.setState("enabled");
 		bar.setState("hidden");
@@ -104,7 +95,7 @@ describe("FirewallStatusBar", () => {
 	});
 
 	it("skips render on duplicate state", () => {
-		const el = createFirewallMockElement();
+		const el = createMockElement();
 		const bar = new FirewallStatusBar(el, vi.fn());
 		bar.setState("enabled");
 		(el.setText as ReturnType<typeof vi.fn>).mockClear();
@@ -113,7 +104,7 @@ describe("FirewallStatusBar", () => {
 	});
 
 	it("returns current state via getState", () => {
-		const el = createFirewallMockElement();
+		const el = createMockElement();
 		const bar = new FirewallStatusBar(el, vi.fn());
 		expect(bar.getState()).toBe("hidden");
 		bar.setState("enabled");
@@ -121,14 +112,14 @@ describe("FirewallStatusBar", () => {
 	});
 
 	it("registers click handler", () => {
-		const el = createFirewallMockElement();
+		const el = createMockElement();
 		const handler = vi.fn();
 		new FirewallStatusBar(el, handler);
 		expect(el.addEventListener).toHaveBeenCalledWith("click", handler);
 	});
 
 	it("removes click handler on destroy", () => {
-		const el = createFirewallMockElement();
+		const el = createMockElement();
 		const handler = vi.fn();
 		const bar = new FirewallStatusBar(el, handler);
 		bar.destroy();
