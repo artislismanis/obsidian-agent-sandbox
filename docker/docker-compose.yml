@@ -1,5 +1,5 @@
 services:
-  pkm:
+  sandbox:
     build:
       context: .
       dockerfile: Dockerfile
@@ -8,9 +8,9 @@ services:
       - NET_ADMIN
       - NET_RAW
     ports:
-      - "${TTYD_PORT:-7681}:7681"
+      - "${TTYD_BIND:-127.0.0.1}:${TTYD_PORT:-7681}:7681"
     volumes:
-      - .:/workspace
+      - .:/workspace:ro
       - ${PKM_VAULT_PATH:-./vault}:/workspace/vault:ro
       - ${PKM_VAULT_PATH:-./vault}/${PKM_WRITE_DIR:-claude-workspace}:/workspace/vault/${PKM_WRITE_DIR:-claude-workspace}
       - sandbox-claude-config:/home/claude/.claude
@@ -19,6 +19,7 @@ services:
       - TERM=xterm-256color
       - TTYD_USER=${TTYD_USER:-}
       - TTYD_PASSWORD=${TTYD_PASSWORD:-}
+      - ALLOWED_PRIVATE_HOSTS=${ALLOWED_PRIVATE_HOSTS:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     stdin_open: true
@@ -30,12 +31,11 @@ services:
       retries: 3
       start_period: 10s
     restart: unless-stopped
-    # ── Optional: resource limits ──
-    # deploy:
-    #   resources:
-    #     limits:
-    #       memory: 4G
-    #       cpus: "2.0"
+    deploy:
+      resources:
+        limits:
+          memory: ${CONTAINER_MEMORY:-8G}
+          cpus: "${CONTAINER_CPUS:-4}"
 
 volumes:
   sandbox-claude-config:

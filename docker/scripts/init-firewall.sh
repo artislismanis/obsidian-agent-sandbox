@@ -68,19 +68,31 @@ iptables -A OUTPUT -o lo -j ACCEPT
 # Allow established/related connections
 iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-# Allow DNS
-iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
-iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
+# DNS — restrict to configured resolvers only (prevents DNS tunneling)
+for ns in $(grep -oP 'nameserver \K[\d.]+' /etc/resolv.conf); do
+  iptables -A OUTPUT -d "$ns" -p udp --dport 53 -j ACCEPT
+  iptables -A OUTPUT -d "$ns" -p tcp --dport 53 -j ACCEPT
+done
 
 # Allow traffic to allowlisted IPs
 iptables -A OUTPUT -m set --match-set allowed_ips dst -p tcp --dport 443 -j ACCEPT
 iptables -A OUTPUT -m set --match-set allowed_ips dst -p tcp --dport 80 -j ACCEPT
 
-# Allow private networks (port forwarding, host access)
-iptables -A OUTPUT -d 10.0.0.0/8 -j ACCEPT
-iptables -A OUTPUT -d 172.16.0.0/12 -j ACCEPT
-iptables -A OUTPUT -d 192.168.0.0/16 -j ACCEPT
-iptables -A OUTPUT -d 169.254.0.0/16 -j ACCEPT
+# Block cloud metadata endpoint
+iptables -A OUTPUT -d 169.254.169.254 -j DROP
+
+# Docker gateway — always allowed (for host.docker.internal)
+GATEWAY=$(ip route | awk '/default/ {print $3}')
+[ -n "$GATEWAY" ] && iptables -A OUTPUT -d "$GATEWAY" -j ACCEPT
+
+# Configurable private hosts (NAS, local services, etc.)
+if [ -n "${ALLOWED_PRIVATE_HOSTS:-}" ]; then
+  IFS=',' read -ra HOSTS <<< "$ALLOWED_PRIVATE_HOSTS"
+  for host in "${HOSTS[@]}"; do
+    host=$(echo "$host" | xargs)
+    [ -n "$host" ] && iptables -A OUTPUT -d "$host" -j ACCEPT
+  done
+fi
 
 # Drop everything else
 iptables -A OUTPUT -j DROP
