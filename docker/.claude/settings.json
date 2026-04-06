@@ -1,18 +1,8 @@
 {
 	"permissions": {
-		"allow": [
-			"Bash(*)",
-			"Read(*)",
-			"Write(*)",
-			"Edit(*)",
-			"Glob(*)",
-			"Grep(*)",
-			"NotebookEdit(*)",
-			"WebFetch(*)",
-			"WebSearch(*)",
-			"TodoWrite(*)",
-			"Agent(*)"
-		],
-		"defaultMode": "autoAccept"
+		"defaultMode": "bypassPermissions"
+	},
+	"env": {
+		"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
 	}
 }
