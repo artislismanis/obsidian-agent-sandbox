@@ -43,11 +43,12 @@ No leaf module imports from another leaf — only `main.ts` wires them together.
 
 ## Testing
 
-45 tests across 4 test files using Vitest:
-- `docker.test.ts` — `parseIsRunning()` static method
-- `docker-command.test.ts` — `buildWslCommand()` escaping/validation, `windowsToWslPath()` conversion, env var injection
-- `status-bar.test.ts` — `StatusBarManager` state transitions
+67 tests across 5 test files using Vitest:
+- `docker.test.ts` — `parseIsRunning()` static method, compose path validation
+- `docker-command.test.ts` — `buildWslCommand()` escaping/validation, `buildLocalCommand()` double-quote escaping, `windowsToWslPath()` conversion, env var injection
+- `status-bar.test.ts` — `StatusBarManager` state transitions and tooltips, `FirewallStatusBar` states/clicks/destroy
 - `ttyd-client.test.ts` — Polling, auth token, URL construction (mocks `requestUrl`)
+- `validation.test.ts` — `writeDir` path traversal rejection
 
 The Obsidian API-dependent modules (main.ts, settings.ts, terminal-view.ts) are not unit tested — they would require mocking Plugin, ItemView, WorkspaceLeaf, etc. Test pure logic by extracting it into testable modules (docker.ts, ttyd-client.ts, status-bar.ts).
 
