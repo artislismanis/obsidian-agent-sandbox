@@ -105,6 +105,9 @@ RUN printf '%s\n' \
        '' \
        '# fzf key bindings (Ctrl+R for history search)' \
        '[ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && source /usr/share/doc/fzf/examples/key-bindings.bash' \
+       '' \
+       '# Claude Code: skip all permission prompts (container is sandboxed)' \
+       'alias claude="claude --dangerously-skip-permissions"' \
        >> /home/claude/.bashrc
 
 WORKDIR /workspace
