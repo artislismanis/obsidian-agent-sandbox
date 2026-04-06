@@ -224,8 +224,8 @@ export class DockerManager {
 		return this.guardedRun("docker compose down");
 	}
 
-	/** Fire-and-forget stop that survives parent process exit. */
-	stopDetached(survivesExit = false): void {
+	/** Fire-and-forget stop for plugin unload (parent stays alive). */
+	stopDetached(): void {
 		const { dockerMode, composePath, wslDistro } = this.getSettings();
 		if (!composePath) return;
 
@@ -249,12 +249,10 @@ export class DockerManager {
 			args = ["-c", command];
 		}
 
-		// On Windows, detached: true creates a visible console window but is
-		// needed for the process to survive app exit.  When the parent stays
-		// alive (plugin disable) we skip it to avoid the flash.
-		const needsDetach = process.platform !== "win32" || survivesExit;
+		// On Windows, child processes survive parent exit naturally.
+		// detached: true on Windows creates a visible console window.
 		const child = spawn(shell, args, {
-			detached: needsDetach,
+			detached: process.platform !== "win32",
 			stdio: "ignore",
 			windowsHide: true,
 		});
