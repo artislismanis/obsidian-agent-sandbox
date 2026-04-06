@@ -1,6 +1,18 @@
 {
 	"permissions": {
-		"defaultMode": "plan"
-	},
-	"model": "opusplan"
+		"allow": [
+			"Bash(*)",
+			"Read(*)",
+			"Write(*)",
+			"Edit(*)",
+			"Glob(*)",
+			"Grep(*)",
+			"NotebookEdit(*)",
+			"WebFetch(*)",
+			"WebSearch(*)",
+			"TodoWrite(*)",
+			"Agent(*)"
+		],
+		"defaultMode": "autoAccept"
+	}
 }
