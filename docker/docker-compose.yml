@@ -11,6 +11,7 @@ services:
       - "${TTYD_BIND:-127.0.0.1}:${TTYD_PORT:-7681}:7681"
     volumes:
       - .:/workspace:ro
+      - ./.claude:/workspace/.claude:rw
       - ${PKM_VAULT_PATH:-./vault}:/workspace/vault:ro
       - ${PKM_VAULT_PATH:-./vault}/${PKM_WRITE_DIR:-agent-workspace}:/workspace/vault/${PKM_WRITE_DIR:-agent-workspace}:rw
       - sandbox-claude-config:/home/claude/.claude
