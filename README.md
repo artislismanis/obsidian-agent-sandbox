@@ -34,7 +34,7 @@ Each terminal tab in Obsidian gets its own independent tmux session — run mult
 
 **Container:**
 - **Web terminal** — ttyd with tmux, accessible at `http://localhost:7681`
-- **Read-only vault** — Vault mounted read-only; agents can only write to a designated folder (`claude-workspace/` by default)
+- **Read-only vault** — Vault mounted read-only; agents can only write to a designated folder (`agent-workspace/` by default)
 - **Claude Code CLI** — Pre-installed and ready to use
 - **Dev tools** — Node 22, Python 3.12, ripgrep, fd, git-delta, atuin, fzf, jq, gh
 - **Network sandboxing** — Optional allowlist-based firewall
@@ -71,7 +71,7 @@ git clone https://github.com/artislismanis/obsidian-agent-sandbox.git
 cd obsidian-agent-sandbox/docker
 cp .env.example .env
 # Edit .env — set PKM_VAULT_PATH to your vault path
-# Optionally set PKM_WRITE_DIR (default: claude-workspace)
+# Optionally set PKM_WRITE_DIR (default: agent-workspace)
 ```
 
 ### 2. Build and start the container
@@ -140,7 +140,7 @@ Settings are organized into three tabs:
 | Docker mode | `WSL` | WSL (Windows) or Local (Linux/Mac/native Docker) |
 | Docker Compose path | *(empty)* | Path to the directory containing docker-compose.yml |
 | WSL distribution | `Ubuntu` | WSL distribution for Docker commands (WSL mode only) |
-| Vault write directory | `claude-workspace` | Folder inside vault where the container can write files |
+| Vault write directory | `agent-workspace` | Folder inside vault where the container can write files |
 | Auto-start on load | `off` | Start container when plugin loads |
 | Auto-stop on unload | `off` | Stop container when plugin is disabled |
 

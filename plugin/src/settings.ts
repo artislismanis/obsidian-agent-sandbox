@@ -34,7 +34,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	dockerMode: "wsl",
 	dockerComposeFilePath: "",
 	wslDistroName: "Ubuntu",
-	vaultWriteDir: "claude-workspace",
+	vaultWriteDir: "agent-workspace",
 	ttydPort: 7681,
 	ttydBindAddress: "127.0.0.1",
 	ttydUsername: "user",
@@ -166,7 +166,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			)
 			.addText((text) =>
 				text
-					.setPlaceholder("claude-workspace")
+					.setPlaceholder("agent-workspace")
 					.setValue(this.plugin.settings.vaultWriteDir)
 					.onChange(async (value) => {
 						this.plugin.settings.vaultWriteDir = value;

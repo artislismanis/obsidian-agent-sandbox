@@ -3,7 +3,25 @@ set -euo pipefail
 
 # Allowlist-based outbound firewall for headless Claude Code usage.
 # Restricts outbound traffic to known-good domains only.
-# Usage: sudo /usr/local/bin/init-firewall.sh
+# Usage: /usr/local/bin/init-firewall.sh [--disable|--status]
+
+case "${1:-}" in
+  --disable)
+    iptables -F OUTPUT 2>/dev/null || true
+    iptables -P OUTPUT ACCEPT
+    ipset destroy allowed_ips 2>/dev/null || true
+    echo "Firewall disabled."
+    exit 0
+    ;;
+  --status)
+    if iptables -L OUTPUT -n 2>/dev/null | grep -q "DROP"; then
+      echo "enabled"
+    else
+      echo "disabled"
+    fi
+    exit 0
+    ;;
+esac
 
 ALLOWED_DOMAINS=(
   # Anthropic
@@ -111,4 +129,4 @@ fi
 iptables -A OUTPUT -j DROP
 
 echo "Firewall active. $(ipset list allowed_ips | grep -c '^[0-9]') IP entries allowlisted."
-echo "To disable: iptables -F OUTPUT"
+echo "To disable: /usr/local/bin/init-firewall.sh --disable"

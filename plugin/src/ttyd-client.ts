@@ -68,6 +68,9 @@ export async function fetchAuthToken(
 			url: `http://localhost:${port}/token`,
 			method: "POST",
 			contentType: "application/json",
+			headers: {
+				Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+			},
 			body: JSON.stringify({ username, password }),
 			throw: false,
 		}),

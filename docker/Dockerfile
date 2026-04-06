@@ -60,11 +60,8 @@ RUN useradd -m -s /bin/bash claude \
     && mkdir -p /workspace /home/claude/.claude /home/claude/.local/share/atuin \
     && chown -R claude:claude /workspace /home/claude/.claude /home/claude/.local
 
-# Firewall script + sudoers
+# Firewall script (run as root via docker compose exec --user root)
 COPY --chmod=755 scripts/init-firewall.sh /usr/local/bin/init-firewall.sh
-RUN echo "claude ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" \
-       > /etc/sudoers.d/claude-firewall \
-    && chmod 0440 /etc/sudoers.d/claude-firewall
 
 # tmux config
 COPY --chown=claude:claude .tmux.conf /home/claude/.tmux.conf

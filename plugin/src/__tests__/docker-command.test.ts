@@ -84,10 +84,10 @@ describe("buildWslCommand", () => {
 	it("includes multiple env vars in the command", () => {
 		const cmd = buildWslCommand("/home/user/project", "Ubuntu", "docker compose up -d", {
 			PKM_VAULT_PATH: "/mnt/c/Users/foo/vault",
-			PKM_WRITE_DIR: "claude-workspace",
+			PKM_WRITE_DIR: "agent-workspace",
 		});
 		expect(cmd).toContain("PKM_VAULT_PATH=");
-		expect(cmd).toContain("PKM_WRITE_DIR='claude-workspace'");
+		expect(cmd).toContain("PKM_WRITE_DIR='agent-workspace'");
 	});
 
 	it("includes ttyd credential env vars", () => {

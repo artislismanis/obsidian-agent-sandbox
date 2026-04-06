@@ -56,11 +56,11 @@ ls /workspace/vault/
 
 - [ ] Vault files are visible inside container
 - [ ] Vault is read-only: `echo "test" > /workspace/vault/test.md` **fails** with "Read-only file system"
-- [ ] Writable folder exists: `ls /workspace/vault/claude-workspace/`
-- [ ] Can write to writable folder: `echo "test" > /workspace/vault/claude-workspace/_test.md`
+- [ ] Writable folder exists: `ls /workspace/vault/agent-workspace/`
+- [ ] Can write to writable folder: `echo "test" > /workspace/vault/agent-workspace/_test.md`
 - [ ] File appears on host filesystem immediately
 - [ ] Edit a file on host — change is visible inside container immediately
-- [ ] Clean up: `rm /workspace/vault/claude-workspace/_test.md`
+- [ ] Clean up: `rm /workspace/vault/agent-workspace/_test.md`
 
 ## 5. Claude Code CLI
 
@@ -177,14 +177,16 @@ docker compose up -d
 ## 13. Network Firewall (optional)
 
 ```bash
-docker compose exec sandbox sudo /usr/local/bin/init-firewall.sh
+docker compose exec --user root sandbox /usr/local/bin/init-firewall.sh
 ```
 
 - [ ] Script runs without errors
 - [ ] `curl https://api.anthropic.com` works (allowlisted)
 - [ ] `curl https://example.com` fails (not allowlisted)
 - [ ] Claude Code still functions
-- [ ] Disable: `docker compose exec sandbox sudo iptables -F OUTPUT`
+- [ ] Disable: `docker compose exec --user root sandbox /usr/local/bin/init-firewall.sh --disable`
+- [ ] Status: `docker compose exec --user root sandbox /usr/local/bin/init-firewall.sh --status`
+- [ ] Claude user inside container cannot run `sudo /usr/local/bin/init-firewall.sh` (no sudoers entry)
 
 ## 14. Port Remapping (optional)
 
