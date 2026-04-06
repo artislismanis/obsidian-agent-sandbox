@@ -12,11 +12,14 @@ export async function pollUntilReady(
 		if (isAborted()) return false;
 
 		try {
+			let timer: ReturnType<typeof setTimeout>;
 			const resp = await Promise.race([
-				requestUrl({ url: `http://localhost:${port}`, throw: false }),
-				new Promise<never>((_, reject) =>
-					setTimeout(() => reject(new Error("timeout")), FETCH_TIMEOUT_MS),
+				requestUrl({ url: `http://localhost:${port}`, throw: false }).finally(() =>
+					clearTimeout(timer),
 				),
+				new Promise<never>((_, reject) => {
+					timer = setTimeout(() => reject(new Error("timeout")), FETCH_TIMEOUT_MS);
+				}),
 			]);
 			if (resp.status === 200 || resp.status === 401) {
 				return true;
@@ -37,6 +40,7 @@ export async function fetchAuthToken(
 	username: string,
 	password: string,
 ): Promise<string> {
+	let timer: ReturnType<typeof setTimeout>;
 	const resp = await Promise.race([
 		requestUrl({
 			url: `http://localhost:${port}/token`,
@@ -44,10 +48,10 @@ export async function fetchAuthToken(
 			contentType: "application/json",
 			body: JSON.stringify({ username, password }),
 			throw: false,
+		}).finally(() => clearTimeout(timer)),
+		new Promise<never>((_, reject) => {
+			timer = setTimeout(() => reject(new Error("timeout")), FETCH_TIMEOUT_MS);
 		}),
-		new Promise<never>((_, reject) =>
-			setTimeout(() => reject(new Error("timeout")), FETCH_TIMEOUT_MS),
-		),
 	]);
 	if (resp.status !== 200) {
 		throw new Error(

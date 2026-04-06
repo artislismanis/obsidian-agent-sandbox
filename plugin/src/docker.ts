@@ -68,7 +68,9 @@ export function buildLocalCommand(
 		.join(" ");
 	const envPart = envPrefix ? `export ${envPrefix} && ` : "";
 
-	return `bash -c "${envPart}cd '${escapedPath}' && ${dockerCmd}"`;
+	const innerCmd = `${envPart}cd '${escapedPath}' && ${dockerCmd}`;
+	const cmdSafe = innerCmd.replace(/"/g, '\\"');
+	return `bash -c "${cmdSafe}"`;
 }
 
 export class DockerManager {
@@ -101,6 +103,11 @@ export class DockerManager {
 			envVars.PKM_VAULT_PATH = dockerMode === "wsl" ? windowsToWslPath(vaultPath) : vaultPath;
 		}
 		if (writeDir) {
+			if (writeDir.includes("..") || writeDir.startsWith("/") || writeDir === ".") {
+				throw new Error(
+					"Invalid vault write directory. Must be a relative path without '..' components.",
+				);
+			}
 			envVars.PKM_WRITE_DIR = writeDir;
 		}
 		if (ttydPort) {
@@ -162,7 +169,8 @@ export class DockerManager {
 	}
 
 	async restart(): Promise<string> {
-		return this.run("docker compose restart");
+		await this.run("docker compose down").catch(() => {});
+		return this.run("docker compose up -d");
 	}
 
 	static parseIsRunning(statusOutput: string): boolean {

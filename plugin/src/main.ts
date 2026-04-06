@@ -120,7 +120,7 @@ export default class AgentSandboxPlugin extends Plugin {
 	}
 
 	onunload() {
-		this.debouncedSaveSettings();
+		void this.saveData(this.settings);
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
 
 		if (this.settings.autoStopContainer) {
@@ -159,6 +159,10 @@ export default class AgentSandboxPlugin extends Plugin {
 	private async ensureWriteDir(): Promise<void> {
 		const dir = this.settings.vaultWriteDir;
 		if (!dir) return;
+		if (dir.includes("..") || dir.startsWith("/") || dir === ".") {
+			new Notice("Invalid vault write directory.");
+			return;
+		}
 		if (!(await this.app.vault.adapter.exists(dir))) {
 			await this.app.vault.createFolder(dir);
 		}
