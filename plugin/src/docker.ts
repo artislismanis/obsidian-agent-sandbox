@@ -8,39 +8,16 @@ const EXEC_TIMEOUT = 30_000;
 const SERVICE_NAME = "sandbox";
 
 import type { DockerMode } from "./settings";
+import { isValidWriteDir, isValidPrivateHosts, isValidMemory, isValidCpus } from "./validation";
 
-export function isValidWriteDir(dir: string): boolean {
-	if (!dir || !dir.trim()) return false;
-	return !dir.includes("..") && !dir.startsWith("/") && dir !== ".";
-}
-
-const VALID_IP_CIDR = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/;
-
-export function isValidPrivateHosts(value: string): boolean {
-	if (!value.trim()) return true;
-	return value.split(",").every((entry) => VALID_IP_CIDR.test(entry.trim()));
-}
-
-const VALID_MEMORY = /^\d+[KkMmGg]$/;
-
-export function isValidMemory(value: string): boolean {
-	if (!value.trim()) return true;
-	return VALID_MEMORY.test(value.trim());
-}
-
-const VALID_CPUS = /^\d+(\.\d+)?$/;
-
-export function isValidCpus(value: string): boolean {
-	if (!value.trim()) return true;
-	return VALID_CPUS.test(value.trim());
-}
-
-const VALID_BIND_ADDRESS = /^(\d{1,3}\.){3}\d{1,3}$/;
-
-export function isValidBindAddress(value: string): boolean {
-	if (!value.trim()) return true;
-	return VALID_BIND_ADDRESS.test(value.trim());
-}
+// Re-export validators so existing imports from docker.ts keep working
+export {
+	isValidWriteDir,
+	isValidPrivateHosts,
+	isValidMemory,
+	isValidCpus,
+	isValidBindAddress,
+} from "./validation";
 
 export interface DockerManagerSettings {
 	dockerMode: DockerMode;
@@ -65,6 +42,10 @@ export function windowsToWslPath(windowsPath: string): string {
 	return `/mnt/${driveLetter}/${rest}`;
 }
 
+/**
+ * Builds the inner shell command string with env vars and cd.
+ * `dockerCmd` must be a trusted literal — it is NOT escaped.
+ */
 function buildInnerCommand(
 	composePath: string,
 	dockerCmd: string,
@@ -109,9 +90,14 @@ export function buildLocalCommand(
 
 export class DockerManager {
 	private getSettings: () => DockerManagerSettings;
+	private busy = false;
 
 	constructor(getSettings: () => DockerManagerSettings) {
 		this.getSettings = getSettings;
+	}
+
+	isBusy(): boolean {
+		return this.busy;
 	}
 
 	private async run(dockerCmd: string): Promise<string> {
@@ -171,7 +157,7 @@ export class DockerManager {
 		if (containerMemory) {
 			if (!isValidMemory(containerMemory)) {
 				throw new Error(
-					"Invalid memory limit. Use a number with unit suffix (e.g. 4G, 512M).",
+					"Invalid memory limit. Use a number with unit suffix (e.g. 4G, 512M, 1T).",
 				);
 			}
 			envVars.CONTAINER_MEMORY = containerMemory;
@@ -213,34 +199,58 @@ export class DockerManager {
 		}
 	}
 
-	async start(): Promise<string> {
-		// Stop first to ensure env vars (PKM_VAULT_PATH) are fresh
-		try {
-			await this.run("docker compose down");
-		} catch {
-			/* may not be running */
+	/** Wraps run() with a busy guard to prevent concurrent docker operations. */
+	private async guardedRun(dockerCmd: string): Promise<string> {
+		if (this.busy) {
+			throw new Error("Another container operation is in progress. Please wait.");
 		}
-		return this.run("docker compose up -d");
+		this.busy = true;
+		try {
+			return await this.run(dockerCmd);
+		} finally {
+			this.busy = false;
+		}
+	}
+
+	async start(): Promise<string> {
+		if (this.busy) {
+			throw new Error("Another container operation is in progress. Please wait.");
+		}
+		this.busy = true;
+		try {
+			// Stop first to ensure env vars (PKM_VAULT_PATH) are fresh
+			try {
+				await this.run("docker compose down");
+			} catch {
+				/* may not be running */
+			}
+			return await this.run("docker compose up -d");
+		} finally {
+			this.busy = false;
+		}
 	}
 
 	async stop(): Promise<string> {
-		return this.run("docker compose down");
+		return this.guardedRun("docker compose down");
 	}
 
 	async status(): Promise<string> {
 		return this.run("docker compose ps --format json");
 	}
 
+	/** Delegates to start() which does down+up to pick up fresh env vars. */
 	async restart(): Promise<string> {
 		return this.start();
 	}
 
 	async enableFirewall(): Promise<string> {
-		return this.run(`docker compose exec ${SERVICE_NAME} sudo /usr/local/bin/init-firewall.sh`);
+		return this.guardedRun(
+			`docker compose exec ${SERVICE_NAME} sudo /usr/local/bin/init-firewall.sh`,
+		);
 	}
 
 	async disableFirewall(): Promise<string> {
-		return this.run(`docker compose exec ${SERVICE_NAME} sudo iptables -F OUTPUT`);
+		return this.guardedRun(`docker compose exec ${SERVICE_NAME} sudo iptables -F OUTPUT`);
 	}
 
 	async firewallStatus(): Promise<boolean> {

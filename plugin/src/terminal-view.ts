@@ -128,7 +128,7 @@ export class TerminalView extends ItemView {
 		const retryBtn = errorDiv.createEl("button");
 		retryBtn.setText("Retry");
 		retryBtn.addEventListener("click", () => {
-			this.connect();
+			void this.connect();
 		});
 	}
 

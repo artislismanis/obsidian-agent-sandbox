@@ -1,7 +1,7 @@
 import type { App } from "obsidian";
 import { PluginSettingTab, Setting } from "obsidian";
 import type AgentSandboxPlugin from "./main";
-import { isValidBindAddress, isValidCpus, isValidMemory, isValidPrivateHosts } from "./docker";
+import { isValidBindAddress, isValidCpus, isValidMemory, isValidPrivateHosts } from "./validation";
 
 export type TerminalThemeMode = "obsidian" | "dark" | "light";
 export type DockerMode = "wsl" | "local";

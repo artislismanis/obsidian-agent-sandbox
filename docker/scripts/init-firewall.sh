@@ -33,19 +33,22 @@ ALLOWED_DOMAINS=(
   unpkg.com
 )
 
-# Create or flush the ipset
+# Build a temporary ipset, then atomically swap to avoid races
 ipset create allowed_ips hash:net -exist
-ipset flush allowed_ips
+ipset create allowed_ips_new hash:net -exist
+ipset flush allowed_ips_new
 
 echo "Resolving domains..."
+FAILED=0
 for domain in "${ALLOWED_DOMAINS[@]}"; do
   (
     ips=$(dig +short A "$domain" 2>/dev/null | grep -E '^[0-9]+\.' || true)
     if [ -z "$ips" ]; then
-      echo "WARNING: failed to resolve $domain" >&2
+      echo "WARNING: failed to resolve $domain"
+      exit 1
     else
       for ip in $ips; do
-        ipset add allowed_ips "${ip}/32" -exist
+        ipset add allowed_ips_new "${ip}/32" -exist
       done
     fi
   ) &
@@ -54,14 +57,18 @@ wait
 
 # Aggregate into CIDR blocks if possible
 if command -v aggregate &>/dev/null; then
-  AGGREGATED=$(ipset list allowed_ips | grep -E '^[0-9]' | aggregate -q 2>/dev/null || true)
+  AGGREGATED=$(ipset list allowed_ips_new | grep -E '^[0-9]' | aggregate -q 2>/dev/null || true)
   if [ -n "$AGGREGATED" ]; then
-    ipset flush allowed_ips
+    ipset flush allowed_ips_new
     while IFS= read -r cidr; do
-      ipset add allowed_ips "$cidr" -exist
+      ipset add allowed_ips_new "$cidr" -exist
     done <<< "$AGGREGATED"
   fi
 fi
+
+# Atomically swap the ipset so iptables rules always reference a complete set
+ipset swap allowed_ips_new allowed_ips
+ipset destroy allowed_ips_new
 
 # Flush existing OUTPUT rules (idempotent)
 iptables -F OUTPUT 2>/dev/null || true
@@ -93,7 +100,9 @@ GATEWAY=$(ip route | awk '/default/ {print $3}')
 if [ -n "${ALLOWED_PRIVATE_HOSTS:-}" ]; then
   IFS=',' read -ra HOSTS <<< "$ALLOWED_PRIVATE_HOSTS"
   for host in "${HOSTS[@]}"; do
-    host=$(echo "$host" | xargs)
+    # Trim whitespace using bash parameter expansion (safer than xargs)
+    host="${host#"${host%%[![:space:]]*}"}"
+    host="${host%"${host##*[![:space:]]}"}"
     [ -n "$host" ] && iptables -A OUTPUT -d "$host" -j ACCEPT
   done
 fi

@@ -1,10 +1,11 @@
 import type { WorkspaceLeaf } from "obsidian";
 import { FileSystemAdapter, Menu, Notice, Plugin, debounce } from "obsidian";
 import { type AgentSandboxSettings, DEFAULT_SETTINGS, AgentSandboxSettingTab } from "./settings";
-import { DockerManager, isValidWriteDir } from "./docker";
+import { DockerManager } from "./docker";
 import type { ContainerState } from "./status-bar";
 import { FirewallStatusBar, StatusBarManager } from "./status-bar";
 import { TerminalView, VIEW_TYPE_TERMINAL } from "./terminal-view";
+import { isValidWriteDir } from "./validation";
 import { WORKSPACE_README } from "./workspace-readme";
 
 function toErrorMessage(error: unknown): string {
@@ -150,6 +151,10 @@ export default class AgentSandboxPlugin extends Plugin {
 	// ── Container actions ──────────────────────────────────
 
 	private async startContainer(): Promise<void> {
+		if (this.docker.isBusy()) {
+			new Notice("Another container operation is in progress.");
+			return;
+		}
 		const ok = await this.runDockerCommand({
 			preState: "starting",
 			action: async () => {
@@ -164,6 +169,10 @@ export default class AgentSandboxPlugin extends Plugin {
 	}
 
 	private async stopContainer(): Promise<void> {
+		if (this.docker.isBusy()) {
+			new Notice("Another container operation is in progress.");
+			return;
+		}
 		await this.runDockerCommand({
 			action: () => this.docker.stop(),
 			postState: "stopped",
@@ -175,6 +184,10 @@ export default class AgentSandboxPlugin extends Plugin {
 	}
 
 	private async restartContainer(): Promise<void> {
+		if (this.docker.isBusy()) {
+			new Notice("Another container operation is in progress.");
+			return;
+		}
 		const ok = await this.runDockerCommand({
 			preState: "starting",
 			action: () => this.docker.restart(),
@@ -205,6 +218,14 @@ export default class AgentSandboxPlugin extends Plugin {
 	// ── Firewall ───────────────────────────────────────────
 
 	private async toggleFirewall(): Promise<void> {
+		if (this.firewallBar.getState() === "hidden") {
+			new Notice("Container is not running. Start it first.");
+			return;
+		}
+		if (this.docker.isBusy()) {
+			new Notice("Another container operation is in progress.");
+			return;
+		}
 		try {
 			if (this.firewallBar.getState() === "enabled") {
 				await this.docker.disableFirewall();
@@ -234,23 +255,27 @@ export default class AgentSandboxPlugin extends Plugin {
 
 	private showStatusMenu(evt: MouseEvent): void {
 		const menu = new Menu();
+		const busy = this.docker.isBusy();
 
 		menu.addItem((item) =>
 			item
 				.setTitle("Start Container")
 				.setIcon("play")
+				.setDisabled(busy)
 				.onClick(() => this.startContainer()),
 		);
 		menu.addItem((item) =>
 			item
 				.setTitle("Stop Container")
 				.setIcon("square")
+				.setDisabled(busy)
 				.onClick(() => this.stopContainer()),
 		);
 		menu.addItem((item) =>
 			item
 				.setTitle("Restart Container")
 				.setIcon("refresh-cw")
+				.setDisabled(busy)
 				.onClick(() => this.restartContainer()),
 		);
 		menu.addSeparator();
@@ -260,6 +285,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			item
 				.setTitle(fwEnabled ? "Disable Firewall" : "Enable Firewall")
 				.setIcon("shield")
+				.setDisabled(busy)
 				.onClick(() => this.toggleFirewall()),
 		);
 
@@ -302,8 +328,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		const dir = this.settings.vaultWriteDir;
 		if (!dir) return;
 		if (!isValidWriteDir(dir)) {
-			new Notice("Invalid vault write directory.");
-			return;
+			throw new Error("Invalid vault write directory.");
 		}
 		try {
 			if (!(await this.app.vault.adapter.exists(dir))) {

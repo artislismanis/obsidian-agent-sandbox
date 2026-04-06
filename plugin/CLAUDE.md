@@ -16,7 +16,7 @@ Pre-commit hooks run `lint-staged` (eslint --fix + prettier) on staged files aut
 
 ## Architecture
 
-Hub-and-spoke pattern. `main.ts` orchestrates 6 leaf modules:
+Hub-and-spoke pattern. `main.ts` orchestrates leaf modules, plus a shared utility:
 
 ```
 main.ts (Plugin entry, commands, lifecycle, context menu, firewall toggle)
@@ -25,10 +25,11 @@ main.ts (Plugin entry, commands, lifecycle, context menu, firewall toggle)
 ├── status-bar.ts      — StatusBarManager + FirewallStatusBar: state display
 ├── terminal-view.ts   — TerminalView: xterm.js + WebSocket to ttyd
 ├── ttyd-client.ts     — Pure functions: polling, auth token, URL building
-└── workspace-readme.ts — README content for vault workspace folder
+├── workspace-readme.ts — README content for vault workspace folder
+└── validation.ts      — Shared input validators (used by settings.ts and docker.ts)
 ```
 
-No leaf module imports from another leaf — only `main.ts` wires them together. Exception: `settings.ts` imports the plugin type from `main.ts` for the settings tab constructor.
+No leaf module imports from another leaf — only `main.ts` wires them together. `validation.ts` is a shared utility (pure functions, no deps) that both `settings.ts` and `docker.ts` import. Exception: `settings.ts` imports the plugin type from `main.ts` for the settings tab constructor.
 
 ## Key patterns
 
@@ -43,12 +44,12 @@ No leaf module imports from another leaf — only `main.ts` wires them together.
 
 ## Testing
 
-106 tests across 5 test files using Vitest:
+122 tests across 5 test files using Vitest:
 - `docker.test.ts` — `parseIsRunning()` static method, compose path validation
 - `docker-command.test.ts` — `buildWslCommand()` escaping/validation, `buildLocalCommand()` double-quote escaping, `windowsToWslPath()` conversion, env var injection
 - `status-bar.test.ts` — `StatusBarManager` state transitions and tooltips, `FirewallStatusBar` states/clicks/destroy
 - `ttyd-client.test.ts` — Polling, auth token, URL construction (mocks `requestUrl`)
-- `validation.test.ts` — `isValidWriteDir`, `isValidPrivateHosts`, `isValidMemory`, `isValidCpus`, `isValidBindAddress`, DockerManager integration
+- `validation.test.ts` — All input validators (writeDir, privateHosts, memory, cpus, bindAddress) with octet/CIDR range checks, edge cases, DockerManager integration, busy guard
 
 The Obsidian API-dependent modules (main.ts, settings.ts, terminal-view.ts) are not unit tested — they would require mocking Plugin, ItemView, WorkspaceLeaf, etc. Test pure logic by extracting it into testable modules (docker.ts, ttyd-client.ts, status-bar.ts).
 
