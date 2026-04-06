@@ -120,7 +120,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			this.app.workspace.on("quit", (tasks) => {
 				if (this.settings.autoStopContainer) {
 					tasks.add(async () => {
-						this.docker.stopDetached();
+						this.docker.stopDetached(true);
 					});
 				}
 			}),
