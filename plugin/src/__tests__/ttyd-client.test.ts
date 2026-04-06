@@ -6,7 +6,7 @@ vi.mock("obsidian", () => ({
 }));
 
 import { requestUrl } from "obsidian";
-import { pollUntilReady, fetchAuthToken, buildWsUrl } from "../ttyd-client";
+import { pollUntilReady, buildWsUrl } from "../ttyd-client";
 
 const mockRequestUrl = requestUrl as ReturnType<typeof vi.fn>;
 
@@ -17,12 +17,6 @@ beforeEach(() => {
 describe("pollUntilReady", () => {
 	it("returns true when server responds 200", async () => {
 		mockRequestUrl.mockResolvedValueOnce({ status: 200 });
-		const result = await pollUntilReady(7681, 3, 10, () => false);
-		expect(result).toBe(true);
-	});
-
-	it("returns true when server responds 401 (auth required)", async () => {
-		mockRequestUrl.mockResolvedValueOnce({ status: 401 });
 		const result = await pollUntilReady(7681, 3, 10, () => false);
 		expect(result).toBe(true);
 	});
@@ -65,35 +59,6 @@ describe("pollUntilReady", () => {
 	});
 });
 
-describe("fetchAuthToken", () => {
-	it("returns token from GET /token with Basic Auth", async () => {
-		mockRequestUrl.mockResolvedValueOnce({
-			status: 200,
-			json: { token: "server-generated-token" },
-		});
-		const token = await fetchAuthToken(7681, "user", "pass");
-		expect(token).toBe("server-generated-token");
-		const call = mockRequestUrl.mock.calls[0][0];
-		expect(call.url).toBe("http://localhost:7681/token");
-		expect(call.method).toBe("GET");
-		expect(call.headers.Authorization).toBe(`Basic ${btoa("user:pass")}`);
-	});
-
-	it("throws on 401 response", async () => {
-		mockRequestUrl.mockResolvedValueOnce({ status: 401 });
-		await expect(fetchAuthToken(7681, "user", "wrong")).rejects.toThrow(
-			"Authentication failed",
-		);
-	});
-
-	it("throws on missing token field", async () => {
-		mockRequestUrl.mockResolvedValueOnce({ status: 200, json: {} });
-		await expect(fetchAuthToken(7681, "user", "pass")).rejects.toThrow(
-			"Invalid token response",
-		);
-	});
-});
-
 describe("buildWsUrl", () => {
 	it("builds URL without credentials", () => {
 		expect(buildWsUrl(7681)).toBe("ws://localhost:7681/ws");
@@ -101,13 +66,5 @@ describe("buildWsUrl", () => {
 
 	it("uses custom port", () => {
 		expect(buildWsUrl(8080)).toBe("ws://localhost:8080/ws");
-	});
-
-	it("appends token as query parameter", () => {
-		expect(buildWsUrl(7681, "my-jwt-token")).toBe("ws://localhost:7681/ws?token=my-jwt-token");
-	});
-
-	it("encodes special characters in token", () => {
-		expect(buildWsUrl(7681, "a+b=c")).toBe("ws://localhost:7681/ws?token=a%2Bb%3Dc");
 	});
 });

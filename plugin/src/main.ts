@@ -45,8 +45,6 @@ export default class AgentSandboxPlugin extends Plugin {
 			writeDir: this.settings.vaultWriteDir,
 			ttydPort: this.settings.ttydPort,
 			ttydBindAddress: this.settings.ttydBindAddress,
-			ttydUsername: this.settings.ttydUsername,
-			ttydPassword: this.settings.ttydPassword,
 			allowedPrivateHosts: this.settings.allowedPrivateHosts,
 			containerMemory: this.settings.containerMemory,
 			containerCpus: this.settings.containerCpus,
@@ -64,8 +62,6 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.registerView(VIEW_TYPE_TERMINAL, (leaf: WorkspaceLeaf) => {
 			return new TerminalView(leaf, () => ({
 				ttydPort: this.settings.ttydPort,
-				ttydUsername: this.settings.ttydUsername,
-				ttydPassword: this.settings.ttydPassword,
 				terminalTheme: this.settings.terminalTheme,
 				terminalFont: this.settings.terminalFont,
 			}));

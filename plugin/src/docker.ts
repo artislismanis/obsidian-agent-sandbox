@@ -27,8 +27,6 @@ export interface DockerManagerSettings {
 	writeDir?: string;
 	ttydPort?: number;
 	ttydBindAddress?: string;
-	ttydUsername?: string;
-	ttydPassword?: string;
 	allowedPrivateHosts?: string;
 	containerMemory?: string;
 	containerCpus?: string;
@@ -109,8 +107,6 @@ export class DockerManager {
 			writeDir,
 			ttydPort,
 			ttydBindAddress,
-			ttydUsername,
-			ttydPassword,
 			allowedPrivateHosts,
 			containerMemory,
 			containerCpus,
@@ -137,14 +133,8 @@ export class DockerManager {
 		if (ttydPort) {
 			envVars.TTYD_PORT = String(ttydPort);
 		}
-		if (ttydUsername) {
-			envVars.TTYD_USER = ttydUsername;
-		}
 		if (ttydBindAddress) {
 			envVars.TTYD_BIND = ttydBindAddress;
-		}
-		if (ttydPassword) {
-			envVars.TTYD_PASSWORD = ttydPassword;
 		}
 		if (allowedPrivateHosts) {
 			if (!isValidPrivateHosts(allowedPrivateHosts)) {

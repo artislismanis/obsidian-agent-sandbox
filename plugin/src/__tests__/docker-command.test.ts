@@ -89,22 +89,6 @@ describe("buildWslCommand", () => {
 		expect(cmd).toContain("PKM_VAULT_PATH=");
 		expect(cmd).toContain("PKM_WRITE_DIR='agent-workspace'");
 	});
-
-	it("includes ttyd credential env vars", () => {
-		const cmd = buildWslCommand("/home/user/project", "Ubuntu", "docker compose up -d", {
-			TTYD_USER: "admin",
-			TTYD_PASSWORD: "secret",
-		});
-		expect(cmd).toContain("TTYD_USER='admin'");
-		expect(cmd).toContain("TTYD_PASSWORD='secret'");
-	});
-
-	it("escapes special characters in credential env vars", () => {
-		const cmd = buildWslCommand("/home/user/project", "Ubuntu", "docker compose up -d", {
-			TTYD_PASSWORD: "p@ss'w0rd",
-		});
-		expect(cmd).toContain("TTYD_PASSWORD='p@ss'\\''w0rd'");
-	});
 });
 
 describe("buildLocalCommand", () => {

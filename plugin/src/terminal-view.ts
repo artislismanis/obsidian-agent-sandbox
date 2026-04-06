@@ -3,7 +3,7 @@ import { ItemView } from "obsidian";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import type { TerminalSettings, TerminalThemeMode } from "./settings";
-import { pollUntilReady, fetchAuthToken, buildWsUrl } from "./ttyd-client";
+import { pollUntilReady, buildWsUrl } from "./ttyd-client";
 
 export const VIEW_TYPE_TERMINAL = "agent-sandbox-terminal-view";
 
@@ -246,25 +246,14 @@ export class TerminalView extends ItemView {
 		this.term = term;
 		this.fitAddon = fitAddon;
 
-		let token: string | undefined;
-		if (settings.ttydPassword) {
-			token = await fetchAuthToken(
-				settings.ttydPort,
-				settings.ttydUsername,
-				settings.ttydPassword,
-			);
-		}
-
-		if (gen !== this.generation) return;
-
-		const wsUrl = buildWsUrl(settings.ttydPort, token);
+		const wsUrl = buildWsUrl(settings.ttydPort);
 		const ws = new WebSocket(wsUrl, ["tty"]);
 		ws.binaryType = "arraybuffer";
 		this.ws = ws;
 
 		ws.onopen = () => {
 			const msg = JSON.stringify({
-				AuthToken: token ?? "",
+				AuthToken: "",
 				columns: term.cols,
 				rows: term.rows,
 			});

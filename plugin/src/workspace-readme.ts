@@ -23,14 +23,13 @@ Open **Settings \u2192 Agent Sandbox** for configuration:
 | Tab | What's there |
 |-----|-------------|
 | **General** | Docker mode, compose path, vault write directory, auto-start/stop |
-| **Terminal** | Port, bind address, credentials, theme, font |
+| **Terminal** | Port, bind address, theme, font |
 | **Advanced** | Memory/CPU limits, allowed private hosts, auto-enable firewall |
 
 ## Security
 
 - **Firewall**: Click the \uD83D\uDEE1 shield in the status bar (or use the context menu) to toggle the outbound firewall. When enabled, the container can only reach: Anthropic API, npm, GitHub, PyPI, and configured private hosts.
 - **Resource limits**: Memory and CPU are capped (configurable in Advanced settings)
-- **Credentials**: Set a ttyd username/password in Terminal settings for authentication
 
 ## Troubleshooting
 

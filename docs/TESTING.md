@@ -82,12 +82,11 @@ claude
 
 | # | Test | Steps | Expected |
 |---|------|-------|----------|
-| 6.1 | Settings tab renders | Open Settings > Community Plugins > Agent Sandbox | All fields visible: compose path, WSL distro, ttyd port, ttyd user, ttyd password, terminal theme, auto-start toggle, auto-stop toggle |
-| 6.2 | Default values | Open settings tab fresh | WSL distro = "Ubuntu", port = 7681, user = "user", password = empty, theme = "Follow Obsidian theme", both toggles off |
+| 6.1 | Settings tab renders | Open Settings > Community Plugins > Agent Sandbox | All fields visible: compose path, WSL distro, ttyd port, bind address, terminal theme, auto-start toggle, auto-stop toggle |
+| 6.2 | Default values | Open settings tab fresh | WSL distro = "Ubuntu", port = 7681, bind address = "127.0.0.1", theme = "Follow Obsidian theme", both toggles off |
 | 6.3 | Values persist | Change compose path, restart Obsidian | Value persists |
-| 6.4 | Password field masked | Look at ttyd password field | Input type is password (dots, not plaintext) |
-| 6.5 | Debounced save | Type rapidly in a text field, check `data.json` | File updates ~500ms after last keystroke |
-| 6.6 | Save on unload | Change a value, immediately disable the plugin | Re-enable; changed value persists |
+| 6.4 | Debounced save | Type rapidly in a text field, check `data.json` | File updates ~500ms after last keystroke |
+| 6.5 | Save on unload | Change a value, immediately disable the plugin | Re-enable; changed value persists |
 
 ## 7. Container Management (requires Docker + WSL)
 
@@ -125,7 +124,6 @@ claude
 | 8.12 | Rapid close/reopen | Open, close, immediately reopen | No duplicate terminals, no errors |
 | 8.13 | Plugin reload | Disable and re-enable plugin | No stale panes, can open fresh terminal |
 | 8.14 | WebSocket disconnect | Stop container while terminal is open | Terminal shows "[Connection closed]" in red |
-| 8.15 | ttyd auth | Configure ttyd with `--credential user:pass`, set matching credentials | Connects via token auth |
 
 ## 9. Independent Sessions
 
@@ -152,7 +150,6 @@ claude
 |---|------|-------|----------|
 | 11.1 | Compose path with spaces | Set path with spaces | Commands execute correctly (shell-escaped) |
 | 11.2 | Invalid port | Type "abc" in port field | Silently rejected, previous port retained |
-| 11.3 | Empty password | Leave password blank, no `--credential` on ttyd | Connects without auth |
 | 11.4 | Console errors | Open dev tools (Ctrl+Shift+I), perform all tests | No unexpected errors |
 
 ## 12. Container Lifecycle

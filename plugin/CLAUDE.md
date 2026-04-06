@@ -36,7 +36,7 @@ No leaf module imports from another leaf — only `main.ts` wires them together.
 - **Settings reactivity**: DockerManager and TerminalView accept `() => Settings` getter functions, not snapshots. Settings changes in the UI take effect immediately.
 - **Generation counter**: TerminalView uses an incrementing counter to prevent race conditions when the view is rapidly closed/reopened. Each async operation checks if its generation is still current.
 - **Shell escaping**: `buildWslCommand()` in docker.ts handles both bash single-quote escaping and cmd.exe double-quote escaping. Distro names are validated against `/^[\w][\w.-]*$/`.
-- **ttyd protocol**: Binary WebSocket frames with ASCII command prefix. Commands are `'0'` (output/input), `'1'` (title/resize), `'2'` (preferences). Server and client use the same character codes. Connection requires `['tty']` subprotocol and a JSON handshake with `{AuthToken, columns, rows}` on open. Uses Obsidian's `requestUrl` for HTTP (bypasses CORS) and native WebSocket for the terminal stream.
+- **ttyd protocol**: Binary WebSocket frames with ASCII command prefix. Commands are `'0'` (output/input), `'1'` (title/resize), `'2'` (preferences). Server and client use the same character codes. Connection requires `['tty']` subprotocol and a JSON handshake with `{columns, rows}` on open. Uses Obsidian's `requestUrl` for HTTP polling (bypasses CORS) and native WebSocket for the terminal stream. No authentication — security relies on the bind address (127.0.0.1 by default).
 - **Clipboard**: Auto-copies on text selection via `onSelectionChange`. Paste via `Ctrl+Shift+V`. Designed for `set -g mouse off` in tmux so mouse selection works without Shift.
 - **Vault path injection**: Plugin auto-detects vault path via `FileSystemAdapter.getBasePath()`, converts Windows→WSL format via `windowsToWslPath()`, and passes `PKM_VAULT_PATH` env var to all docker compose commands. `start()` does stop+start to ensure fresh env vars.
 - **Multiple terminals**: Each "Open Sandbox Terminal" creates an independent terminal tab with its own WebSocket connection and unique instance ID. Terminals open at the bottom via horizontal split.
@@ -48,7 +48,7 @@ Vitest test files (`npm run test`):
 - `docker.test.ts` — `parseIsRunning()` static method, compose path validation
 - `docker-command.test.ts` — `buildWslCommand()` escaping/validation, `buildLocalCommand()` double-quote escaping, `windowsToWslPath()` conversion, env var injection
 - `status-bar.test.ts` — `StatusBarManager` state transitions and tooltips, `FirewallStatusBar` states/clicks/destroy
-- `ttyd-client.test.ts` — Polling, auth token, URL construction (mocks `requestUrl`)
+- `ttyd-client.test.ts` — Polling, URL construction (mocks `requestUrl`)
 - `validation.test.ts` — All input validators (writeDir, privateHosts, memory, cpus, bindAddress) with octet/CIDR range checks, edge cases, DockerManager integration, busy guard
 
 The Obsidian API-dependent modules (main.ts, settings.ts, terminal-view.ts) are not unit tested — they would require mocking Plugin, ItemView, WorkspaceLeaf, etc. Test pure logic by extracting it into testable modules (docker.ts, ttyd-client.ts, status-bar.ts).

@@ -13,8 +13,6 @@ export interface AgentSandboxSettings {
 	vaultWriteDir: string;
 	ttydPort: number;
 	ttydBindAddress: string;
-	ttydUsername: string;
-	ttydPassword: string;
 	autoStartContainer: boolean;
 	autoStopContainer: boolean;
 	terminalTheme: TerminalThemeMode;
@@ -27,7 +25,7 @@ export interface AgentSandboxSettings {
 
 export type TerminalSettings = Pick<
 	AgentSandboxSettings,
-	"ttydPort" | "ttydUsername" | "ttydPassword" | "terminalTheme" | "terminalFont"
+	"ttydPort" | "terminalTheme" | "terminalFont"
 >;
 
 export const DEFAULT_SETTINGS: AgentSandboxSettings = {
@@ -37,8 +35,6 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	vaultWriteDir: "agent-workspace",
 	ttydPort: 7681,
 	ttydBindAddress: "127.0.0.1",
-	ttydUsername: "user",
-	ttydPassword: "",
 	autoStartContainer: false,
 	autoStopContainer: false,
 	terminalTheme: "obsidian",
@@ -230,27 +226,6 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 							text.inputEl.addClass("sandbox-input-error");
 						}
 					});
-			});
-
-		new Setting(el)
-			.setName("Username")
-			.setDesc("Username for ttyd authentication. Leave password empty to disable auth.")
-			.addText((text) =>
-				text.setValue(this.plugin.settings.ttydUsername).onChange(async (value) => {
-					this.plugin.settings.ttydUsername = value;
-					this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(el)
-			.setName("Password")
-			.setDesc("Password for ttyd authentication. Stored in plaintext in the vault.")
-			.addText((text) => {
-				text.inputEl.type = "password";
-				text.setValue(this.plugin.settings.ttydPassword).onChange(async (value) => {
-					this.plugin.settings.ttydPassword = value;
-					this.plugin.saveSettings();
-				});
 			});
 
 		new Setting(el).setName("Appearance").setHeading();
