@@ -155,6 +155,15 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && install -m 755 /tmp/atuin-*/atuin /usr/local/bin/atuin \
     && rm -rf /tmp/atuin*
 
+# Symlink uv-managed Python into /usr/local/bin so python3 / python are
+# on PATH for claude without needing `uv run` prefixes. Claude skills
+# and ad-hoc venv work both need bare `python3` / `python -m venv`.
+# `gosu claude` runs uv as the user that installed the interpreter so
+# `uv python find` resolves correctly.
+RUN PY_BIN=$(gosu claude uv python find) \
+    && ln -sf "$PY_BIN" /usr/local/bin/python3 \
+    && ln -sf "$PY_BIN" /usr/local/bin/python
+
 # Firewall script (run as root via docker compose exec --user root)
 COPY --chmod=755 scripts/init-firewall.sh /usr/local/bin/init-firewall.sh
 

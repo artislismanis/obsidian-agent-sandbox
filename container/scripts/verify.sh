@@ -24,7 +24,7 @@ echo "atuin:   $(atuin --version 2>&1 || echo 'not found')"
 echo "rg:      $(rg --version 2>&1 | head -1 || echo 'not found')"
 echo "fd:      $(fd --version 2>&1 || echo 'not found')"
 echo "uv:      $(uv --version 2>&1 || echo 'not found')"
-PY=$(uv python find 2>/dev/null) && echo "Python:  $($PY --version 2>&1)" || echo "Python:  not found"
+echo "Python:  $(python3 --version 2>&1 || echo 'not found')"
 echo "gosu:    $(command -v gosu >/dev/null && echo 'installed' || echo 'not found')"
 echo "sudo:    $(command -v sudo >/dev/null && echo 'installed' || echo 'not found')"
 
