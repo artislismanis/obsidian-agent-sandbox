@@ -69,21 +69,26 @@ export default class AgentSandboxPlugin extends Plugin {
 			}));
 		});
 
-		// Handle terminal tabs persisted from the previous session.
-		// If the container is still running (autoStop=off, Obsidian was
-		// closed without killing the container), leave the tabs alone
-		// so each view's connect() can re-establish its WebSocket to
-		// the still-running ttyd — producing a fresh shell inside the
-		// same container. If the container is stopped (or we can't
-		// tell because docker is misconfigured), detach the tabs so
-		// stale UI doesn't linger.
+		// Hydrate the status bar and terminal tabs from the real
+		// container state. If the container is still running
+		// (autoStop=off, Obsidian was closed without killing it),
+		// leave any persisted terminal tabs in place so each view's
+		// connect() can re-establish its WebSocket — fresh shell,
+		// same container — and flip the status bar to "running" so it
+		// matches reality instead of showing the "stopped" default.
+		// If the container is stopped, or we can't tell because
+		// docker is misconfigured, detach the tabs so stale UI
+		// doesn't linger; the status bar stays at its "stopped"
+		// default (or "error" on the explicit Check Status path).
 		this.app.workspace.onLayoutReady(() => {
 			void this.docker
 				.status()
-				.then((out) => {
-					if (!DockerManager.parseIsRunning(out)) {
+				.then(async (out) => {
+					const isRunning = DockerManager.parseIsRunning(out);
+					if (!isRunning) {
 						this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
 					}
+					await this.syncStatusBar(isRunning);
 				})
 				.catch(() => {
 					this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
@@ -412,21 +417,27 @@ export default class AgentSandboxPlugin extends Plugin {
 		try {
 			const output = await this.docker.status();
 			const isRunning = DockerManager.parseIsRunning(output);
-			this.statusBar.setState(isRunning ? "running" : "stopped");
-
-			if (isRunning) {
-				await this.refreshFirewallStatus();
-				this.updateTooltip();
-			} else {
-				this.firewallBar.setState("hidden");
-				this.statusBar.setDetails(TOOLTIP_STOPPED);
-			}
-
-			const friendly = isRunning ? "Container is running" : "Container is stopped";
-			new Notice(friendly);
+			await this.syncStatusBar(isRunning);
+			new Notice(isRunning ? "Container is running" : "Container is stopped");
 		} catch (error: unknown) {
 			this.statusBar.setState("error");
 			new Notice(`Failed to get status: ${toErrorMessage(error)}`);
+		}
+	}
+
+	/**
+	 * Update the status bar + firewall indicator + tooltip from a known
+	 * container state. Shared by the onLayoutReady hydration path and
+	 * the explicit "Check Status" command so both produce identical UI.
+	 */
+	private async syncStatusBar(isRunning: boolean): Promise<void> {
+		this.statusBar.setState(isRunning ? "running" : "stopped");
+		if (isRunning) {
+			await this.refreshFirewallStatus();
+			this.updateTooltip();
+		} else {
+			this.firewallBar.setState("hidden");
+			this.statusBar.setDetails(TOOLTIP_STOPPED);
 		}
 	}
 }
