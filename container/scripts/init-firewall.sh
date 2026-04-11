@@ -49,6 +49,12 @@ ALLOWED_DOMAINS=(
   cdn.jsdelivr.net
   cdnjs.cloudflare.com
   unpkg.com
+
+  # Ubuntu apt mirrors — for narrow sudo apt-get usage (see README)
+  archive.ubuntu.com
+  security.ubuntu.com
+  ports.ubuntu.com
+  keyserver.ubuntu.com
 )
 
 # Build a temporary ipset, then atomically swap to avoid races

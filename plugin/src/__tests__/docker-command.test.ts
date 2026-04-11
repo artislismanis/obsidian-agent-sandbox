@@ -96,6 +96,20 @@ describe("buildWslCommand", () => {
 		});
 		expect(cmd).toContain("MEMORY_FILE_NAME='memory.json'");
 	});
+
+	it("includes SUDO_PASSWORD env var when provided", () => {
+		const cmd = buildWslCommand("/home/user/project", "Ubuntu", "docker compose up -d", {
+			SUDO_PASSWORD: "sandbox",
+		});
+		expect(cmd).toContain("SUDO_PASSWORD='sandbox'");
+	});
+
+	it("escapes single quotes in SUDO_PASSWORD values", () => {
+		const cmd = buildWslCommand("/home/user/project", "Ubuntu", "docker compose up -d", {
+			SUDO_PASSWORD: "pa's'swd",
+		});
+		expect(cmd).toContain("SUDO_PASSWORD='pa'\\''s'\\''swd'");
+	});
 });
 
 describe("buildLocalCommand", () => {

@@ -14,14 +14,14 @@ Thumbs.db
 
 # env
 .env
-sandbox/.env
+container/.env
 
 # Coverage
 coverage/
 
-# Sandbox vault mount
-sandbox/vault/
+# Sandbox vault mount (compose fallback path)
+container/vault/
 
 # Claude Code local overrides
 .claude/settings.local.json
-sandbox/.claude/settings.local.json
+workspace/.claude/settings.local.json

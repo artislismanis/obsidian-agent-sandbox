@@ -18,12 +18,13 @@ ARG NVM_VERSION=0.40.3
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# System packages — includes Claude Code deps (ripgrep, git, curl)
-# and firewall tools (iptables, ipset, iproute2, dnsutils, aggregate)
+# System packages — includes Claude Code deps (ripgrep, git, curl),
+# firewall tools (iptables, ipset, iproute2, dnsutils, aggregate),
+# sudo + gosu for the narrow apt-get sudoers entry and priv-drop in entrypoint
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git jq fzf ca-certificates gnupg locales \
     ripgrep fd-find tree nano less \
-    iptables ipset iproute2 dnsutils aggregate sudo \
+    iptables ipset iproute2 dnsutils aggregate sudo gosu \
     && ln -sf /usr/bin/fdfind /usr/bin/fd \
     && sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && locale-gen \
     && rm -rf /var/lib/apt/lists/*
@@ -60,12 +61,23 @@ RUN useradd -m -s /bin/bash claude \
     && chown -R claude:claude /workspace /home/claude/.claude /home/claude/.shell-history \
     && ln -sf /home/claude/.claude/.claude.json /home/claude/.claude.json
 
+# Narrow sudoers entry — claude may run apt/apt-get only, password-gated.
+# The password itself is set at container start time by entrypoint.sh from
+# the SUDO_PASSWORD env var (see container/.env.example and README).
+RUN echo 'claude ALL=(ALL) PASSWD: /usr/bin/apt-get, /usr/bin/apt' \
+      > /etc/sudoers.d/claude-apt \
+    && chmod 440 /etc/sudoers.d/claude-apt \
+    && visudo -c -f /etc/sudoers.d/claude-apt
+
 # Firewall script (run as root via docker compose exec --user root)
 COPY --chmod=755 scripts/init-firewall.sh /usr/local/bin/init-firewall.sh
 
-# Terminal entrypoint and session script
-COPY --chown=claude:claude --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY --chown=claude:claude --chmod=755 session.sh /usr/local/bin/session.sh
+# Environment verification script (on PATH inside the image, independent of mounts)
+COPY --chmod=755 scripts/verify.sh /usr/local/bin/verify.sh
+
+# Terminal entrypoint and session script (now under scripts/)
+COPY --chown=claude:claude --chmod=755 scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --chown=claude:claude --chmod=755 scripts/session.sh /usr/local/bin/session.sh
 
 # ══════════════════════════════════════════════════════════════
 # Phase 2: claude user — nvm, Node, Python, Claude Code
@@ -107,6 +119,12 @@ RUN printf '%s\n' \
        '[ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && source /usr/share/doc/fzf/examples/key-bindings.bash' \
        >> /home/claude/.bashrc
 
+# ══════════════════════════════════════════════════════════════
+# Phase 3: back to root for the final entrypoint
+#   Entrypoint runs as root to set the claude password from
+#   SUDO_PASSWORD, then drops to claude via gosu for ttyd.
+# ══════════════════════════════════════════════════════════════
+USER root
 WORKDIR /workspace
 EXPOSE 7681
 CMD ["/usr/local/bin/entrypoint.sh"]

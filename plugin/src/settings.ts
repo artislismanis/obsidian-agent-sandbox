@@ -22,6 +22,7 @@ export interface AgentSandboxSettings {
 	containerMemory: string;
 	containerCpus: string;
 	autoEnableFirewall: boolean;
+	sudoPassword: string;
 }
 
 export type TerminalSettings = Pick<
@@ -45,6 +46,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	containerMemory: "8G",
 	containerCpus: "4",
 	autoEnableFirewall: false,
+	sudoPassword: "",
 };
 
 type TabId = "general" | "terminal" | "advanced";
@@ -140,8 +142,8 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder(
 						isWsl
-							? "/home/user/obsidian-agent-sandbox/sandbox"
-							: "/opt/obsidian-agent-sandbox/sandbox",
+							? "/home/user/obsidian-agent-sandbox/container"
+							: "/opt/obsidian-agent-sandbox/container",
 					)
 					.setValue(this.plugin.settings.dockerComposeFilePath)
 					.onChange(async (value) => {
@@ -361,5 +363,24 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						}
 					});
 			});
+
+		new Setting(el)
+			.setName("Sudo password")
+			.setDesc(
+				"Password for the narrow apt-get/apt sudo inside the container. " +
+					"Used by humans during interactive sessions to test-install tools. " +
+					"Leave blank to fall through to the value in container/.env " +
+					"(default: 'sandbox'). Set to an empty string in .env to disable sudo entirely. " +
+					"This is a human-intent gate, not a security boundary — see README > Development.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("(use container/.env value)")
+					.setValue(this.plugin.settings.sudoPassword)
+					.onChange(async (value) => {
+						this.plugin.settings.sudoPassword = value;
+						this.plugin.saveSettings();
+					}),
+			);
 	}
 }

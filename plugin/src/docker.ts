@@ -31,6 +31,7 @@ export interface DockerManagerSettings {
 	allowedPrivateHosts?: string;
 	containerMemory?: string;
 	containerCpus?: string;
+	sudoPassword?: string;
 }
 
 export function windowsToWslPath(windowsPath: string): string {
@@ -112,6 +113,7 @@ export class DockerManager {
 			allowedPrivateHosts,
 			containerMemory,
 			containerCpus,
+			sudoPassword,
 		} = this.getSettings();
 
 		if (!composePath) {
@@ -162,6 +164,9 @@ export class DockerManager {
 				throw new Error("Invalid CPU limit. Use a number (e.g. 4, 2.5).");
 			}
 			envVars.CONTAINER_CPUS = containerCpus;
+		}
+		if (sudoPassword) {
+			envVars.SUDO_PASSWORD = sudoPassword;
 		}
 
 		const command =

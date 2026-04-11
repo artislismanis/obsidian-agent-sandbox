@@ -49,6 +49,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			allowedPrivateHosts: this.settings.allowedPrivateHosts,
 			containerMemory: this.settings.containerMemory,
 			containerCpus: this.settings.containerCpus,
+			sudoPassword: this.settings.sudoPassword,
 		}));
 
 		this.statusBarEl = this.addStatusBarItem();

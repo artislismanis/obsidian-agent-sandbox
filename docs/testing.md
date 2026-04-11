@@ -37,24 +37,30 @@ Run the full checklist at least once per mode you care about. Sections 14 (Host 
 ## 1. Container Build and Start
 
 ```bash
-cd sandbox
+cd container
 cp .env.example .env
-# Edit .env — set PKM_VAULT_PATH to your vault
+# Edit .env — set PKM_VAULT_PATH to your vault (SUDO_PASSWORD defaults to "sandbox")
 docker compose build
 docker compose up -d
 ```
 
 - [ ] `docker compose build` completes without errors
+- [ ] Built image is tagged `oas-sandbox:latest` (`docker images | grep oas-sandbox`)
 - [ ] `docker compose up -d` starts successfully
-- [ ] `docker compose ps` shows `agent-sandbox` as **healthy**
+- [ ] `docker compose ps` shows `oas-sandbox` as **healthy**
 
 ## 2. Verify Script
 
 ```bash
-docker compose exec sandbox bash /workspace/scripts/verify.sh
+docker compose exec sandbox verify.sh
 ```
 
-- [ ] All tool versions print (Node, npm, git, ttyd, jq, Claude, gh, delta, fzf, rg, fd, uv, Python)
+- [ ] Script runs without errors (now on PATH from `/usr/local/bin/verify.sh`)
+- [ ] **Tool versions** section prints Node, npm, git, ttyd, jq, Claude, gh, delta, fzf, rg, fd, uv, Python, gosu, sudo
+- [ ] **Mount points** section lists `/workspace` (rw), `/workspace/vault` (ro), `/workspace/vault/agent-workspace` (rw), `/home/claude/.claude` (rw), `/home/claude/.shell-history` (rw)
+- [ ] **Environment variables** section dumps `PKM_VAULT_PATH`, `PKM_WRITE_DIR`, `MEMORY_FILE_PATH`, `TTYD_PORT`, etc.
+- [ ] **Privileges** section shows "running as: claude (uid 1000)" and "sudo apt-get: allowed WITH password"
+- [ ] **Node globals** section shows `@anthropic-ai/claude-code` and `@modelcontextprotocol/server-memory`
 - [ ] No warnings for vault mount (shows item count)
 - [ ] ttyd shows as listening on port 7681
 
@@ -81,6 +87,9 @@ ls /workspace/vault/
 - [ ] File appears on host filesystem immediately
 - [ ] Edit a file on host — change is visible inside container immediately
 - [ ] Clean up: `rm /workspace/vault/agent-workspace/_test.md`
+- [ ] `/workspace/` itself is writable: `touch /workspace/_scratch && rm /workspace/_scratch` succeeds
+- [ ] `/workspace/CLAUDE.md` is visible (workspace rules for Claude)
+- [ ] `ls /workspace/Dockerfile 2>&1` **fails** — infra files are NOT mounted inside the container
 
 ## 5. Claude Code CLI
 
@@ -114,7 +123,7 @@ claude
 
 | # | Test | Steps | Expected |
 |---|------|-------|----------|
-| 7.1 | Start container | Cmd palette > "Sandbox: Start Container" | Notice: "Sandbox container started." Status bar: "Sandbox: ▶ Running" |
+| 7.1 | Start container | Cmd palette > "Sandbox: Start Container" | Notice: "Sandbox container started." Status bar: "Sandbox: ▶ Running". `docker ps` from host shell shows `oas-sandbox`. |
 | 7.2 | Container status | Cmd palette > "Sandbox: Container Status" | Notice shows JSON output |
 | 7.3 | Restart container | Cmd palette > "Sandbox: Restart Container" | Status bar briefly "⏳ Starting", then "▶ Running" |
 | 7.4 | Stop container | Cmd palette > "Sandbox: Stop Container" | Notice: "Sandbox container stopped." Status bar: "⏹ Stopped" |
@@ -187,8 +196,8 @@ docker compose up -d
 ```
 
 - [ ] Container comes back up healthy
-- [ ] Named volumes preserve Claude Code config (`sandbox-claude-config`)
-- [ ] Named volumes preserve atuin history (`sandbox-atuin-history`)
+- [ ] Named volumes preserve Claude Code config (`oas-claude-config`)
+- [ ] Named volumes preserve shell history (`oas-shell-history`)
 
 ## 13. Network Firewall (optional)
 
@@ -200,14 +209,15 @@ docker compose exec --user root sandbox /usr/local/bin/init-firewall.sh
 - [ ] `curl https://api.anthropic.com` works (allowlisted)
 - [ ] `curl https://example.com` fails (not allowlisted)
 - [ ] Claude Code still functions
+- [ ] `sudo apt-get update` inside the container succeeds (Ubuntu mirrors are in the allowlist)
 - [ ] Disable: `docker compose exec --user root sandbox /usr/local/bin/init-firewall.sh --disable`
 - [ ] Status: `docker compose exec --user root sandbox /usr/local/bin/init-firewall.sh --status`
-- [ ] Claude user inside container cannot run `sudo /usr/local/bin/init-firewall.sh` (no sudoers entry)
+- [ ] Claude user inside container cannot run `sudo /usr/local/bin/init-firewall.sh` (sudoers scope is narrow — only apt-get/apt)
 
 ## 14. Port Remapping (optional)
 
 ```bash
-# In sandbox/.env, set TTYD_PORT=8080
+# In container/.env, set TTYD_PORT=8080
 docker compose up -d
 ```
 
@@ -230,7 +240,7 @@ docker compose up -d
 In **Settings > Agent Sandbox > General**:
 
 - [ ] **Docker mode** = `Local (Linux / Mac / Windows)`
-- [ ] **Docker Compose path** points to the absolute host path of the `sandbox/` directory (e.g. `C:\Users\me\obsidian-agent-sandbox\sandbox` on Windows, `/Users/me/obsidian-agent-sandbox/sandbox` on Mac)
+- [ ] **Docker Compose path** points to the absolute host path of the `container/` directory (e.g. `C:\Users\me\obsidian-agent-sandbox\container` on Windows, `/Users/me/obsidian-agent-sandbox/container` on Mac)
 - [ ] **WSL distribution** field is hidden (WSL-only setting)
 
 ### 15.3 Start and connect
@@ -238,7 +248,7 @@ In **Settings > Agent Sandbox > General**:
 | # | Test | Steps | Expected |
 |---|------|-------|----------|
 | 15.3.1 | Start container | Cmd palette > "Sandbox: Start Container" | Notice: "Sandbox container started." Status bar: "▶ Running". No WSL window flashes. |
-| 15.3.2 | Container visible to host | Run `docker ps` on the host | `agent-sandbox` listed as running |
+| 15.3.2 | Container visible to host | Run `docker ps` on the host | `oas-sandbox` listed as running |
 | 15.3.3 | Open terminal | Ribbon icon or "Open Sandbox Terminal" | Terminal renders, bash prompt visible |
 | 15.3.4 | Claude Code works | Run `claude --version` in the terminal | Version prints, no errors |
 | 15.3.5 | Memory MCP works | Run `claude` and ask it to store a fact in memory | Memory file appears at `<vault>/agent-workspace/memory.json` on host |
@@ -249,7 +259,7 @@ In **Settings > Agent Sandbox > General**:
 
 | # | Test | Steps | Expected |
 |---|------|-------|----------|
-| 15.4.1 | Path with spaces | Set compose path with a space (e.g. `C:\My Vault\sandbox`) | Commands execute correctly |
+| 15.4.1 | Path with spaces | Set compose path with a space (e.g. `C:\My Vault\container`) | Commands execute correctly |
 | 15.4.2 | Relative path rejection | Set compose path to a relative value | Plugin shows validation error or fails loud |
 | 15.4.3 | Windows drive letter | On Windows with Rancher Desktop, set path with backslashes | `docker compose` resolves the path correctly |
 
@@ -276,12 +286,81 @@ In **Settings > Agent Sandbox > General**:
 | 16.3 | Missing distro | Set WSL distro to a real but uninstalled name | Clear error notice, no silent failure |
 | 16.4 | Mirrored networking | Verify `http://localhost:7681` works from both Obsidian and a Windows browser | Both reach the container via the same address |
 
+## 17. Mount Isolation (new)
+
+Verify that the restructured mounts give Claude access to `workspace/` but NOT to `container/` infra.
+
+```bash
+# On the host
+docker compose exec sandbox bash -lc 'ls /workspace'
+```
+
+- [ ] `/workspace/.claude/settings.json` is visible
+- [ ] `/workspace/.mcp.json` is visible
+- [ ] `/workspace/CLAUDE.md` is visible (workspace rules)
+- [ ] `/workspace/vault/` is visible
+- [ ] `/workspace/Dockerfile` does NOT exist — infra is not mounted inside
+- [ ] `/workspace/docker-compose.yml` does NOT exist
+- [ ] `/workspace/scripts/` does NOT exist
+- [ ] Writing from inside works: `touch /workspace/_tier1_test && rm /workspace/_tier1_test` succeeds
+
+## 18. Naming Consistency (OAS prefix, new)
+
+From a host shell with the container running:
+
+- [ ] `docker compose config` shows `name: oas`
+- [ ] `docker compose config` shows `container_name: oas-sandbox` and `image: oas-sandbox:latest`
+- [ ] `docker ps --format '{{.Names}}' | grep oas-` shows `oas-sandbox`
+- [ ] `docker volume ls --format '{{.Name}}' | grep oas-` shows `oas-claude-config` and `oas-shell-history`
+- [ ] `docker images --format '{{.Repository}}:{{.Tag}}' | grep oas-sandbox` shows `oas-sandbox:latest`
+
+## 19. Sudo Model (new)
+
+Verify the narrow sudo contract and password gating.
+
+Default password path (plugin setting empty, `container/.env` has `SUDO_PASSWORD=sandbox`):
+
+- [ ] In a ttyd session, `sudo -l` shows only `/usr/bin/apt-get` and `/usr/bin/apt`
+- [ ] `sudo apt-get update` prompts for password, `sandbox` works
+- [ ] `sudo apt-get install -y htop` installs successfully, `htop` runs
+- [ ] `sudo bash` is rejected with "not allowed"
+- [ ] `sudo rm /etc/hostname` is rejected with "not allowed"
+- [ ] `env | grep SUDO_PASSWORD` returns nothing (entrypoint unsets it before dropping privileges)
+
+Plugin override:
+
+- [ ] In Obsidian settings > Agent Sandbox > Advanced, set "Sudo password" to a new value
+- [ ] Restart the container via the plugin
+- [ ] In a new ttyd session, the old `sandbox` password is rejected and the new password works
+
+Disabled sudo:
+
+- [ ] Set plugin "Sudo password" to empty, remove `SUDO_PASSWORD` from `container/.env`, restart container
+- [ ] `sudo apt-get update` in a ttyd session fails with password prompt that rejects anything typed (or account locked) — confirms sudo is effectively disabled
+
+## 20. Workspace PR Workflow (new)
+
+End-to-end check that the "branch first, Claude edits, host commits" flow works.
+
+```bash
+# On the host, from the monorepo root
+git checkout -b feature/test-workspace-flow
+```
+
+- [ ] Open Obsidian, start the container via the plugin
+- [ ] Open a terminal, run `claude`, ask it to append a test comment to `workspace/CLAUDE.md` (e.g. "<!-- test marker -->")
+- [ ] Close the session, back on host shell: `git status` shows `workspace/CLAUDE.md` as modified
+- [ ] `git diff workspace/` shows the Claude-made change
+- [ ] `git restore workspace/` cleanly reverts the change (the rollback path works)
+- [ ] Alternative: `git add workspace/ && git commit -m "test" && git push -u origin feature/test-workspace-flow` succeeds
+- [ ] Clean up: checkout main, delete the test branch, delete the remote branch if pushed
+
 ---
 
 ## Teardown
 
 ```bash
-cd sandbox
+cd container
 docker compose down
 # To also remove named volumes (Claude config, shell history):
 # docker compose down -v

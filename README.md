@@ -69,7 +69,7 @@ Each terminal tab in Obsidian gets its own independent bash session — run mult
 
 ```bash
 git clone https://github.com/artislismanis/obsidian-agent-sandbox.git
-cd obsidian-agent-sandbox/sandbox
+cd obsidian-agent-sandbox/container
 ```
 
 ### 2. Build the container
@@ -77,6 +77,8 @@ cd obsidian-agent-sandbox/sandbox
 ```bash
 docker compose build
 ```
+
+This produces the `oas-sandbox:latest` image. All Docker resources created by this project use the `oas-` prefix (image `oas-sandbox`, container `oas-sandbox`, volumes `oas-claude-config` and `oas-shell-history`) so you can see everything at a glance with `docker ps | grep oas-`.
 
 > **Important:** Start the container from the Obsidian plugin (step 4), not from the command line. The plugin passes required environment variables (`PKM_VAULT_PATH`, `PKM_WRITE_DIR`, etc.) automatically. Running `docker compose up -d` manually without a configured `.env` file will result in missing vault mounts and unexpected behaviour.
 
@@ -98,7 +100,7 @@ cp dist/* /path/to/vault/.obsidian/plugins/obsidian-agent-sandbox/
 
 1. Restart Obsidian and enable **Agent Sandbox** in Settings > Community Plugins
 2. Set **Docker mode** (WSL or Local)
-3. Set **Docker Compose path** to the path of the `sandbox/` directory
+3. Set **Docker Compose path** to the path of the `container/` directory
 4. Open the command palette (`Ctrl+P`) and run **Sandbox: Start Container**
 5. Click the terminal icon in the ribbon or run **Open Sandbox Terminal**
 
@@ -169,29 +171,33 @@ obsidian-agent-sandbox/
 │   │   └── __tests__/               Vitest unit tests
 │   ├── styles.css                   Plugin and xterm.js styles
 │   ├── manifest.json                Obsidian plugin manifest
-│   ├── esbuild.config.mjs           Bundle config (produces dist/)
-│   ├── tsconfig.json                TypeScript config (strict mode)
-│   ├── vitest.config.ts             Test runner config
-│   ├── eslint.config.mjs            Linter config
 │   └── package.json
 │
-├── sandbox/                         Agent sandbox container (Ubuntu 24.04, ttyd, Claude Code)
+├── container/                       Infra — Ubuntu 24.04, ttyd, Claude Code, MCP
 │   ├── Dockerfile                   Container image
-│   ├── docker-compose.yml           Service, ports, volumes
-│   ├── entrypoint.sh                Starts ttyd
-│   ├── session.sh                   Starts a login bash per connection
+│   ├── docker-compose.yml           Service, ports, volumes, OAS naming
 │   ├── .env.example                 Environment template (optional with plugin)
-│   ├── .claude/settings.json        Claude Code project settings
-│   ├── .mcp.json                    MCP server configuration (memory)
 │   └── scripts/
-│       ├── verify.sh                Environment validation
-│       └── init-firewall.sh         Network sandboxing setup
+│       ├── entrypoint.sh            Sets sudo password, drops to claude, runs ttyd
+│       ├── session.sh               Starts a login bash per ttyd connection
+│       ├── verify.sh                Environment verification / runtime manifest
+│       └── init-firewall.sh         Allowlist-based outbound firewall
+│
+├── workspace/                       Claude's domain — mounted rw at /workspace/ inside container
+│   ├── .claude/settings.json        Claude Code project settings (Tier 1)
+│   ├── .mcp.json                    MCP server configuration (memory, etc.)
+│   └── CLAUDE.md                    Rules for Claude operating inside the sandbox
 │
 └── docs/
-    └── TESTING.md                   Manual testing checklist
+    ├── architecture.md              Rationale for container/workspace split + tier model
+    └── testing.md                   Manual testing checklist
 ```
 
+The split between `container/` (infra, not mounted inside) and `workspace/` (Claude's domain, mounted rw) is deliberate. See `docs/architecture.md` for the full rationale.
+
 ## Development
+
+### Plugin development
 
 ```bash
 cd plugin
@@ -202,6 +208,100 @@ npm run test         # Tests only
 ```
 
 See `plugin/CLAUDE.md` for architecture details and conventions.
+
+### Docker resource naming
+
+All Docker resources use the `oas-` prefix (Obsidian Agent Sandbox). Quick checks:
+
+```bash
+docker ps --format '{{.Names}}' | grep oas-
+docker volume ls --format '{{.Name}}' | grep oas-
+docker images --format '{{.Repository}}:{{.Tag}}' | grep oas-sandbox
+```
+
+The image is `oas-sandbox:latest`, the container is `oas-sandbox`, and named volumes are `oas-claude-config` (Claude Code auth and config) and `oas-shell-history` (persistent shell history).
+
+### Sudo password and the apt-get escape hatch
+
+The `claude` user inside the container has narrow sudo for `apt-get` and `apt` only, gated by a password. This lets you test-install tools in a live session before deciding whether to add them to the image permanently.
+
+**Default password**: `sandbox` (set in `container/.env.example`).
+
+**Overriding**:
+- Edit `SUDO_PASSWORD` in `container/.env` (copy from `.env.example` first), **or**
+- Use the plugin's "Sudo password" field in Settings > Agent Sandbox > Advanced (takes precedence over `.env`)
+
+**Example** — test installing `htop` during a ttyd session:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y htop
+htop
+```
+
+When prompted, enter the password.
+
+**Trust model**: this is a human-intent gate, not a security boundary. The password is visible in plugin settings and `container/.env` on the host, but **not** inside the container — `entrypoint.sh` unsets `SUDO_PASSWORD` before dropping privileges. Claude is instructed (via `workspace/CLAUDE.md`) not to use sudo; if it needs a system package, it asks. The narrow sudoers scope (`apt-get`/`apt` only) limits blast radius even if sudo is misused. If you need stricter isolation, set `SUDO_PASSWORD` to an empty string in `container/.env` to disable interactive sudo entirely.
+
+### Adding OS-level tools to the Dockerfile
+
+Runtime installs via `sudo apt-get` don't survive container rebuilds. If a tool proves valuable, promote it to the Dockerfile so every rebuild includes it:
+
+1. Edit `container/Dockerfile` — add the package to the existing `apt-get install` block (keep the list alphabetized).
+2. If the tool needs network access at runtime, add the relevant domains to the allowlist in `container/scripts/init-firewall.sh`.
+3. Rebuild the image: `cd container && docker compose build`
+4. Restart the container: `docker compose down && docker compose up -d` (or via the plugin)
+5. Verify with `verify.sh`: `docker compose exec sandbox verify.sh | grep <tool>`
+6. Commit the Dockerfile change on a feature branch and open a PR.
+
+**Node global packages**: don't go in the Dockerfile unless they're needed at build time. Prefer `npm install -g <pkg>` at runtime — the global prefix is inside the persisted `oas-claude-config` volume, so installs survive container restarts without a rebuild.
+
+**Python packages**: same principle — use `uv pip install` or `pipx install` for runtime installs.
+
+### PR workflow for workspace changes
+
+`workspace/` is Claude's domain — the config, skills, agents, and commands it uses inside the sandbox. You can let Claude edit these files freely during a session; all commits happen on the host.
+
+Claude running inside the container **cannot run git** — no `.git` is visible at or above `/workspace/`. This is intentional: commits to `workspace/` are always deliberate human actions, and there's no risk of Claude accidentally committing to `main` from inside the sandbox.
+
+**Recommended workflow (branch-first)**:
+
+```bash
+# Before starting the Claude session, on the host
+git checkout -b feature/<what-you-plan-to-change>
+
+# Start the container via the Obsidian plugin, run your Claude session
+# Claude edits files under workspace/
+
+# After the session, on the host
+git status                         # see what changed
+git diff workspace/                # review the edits
+git add workspace/
+git commit -m "<clear description>"
+git push -u origin feature/<what-you-plan-to-change>
+gh pr create                       # or open via GitHub UI
+```
+
+**If you forgot to branch first**:
+
+```bash
+# You're on main, Claude has already made edits (git status shows them)
+git checkout -b feature/<what-you-did>   # git carries unstaged changes to the new branch
+git add workspace/
+git commit -m "..."
+git push -u origin feature/<what-you-did>
+gh pr create
+```
+
+Your `main` is still clean — nothing was committed to it.
+
+**To throw away Claude's changes**:
+
+```bash
+git restore workspace/
+```
+
+**Branch protection**: we recommend enabling GitHub branch protection on `main` (Settings > Branches > Add rule > Require pull request before merging). This enforces the PR workflow at the remote level, so even an accidental `git push origin main` gets rejected.
 
 ## License
 
