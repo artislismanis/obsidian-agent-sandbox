@@ -43,9 +43,9 @@ export default class AgentSandboxPlugin extends Plugin {
 					? this.app.vault.adapter.getBasePath()
 					: undefined,
 			writeDir: this.settings.vaultWriteDir,
+			memoryFileName: this.settings.memoryFileName,
 			ttydPort: this.settings.ttydPort,
 			ttydBindAddress: this.settings.ttydBindAddress,
-			useTmux: this.settings.useTmux,
 			allowedPrivateHosts: this.settings.allowedPrivateHosts,
 			containerMemory: this.settings.containerMemory,
 			containerCpus: this.settings.containerCpus,

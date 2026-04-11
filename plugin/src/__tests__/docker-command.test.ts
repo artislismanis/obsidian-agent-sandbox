@@ -90,11 +90,11 @@ describe("buildWslCommand", () => {
 		expect(cmd).toContain("PKM_WRITE_DIR='agent-workspace'");
 	});
 
-	it("includes TTYD_NO_TMUX env var when tmux is disabled", () => {
+	it("includes MEMORY_FILE_NAME env var", () => {
 		const cmd = buildWslCommand("/home/user/project", "Ubuntu", "docker compose up -d", {
-			TTYD_NO_TMUX: "1",
+			MEMORY_FILE_NAME: "memory.json",
 		});
-		expect(cmd).toContain("TTYD_NO_TMUX='1'");
+		expect(cmd).toContain("MEMORY_FILE_NAME='memory.json'");
 	});
 });
 

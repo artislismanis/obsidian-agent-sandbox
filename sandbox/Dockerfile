@@ -21,14 +21,14 @@ ARG DEBIAN_FRONTEND=noninteractive
 # System packages — includes Claude Code deps (ripgrep, git, curl)
 # and firewall tools (iptables, ipset, iproute2, dnsutils, aggregate)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl git tmux jq fzf ca-certificates gnupg locales \
+    curl git jq fzf ca-certificates gnupg locales \
     ripgrep fd-find tree nano less \
     iptables ipset iproute2 dnsutils aggregate sudo \
     && ln -sf /usr/bin/fdfind /usr/bin/fd \
     && sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && locale-gen \
     && rm -rf /var/lib/apt/lists/*
 
-# UTF-8 locale — required for tmux/terminal Unicode width calculations
+# UTF-8 locale — required for terminal Unicode width calculations
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
@@ -63,10 +63,7 @@ RUN useradd -m -s /bin/bash claude \
 # Firewall script (run as root via docker compose exec --user root)
 COPY --chmod=755 scripts/init-firewall.sh /usr/local/bin/init-firewall.sh
 
-# tmux config
-COPY --chown=claude:claude .tmux.conf /home/claude/.tmux.conf
-
-# Terminal scripts — entrypoint starts ttyd, session.sh creates per-connection tmux sessions
+# Terminal entrypoint and session script
 COPY --chown=claude:claude --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY --chown=claude:claude --chmod=755 session.sh /usr/local/bin/session.sh
 
@@ -90,8 +87,10 @@ ENV PATH=/home/claude/.nvm/default/bin:$PATH
 # Python via uv (userspace-managed)
 RUN uv python install "${PYTHON_VERSION}" && uv cache clean
 
-# Claude Code CLI
-RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+# Claude Code CLI and MCP servers
+RUN npm install -g \
+    "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+    "@modelcontextprotocol/server-memory"
 
 # Shell history — persistent via named volume, fzf for Ctrl+R search
 RUN printf '%s\n' \

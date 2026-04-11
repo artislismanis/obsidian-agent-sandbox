@@ -2,12 +2,13 @@
 
 ## Environment
 
-- **Docker Compose container** (Ubuntu 24.04) providing: Node 22 LTS (nvm), Python 3.12 (uv), Claude Code CLI, ttyd web terminal, tmux, ripgrep, fd, git-delta, fzf (Ctrl+R history search), jq, gh
+- **Docker Compose container** (Ubuntu 24.04) providing: Node 22 LTS (nvm), Python 3.12 (uv), Claude Code CLI, ttyd web terminal, ripgrep, fd, git-delta, fzf (Ctrl+R history search), jq, gh
 - **ttyd** serves a web terminal on port 7681; the Obsidian plugin connects via HTTP/WebSocket
-- **Independent sessions**: each WebSocket connection gets its own tmux session (`session.sh` creates `claude-<timestamp>-<pid>` per connection)
+- **Independent sessions**: each WebSocket connection spawns a fresh login shell via `session.sh`
 - Vault bind-mounted **read-only** from host at `/workspace/vault/` (configured via `PKM_VAULT_PATH` in `.env`)
 - Writable folder at `/workspace/vault/<PKM_WRITE_DIR>/` (default: `agent-workspace`) — the only place Claude can create or modify files inside the vault
 - Changes to writable folder files are **immediately reflected on the host filesystem**
+- **Memory MCP**: `@modelcontextprotocol/server-memory` is preinstalled globally and configured via `.mcp.json`. Memory file lives inside the writable workspace folder, path controlled by `MEMORY_FILE_PATH` env var
 
 ## Key Paths
 

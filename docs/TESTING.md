@@ -1,23 +1,43 @@
 # Manual Testing Checklist
 
-Testing the Agent Sandbox Docker container and the Obsidian plugin together.
+Testing the Agent Sandbox container and the Obsidian plugin together.
 
-## Prerequisites
+## Docker environments
 
-- [ ] WSL2 with Docker Engine installed (not Docker Desktop on Windows)
-- [ ] WSL2 mirrored networking enabled (`networkingMode=mirrored` in `.wslconfig`)
+The plugin supports two Docker modes, each exercising a different code path:
+
+| Mode | When to use | Plugin setting |
+|------|-------------|----------------|
+| **WSL** | Windows host with Docker Engine installed *inside* WSL2 (no Docker Desktop) | Docker mode = WSL |
+| **Local** | Docker Engine available directly on the host — Linux, Mac, or Windows with Rancher Desktop / Docker Desktop | Docker mode = Local |
+
+Run the full checklist at least once per mode you care about. Sections 14 (Host Docker / Rancher Desktop) and 15 (WSL specifics) cover the mode-specific edges.
+
+## Prerequisites (common)
+
 - [ ] An Obsidian vault with some test files
 - [ ] Claude Code subscription authenticated
 - [ ] Plugin built: `cd plugin && npm install && npm run build`
 - [ ] Plugin installed: copy contents of `plugin/dist/` to vault's `.obsidian/plugins/obsidian-agent-sandbox/`
 - [ ] Plugin enabled in Obsidian Settings > Community Plugins
 
+### WSL-mode prerequisites
+
+- [ ] WSL2 with Docker Engine installed inside the distro (not Docker Desktop on Windows)
+- [ ] WSL2 mirrored networking enabled (`networkingMode=mirrored` in `.wslconfig`)
+
+### Host-Docker / Rancher Desktop prerequisites
+
+- [ ] Rancher Desktop (or Docker Desktop / native Docker) running and reachable via `docker ps` from the host shell
+- [ ] `dockerd` provides the Docker API to Obsidian via the default socket for the OS (`/var/run/docker.sock` on Linux/Mac, named pipe on Windows)
+- [ ] Host shell has `docker compose` on PATH (Rancher Desktop ships compose v2 by default)
+
 ---
 
 ## 1. Container Build and Start
 
 ```bash
-cd docker
+cd sandbox
 cp .env.example .env
 # Edit .env — set PKM_VAULT_PATH to your vault
 docker compose build
@@ -34,14 +54,14 @@ docker compose up -d
 docker compose exec sandbox bash /workspace/scripts/verify.sh
 ```
 
-- [ ] All tool versions print (Node, npm, git, tmux, ttyd, jq, Claude, gh, delta, fzf, rg, fd, atuin, uv, Python)
+- [ ] All tool versions print (Node, npm, git, ttyd, jq, Claude, gh, delta, fzf, rg, fd, uv, Python)
 - [ ] No warnings for vault mount (shows item count)
 - [ ] ttyd shows as listening on port 7681
 
 ## 3. Web Terminal (ttyd)
 
 - [ ] Open `http://localhost:7681` in browser — terminal loads
-- [ ] tmux session is active (status bar visible at bottom)
+- [ ] bash login shell is active
 - [ ] Can type commands and see output
 - [ ] Terminal resizes when browser window resizes (`-W` flag working)
 
@@ -131,9 +151,8 @@ claude
 |---|------|-------|----------|
 | 9.1 | Multiple terminals | Open 3 terminals via command palette | 3 separate tabs: "Sandbox Terminal 1", "Sandbox Terminal 2", "Sandbox Terminal 3" |
 | 9.2 | Independent sessions | Type different commands in each terminal | Each has its own shell, no shared state |
-| 9.3 | tmux sessions visible | Run `tmux list-sessions` in any terminal | Shows 3 separate `claude-*` sessions |
-| 9.4 | Close one | Close terminal 2 | Terminals 1 and 3 unaffected |
-| 9.5 | Browser + plugin | Open `http://localhost:7681` in browser alongside plugin terminals | Browser gets its own independent session |
+| 9.3 | Close one | Close terminal 2 | Terminals 1 and 3 unaffected |
+| 9.4 | Browser + plugin | Open `http://localhost:7681` in browser alongside plugin terminals | Browser gets its own independent session |
 
 ## 10. Integration
 
@@ -159,7 +178,7 @@ docker compose restart
 ```
 
 - [ ] After restart, ttyd is accessible again
-- [ ] tmux sessions are fresh (expected — don't persist across restarts)
+- [ ] bash sessions are fresh (expected — don't persist across restarts)
 - [ ] Vault mount still works
 
 ```bash
@@ -188,20 +207,82 @@ docker compose exec --user root sandbox /usr/local/bin/init-firewall.sh
 ## 14. Port Remapping (optional)
 
 ```bash
-# In docker/.env, set TTYD_PORT=8080
+# In sandbox/.env, set TTYD_PORT=8080
 docker compose up -d
 ```
 
 - [ ] ttyd accessible on `http://localhost:8080`
 - [ ] Plugin connects when configured with custom port
 
+## 15. Host Docker / Rancher Desktop (Local mode)
+
+**Goal:** verify the plugin works when Docker runs on the host rather than inside WSL. Rancher Desktop is the reference environment; Docker Desktop and native Linux/Mac Docker should behave the same.
+
+### 15.1 Prerequisites check
+
+- [ ] `docker version` from a host shell returns both client and server info
+- [ ] `docker compose version` reports compose v2.x
+- [ ] `docker ps` runs without permission errors
+- [ ] Rancher Desktop's container engine is set to **dockerd (moby)**, not **containerd/nerdctl** (check Preferences > Container Engine)
+
+### 15.2 Plugin configuration
+
+In **Settings > Agent Sandbox > General**:
+
+- [ ] **Docker mode** = `Local (Linux / Mac / Windows)`
+- [ ] **Docker Compose path** points to the absolute host path of the `sandbox/` directory (e.g. `C:\Users\me\obsidian-agent-sandbox\sandbox` on Windows, `/Users/me/obsidian-agent-sandbox/sandbox` on Mac)
+- [ ] **WSL distribution** field is hidden (WSL-only setting)
+
+### 15.3 Start and connect
+
+| # | Test | Steps | Expected |
+|---|------|-------|----------|
+| 15.3.1 | Start container | Cmd palette > "Sandbox: Start Container" | Notice: "Sandbox container started." Status bar: "▶ Running". No WSL window flashes. |
+| 15.3.2 | Container visible to host | Run `docker ps` on the host | `agent-sandbox` listed as running |
+| 15.3.3 | Open terminal | Ribbon icon or "Open Sandbox Terminal" | Terminal renders, bash prompt visible |
+| 15.3.4 | Claude Code works | Run `claude --version` in the terminal | Version prints, no errors |
+| 15.3.5 | Memory MCP works | Run `claude` and ask it to store a fact in memory | Memory file appears at `<vault>/agent-workspace/memory.json` on host |
+| 15.3.6 | Vault mount | Run `ls /workspace/vault` in terminal | Host vault files visible |
+| 15.3.7 | Stop container | "Sandbox: Stop Container" | Notice: "Sandbox container stopped." No errors. |
+
+### 15.4 Path handling edge cases
+
+| # | Test | Steps | Expected |
+|---|------|-------|----------|
+| 15.4.1 | Path with spaces | Set compose path with a space (e.g. `C:\My Vault\sandbox`) | Commands execute correctly |
+| 15.4.2 | Relative path rejection | Set compose path to a relative value | Plugin shows validation error or fails loud |
+| 15.4.3 | Windows drive letter | On Windows with Rancher Desktop, set path with backslashes | `docker compose` resolves the path correctly |
+
+### 15.5 Lifecycle
+
+- [ ] Auto-start on load → container starts when Obsidian launches
+- [ ] Auto-stop on exit → container stops cleanly when Obsidian closes (no WSL window)
+- [ ] Plugin disable → container stops via `onunload`
+- [ ] Firewall toggle works (Linux host only — Rancher Desktop on Mac/Windows uses a VM and iptables rules apply inside the VM)
+
+### 15.6 Known differences vs WSL mode
+
+- **No WSL path translation**: `windowsToWslPath()` is bypassed. Vault paths are passed as-is to docker compose.
+- **No distro name**: the WSL distribution setting is irrelevant.
+- **Socket vs VM**: On Rancher Desktop, Docker runs in a lightweight VM. Host paths are auto-mounted by Rancher Desktop's VFS; bind mounts should work transparently but may be slower than native Linux.
+- **Firewall caveat**: `init-firewall.sh` uses iptables and runs *inside* the container. It works the same in Local mode but host-side networking behavior may differ if Rancher Desktop's VM has its own routing.
+
+## 16. WSL-specific (WSL mode)
+
+| # | Test | Steps | Expected |
+|---|------|-------|----------|
+| 16.1 | Path translation | Start with vault at `C:\vault` | `PKM_VAULT_PATH` is converted to `/mnt/c/vault` before being passed to compose |
+| 16.2 | Distro validation | Set WSL distro to `NonExistent!@#` | Plugin rejects invalid distro name |
+| 16.3 | Missing distro | Set WSL distro to a real but uninstalled name | Clear error notice, no silent failure |
+| 16.4 | Mirrored networking | Verify `http://localhost:7681` works from both Obsidian and a Windows browser | Both reach the container via the same address |
+
 ---
 
 ## Teardown
 
 ```bash
-cd docker
+cd sandbox
 docker compose down
-# To also remove named volumes (Claude config, atuin history):
+# To also remove named volumes (Claude config, shell history):
 # docker compose down -v
 ```

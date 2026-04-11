@@ -14,7 +14,7 @@ The rest of your vault is mounted **read-only** inside the container.
 - **Your vault** is mounted at \`/workspace/vault/\` inside the container (read-only)
 - **This folder** is mounted at \`/workspace/vault/<write-dir>/\` (read-write)
 - The agent can read your notes but only write to this workspace folder
-- Each terminal tab opens a separate tmux session in the same container
+- Each terminal tab opens a separate bash session in the same container
 
 ## Settings
 

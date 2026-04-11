@@ -1,0 +1,7 @@
+{
+	"mcpServers": {
+		"memory": {
+			"command": "mcp-server-memory"
+		}
+	}
+}

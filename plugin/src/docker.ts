@@ -25,9 +25,9 @@ export interface DockerManagerSettings {
 	wslDistro: string;
 	vaultPath?: string;
 	writeDir?: string;
+	memoryFileName?: string;
 	ttydPort?: number;
 	ttydBindAddress?: string;
-	useTmux?: boolean;
 	allowedPrivateHosts?: string;
 	containerMemory?: string;
 	containerCpus?: string;
@@ -106,9 +106,9 @@ export class DockerManager {
 			wslDistro,
 			vaultPath,
 			writeDir,
+			memoryFileName,
 			ttydPort,
 			ttydBindAddress,
-			useTmux,
 			allowedPrivateHosts,
 			containerMemory,
 			containerCpus,
@@ -138,8 +138,8 @@ export class DockerManager {
 		if (ttydBindAddress) {
 			envVars.TTYD_BIND = ttydBindAddress;
 		}
-		if (useTmux === false) {
-			envVars.TTYD_NO_TMUX = "1";
+		if (memoryFileName) {
+			envVars.MEMORY_FILE_NAME = memoryFileName;
 		}
 		if (allowedPrivateHosts) {
 			if (!isValidPrivateHosts(allowedPrivateHosts)) {

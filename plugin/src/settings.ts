@@ -11,9 +11,9 @@ export interface AgentSandboxSettings {
 	dockerComposeFilePath: string;
 	wslDistroName: string;
 	vaultWriteDir: string;
+	memoryFileName: string;
 	ttydPort: number;
 	ttydBindAddress: string;
-	useTmux: boolean;
 	autoStartContainer: boolean;
 	autoStopContainer: boolean;
 	terminalTheme: TerminalThemeMode;
@@ -34,9 +34,9 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	dockerComposeFilePath: "",
 	wslDistroName: "Ubuntu",
 	vaultWriteDir: "agent-workspace",
+	memoryFileName: "memory.json",
 	ttydPort: 7681,
 	ttydBindAddress: "127.0.0.1",
-	useTmux: true,
 	autoStartContainer: false,
 	autoStopContainer: false,
 	terminalTheme: "obsidian",
@@ -63,9 +63,10 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		containerEl.empty();
 		containerEl.addClass("sandbox-settings");
 
-		containerEl.createEl("p", {
+		const warning = containerEl.createDiv({ cls: "sandbox-settings-warning" });
+		warning.createSpan({ cls: "sandbox-settings-warning-icon", text: "⚠" });
+		warning.createSpan({
 			text: "Most settings require a container restart to take effect.",
-			cls: "setting-item-description",
 		});
 
 		this.renderTabs(containerEl);
@@ -139,8 +140,8 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder(
 						isWsl
-							? "/home/user/obsidian-agent-sandbox/docker"
-							: "/opt/obsidian-agent-sandbox/docker",
+							? "/home/user/obsidian-agent-sandbox/sandbox"
+							: "/opt/obsidian-agent-sandbox/sandbox",
 					)
 					.setValue(this.plugin.settings.dockerComposeFilePath)
 					.onChange(async (value) => {
@@ -173,6 +174,22 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.vaultWriteDir)
 					.onChange(async (value) => {
 						this.plugin.settings.vaultWriteDir = value;
+						this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(el)
+			.setName("Memory file name")
+			.setDesc(
+				"Filename for the memory MCP server, stored inside the vault write directory. " +
+					"Claude uses this to persist memory across sessions.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("memory.json")
+					.setValue(this.plugin.settings.memoryFileName)
+					.onChange(async (value) => {
+						this.plugin.settings.memoryFileName = value;
 						this.plugin.saveSettings();
 					}),
 			);
@@ -234,20 +251,6 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						}
 					});
 			});
-
-		new Setting(el)
-			.setName("Use tmux sessions")
-			.setDesc(
-				"Wrap each terminal in a tmux session. Provides persistent sessions " +
-					"but disables mouse scrolling. When off, terminals run bash directly " +
-					"with full scrollback support.",
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.useTmux).onChange(async (value) => {
-					this.plugin.settings.useTmux = value;
-					this.plugin.saveSettings();
-				}),
-			);
 
 		new Setting(el).setName("Appearance").setHeading();
 

@@ -14,14 +14,14 @@ Thumbs.db
 
 # env
 .env
-docker/.env
+sandbox/.env
 
 # Coverage
 coverage/
 
-# Docker vault mount
-docker/vault/
+# Sandbox vault mount
+sandbox/vault/
 
 # Claude Code local overrides
 .claude/settings.local.json
-docker/.claude/settings.local.json
+sandbox/.claude/settings.local.json

@@ -1,6 +1,6 @@
 # Agent Sandbox
 
-An Obsidian plugin and Docker container for working with Obsidian vaults using AI coding agents. Start/stop containers, monitor status, and open multiple independent embedded terminals — all without leaving your vault.
+An Obsidian plugin and containerized sandbox for working with Obsidian vaults using AI coding agents. Start/stop the sandbox, monitor status, and open multiple independent embedded terminals — all without leaving your vault.
 
 ## How it works
 
@@ -11,14 +11,14 @@ Obsidian (Windows / Linux / Mac)
         ├── xterm.js → ttyd WebSocket (port 7681) inside container
         └── Status bar showing container state
 
-Docker Container
+Sandbox Container
   ├── ttyd (web terminal on port 7681)
-  ├── tmux (independent session per connection)
-  ├── Claude Code CLI
+  ├── bash login shell per connection
+  ├── Claude Code CLI + MCP servers (memory)
   └── /workspace/vault (read-only mount, writable subfolder)
 ```
 
-Each terminal tab in Obsidian gets its own independent tmux session — run multiple agent instances in parallel.
+Each terminal tab in Obsidian gets its own independent bash session — run multiple agent instances in parallel.
 
 ## Features
 
@@ -33,10 +33,11 @@ Each terminal tab in Obsidian gets its own independent tmux session — run mult
 - **Docker mode** — WSL (Windows) or Local (Linux/Mac/native Docker)
 
 **Container:**
-- **Web terminal** — ttyd with tmux, accessible at `http://localhost:7681`
+- **Web terminal** — ttyd accessible at `http://localhost:7681`
 - **Read-only vault** — Vault mounted read-only; agents can only write to a designated folder (`agent-workspace/` by default)
 - **Claude Code CLI** — Pre-installed and ready to use
-- **Dev tools** — Node 22, Python 3.12, ripgrep, fd, git-delta, atuin, fzf, jq, gh
+- **Memory MCP** — `@modelcontextprotocol/server-memory` preinstalled, memory file stored in the vault write directory
+- **Dev tools** — Node 22, Python 3.12, ripgrep, fd, git-delta, fzf, jq, gh
 - **Network sandboxing** — Optional allowlist-based firewall
 
 ## Security
@@ -64,20 +65,16 @@ Each terminal tab in Obsidian gets its own independent tmux session — run mult
 
 ## Quick start
 
-### 1. Clone and configure
+### 1. Clone the repo
 
 ```bash
 git clone https://github.com/artislismanis/obsidian-agent-sandbox.git
-cd obsidian-agent-sandbox/docker
-cp .env.example .env
-# Edit .env — set PKM_VAULT_PATH to your vault path
-# Optionally set PKM_WRITE_DIR (default: agent-workspace)
+cd obsidian-agent-sandbox/sandbox
 ```
 
 ### 2. Build the container
 
 ```bash
-cd docker
 docker compose build
 ```
 
@@ -86,7 +83,7 @@ docker compose build
 ### 3. Build and install the plugin
 
 ```bash
-cd plugin
+cd ../plugin
 npm install
 npm run build
 ```
@@ -101,7 +98,7 @@ cp dist/* /path/to/vault/.obsidian/plugins/obsidian-agent-sandbox/
 
 1. Restart Obsidian and enable **Agent Sandbox** in Settings > Community Plugins
 2. Set **Docker mode** (WSL or Local)
-3. Set **Docker Compose path** to the path of the `docker/` directory
+3. Set **Docker Compose path** to the path of the `sandbox/` directory
 4. Open the command palette (`Ctrl+P`) and run **Sandbox: Start Container**
 5. Click the terminal icon in the ribbon or run **Open Sandbox Terminal**
 
@@ -113,10 +110,7 @@ cp dist/* /path/to/vault/.obsidian/plugins/obsidian-agent-sandbox/
 | **Copy word** | Right-click a word |
 | **Paste** | `Ctrl+Shift+V` |
 | **Interrupt (SIGINT)** | `Ctrl+C` |
-
-tmux keybindings work normally (e.g., `Ctrl+B` then `C` for new window).
-
-> **Tip:** The container ships with `set -g mouse off` in tmux so text selection works with a simple click-drag — no need to hold Shift.
+| **Scroll** | Mouse wheel (10000 lines of scrollback) |
 
 ## Commands
 
@@ -140,6 +134,7 @@ Settings are organized into three tabs:
 | Docker Compose path | *(empty)* | Path to the directory containing docker-compose.yml |
 | WSL distribution | `Ubuntu` | WSL distribution for Docker commands (WSL mode only) |
 | Vault write directory | `agent-workspace` | Folder inside vault where the container can write files |
+| Memory file name | `memory.json` | Filename for the memory MCP, stored in the write directory |
 | Auto-start on load | `off` | Start container when plugin loads |
 | Auto-stop on unload | `off` | Stop container when plugin is disabled |
 
@@ -148,7 +143,6 @@ Settings are organized into three tabs:
 |---------|---------|-------------|
 | Port | `7681` | Host port mapped to ttyd |
 | Bind address | `127.0.0.1` | IP address ttyd binds to (set 0.0.0.0 for network access) |
-| Use tmux sessions | `on` | Wrap terminals in tmux. Turn off for mouse scrollback support |
 | Terminal theme | Follow Obsidian | Follow Obsidian theme, Dark, or Light |
 | Terminal font | *(auto)* | Custom font family (falls back through common monospace fonts) |
 
@@ -171,7 +165,7 @@ obsidian-agent-sandbox/
 │   │   ├── docker.ts                Container management via WSL or local Docker
 │   │   ├── status-bar.ts            Status bar indicator
 │   │   ├── terminal-view.ts         xterm.js terminal with ttyd WebSocket
-│   │   ├── ttyd-client.ts           ttyd polling, auth, URL construction
+│   │   ├── ttyd-client.ts           ttyd polling and URL construction
 │   │   └── __tests__/               Vitest unit tests
 │   ├── styles.css                   Plugin and xterm.js styles
 │   ├── manifest.json                Obsidian plugin manifest
@@ -181,14 +175,14 @@ obsidian-agent-sandbox/
 │   ├── eslint.config.mjs            Linter config
 │   └── package.json
 │
-├── docker/                          Docker container (Ubuntu 24.04, ttyd, tmux, Claude Code)
+├── sandbox/                         Agent sandbox container (Ubuntu 24.04, ttyd, Claude Code)
 │   ├── Dockerfile                   Container image
 │   ├── docker-compose.yml           Service, ports, volumes
-│   ├── entrypoint.sh                Starts ttyd with optional auth
-│   ├── session.sh                   Creates unique tmux session per connection
-│   ├── .tmux.conf                   tmux defaults (mouse off, 256color)
+│   ├── entrypoint.sh                Starts ttyd
+│   ├── session.sh                   Starts a login bash per connection
 │   ├── .env.example                 Environment template (optional with plugin)
 │   ├── .claude/settings.json        Claude Code project settings
+│   ├── .mcp.json                    MCP server configuration (memory)
 │   └── scripts/
 │       ├── verify.sh                Environment validation
 │       └── init-firewall.sh         Network sandboxing setup
