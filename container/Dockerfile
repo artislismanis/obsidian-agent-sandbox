@@ -6,11 +6,12 @@ FROM ubuntu:24.04
 
 # ── Version ARGs ─────────────────────────────────────────────
 ARG CLAUDE_CODE_VERSION=latest
-ARG GIT_DELTA_VERSION=0.18.2
 ARG PYTHON_VERSION=3.12
 ARG NODE_MAJOR=22
 ARG TTYD_VERSION=1.7.7
 ARG NVM_VERSION=0.40.3
+ARG ATUIN_VERSION=18.8.0
+ARG BASH_PREEXEC_VERSION=0.5.0
 
 # ══════════════════════════════════════════════════════════════
 # Phase 1: ROOT — system packages, binaries, permissions
@@ -42,15 +43,17 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# git-delta, ttyd (web terminal)
+# ttyd (web terminal), atuin (shell history)
 RUN ARCH="$(dpkg --print-architecture)" \
     && if [ "$ARCH" = "arm64" ]; then NATIVE_ARCH="aarch64"; else NATIVE_ARCH="x86_64"; fi \
-    && curl -fsSL "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" \
-       -o /tmp/git-delta.deb \
-    && dpkg -i /tmp/git-delta.deb && rm /tmp/git-delta.deb \
     && curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${NATIVE_ARCH}" \
        -o /usr/local/bin/ttyd \
-    && chmod +x /usr/local/bin/ttyd
+    && chmod +x /usr/local/bin/ttyd \
+    && curl -fsSL "https://github.com/atuinsh/atuin/releases/download/v${ATUIN_VERSION}/atuin-${NATIVE_ARCH}-unknown-linux-gnu.tar.gz" \
+       -o /tmp/atuin.tar.gz \
+    && tar -xzf /tmp/atuin.tar.gz -C /tmp \
+    && install -m 755 /tmp/atuin-*/atuin /usr/local/bin/atuin \
+    && rm -rf /tmp/atuin*
 
 # uv (Python version & package manager)
 COPY --from=uv /uv /uvx /usr/local/bin/
@@ -104,19 +107,41 @@ RUN npm install -g \
     "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
     "@modelcontextprotocol/server-memory"
 
-# Shell history — persistent via named volume, fzf for Ctrl+R search
+# atuin shell history — pinned binary installed in Phase 1; this step adds
+# pinned bash-preexec.sh (required for atuin's bash hooks to register) and
+# writes a local-only config.toml (no sync, no update check).
+RUN curl -fsSL "https://raw.githubusercontent.com/rcaloras/bash-preexec/${BASH_PREEXEC_VERSION}/bash-preexec.sh" \
+       -o /home/claude/.bash-preexec.sh \
+    && mkdir -p /home/claude/.config/atuin /home/claude/.shell-history/atuin \
+    && printf '%s\n' \
+       '## Local-only — no sync server' \
+       'sync_address = ""' \
+       'auto_sync = false' \
+       'update_check = false' \
+       'search_mode = "fuzzy"' \
+       'style = "compact"' \
+       'inline_height = 20' \
+       'filter_mode = "global"' \
+       'filter_mode_shell_up_arrow = "global"' \
+       '' \
+       '## Inline recording (no daemon in container)' \
+       'daemon_enabled = false' \
+       > /home/claude/.config/atuin/config.toml
+
+# .bashrc wiring. Ordering is load-bearing:
+#   fzf sourced first (registers Ctrl+T/Alt+C/Ctrl+R)
+#   → bash-preexec sourced (defines preexec_functions/precmd_functions arrays)
+#   → atuin init last (registers into those arrays, rebinds Ctrl+R over fzf).
 RUN printf '%s\n' \
        '' \
-       '# Persistent shell history (volume-backed)' \
-       'export HISTFILE=/home/claude/.shell-history/.bash_history' \
-       'export HISTSIZE=50000' \
-       'export HISTFILESIZE=100000' \
-       'export HISTCONTROL=ignoredups:ignorespace:erasedups' \
-       'shopt -s histappend' \
-       'PROMPT_COMMAND="history -a;${PROMPT_COMMAND:-}"' \
-       '' \
-       '# fzf key bindings (Ctrl+R for history search)' \
+       '# fzf key bindings (Ctrl+T file picker, Alt+C cd picker; Ctrl+R is overridden by atuin below)' \
        '[ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && source /usr/share/doc/fzf/examples/key-bindings.bash' \
+       '' \
+       '# atuin shell history (DB stored on the volume-backed history dir)' \
+       'export ATUIN_CONFIG_DIR=/home/claude/.config/atuin' \
+       'export ATUIN_DB_PATH=/home/claude/.shell-history/atuin/history.db' \
+       '[ -f /home/claude/.bash-preexec.sh ] && source /home/claude/.bash-preexec.sh' \
+       'command -v atuin >/dev/null && eval "$(atuin init bash)"' \
        >> /home/claude/.bashrc
 
 # ══════════════════════════════════════════════════════════════
