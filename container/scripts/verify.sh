@@ -90,5 +90,4 @@ else
 fi
 
 echo ""
-echo "To enable network sandboxing: sudo /usr/local/bin/init-firewall.sh"
 echo "=== Done ==="
