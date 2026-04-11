@@ -222,9 +222,25 @@ docker images --format '{{.Repository}}:{{.Tag}}' | grep oas-sandbox
 
 The image is `oas-sandbox:latest`, the container is `oas-sandbox`, and named volumes are `oas-claude-config` (Claude Code auth and config) and `oas-shell-history` (persistent shell history).
 
+### Ephemeral container filesystem
+
+The container filesystem is **ephemeral**: every time the container is recreated (rebuild, `docker compose down && up`, or any plugin-driven restart that recreates the container), everything reverts to the exact state baked into the image. Only these paths persist across recreations:
+
+| Path inside container | Backed by | What it's for |
+|---|---|---|
+| `/workspace` | bind mount → host `workspace/` | Claude's domain — `.claude/`, `.mcp.json`, skills, agents, commands |
+| `/workspace/vault` | bind mount → host vault (ro) | Read-only view of your Obsidian vault |
+| `/workspace/vault/<write dir>` | bind mount (rw) | The only vault path the agent can write to |
+| `/home/claude/.claude` | named volume `oas-claude-config` | Claude Code authentication, `.claude.json`, project config |
+| `/home/claude/.shell-history` | named volume `oas-shell-history` | atuin SQLite DB (`atuin/history.db`) |
+
+Everything else — `apt`-installed packages, files in `/home/claude/` outside `.claude/` and `.shell-history/`, `/tmp`, `/usr/local`, shell config outside what the Dockerfile wrote — is discarded on every container recreation.
+
+**Practical implication:** `sudo apt-get install` inside a live session is strictly for testing. If a tool proves valuable, it **must** be added to `container/Dockerfile` to survive. Same rule for any config file, binary, or system change you want to keep.
+
 ### Sudo password and the apt-get escape hatch
 
-The `claude` user inside the container has narrow sudo for `apt-get` and `apt` only, gated by a password. This lets you test-install tools in a live session before deciding whether to add them to the image permanently.
+The `claude` user inside the container has narrow sudo for `apt-get` and `apt` only, gated by a password. This lets you test-install tools in a live session before deciding whether to add them to the image permanently — but remember, installs do not survive container recreation (see above).
 
 **Default password**: `sandbox` (set in `container/.env.example`).
 
@@ -246,7 +262,7 @@ When prompted, enter the password.
 
 ### Adding OS-level tools to the Dockerfile
 
-Runtime installs via `sudo apt-get` don't survive container rebuilds. If a tool proves valuable, promote it to the Dockerfile so every rebuild includes it:
+If a tool proves valuable during a `sudo apt-get` test (see ephemeral filesystem note above), promote it to the Dockerfile so every build includes it:
 
 1. Edit `container/Dockerfile` — add the package to the existing `apt-get install` block (keep the list alphabetized).
 2. If the tool needs network access at runtime, add the relevant domains to the allowlist in `container/scripts/init-firewall.sh`.
