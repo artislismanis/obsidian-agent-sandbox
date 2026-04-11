@@ -198,7 +198,11 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 
 		new Setting(el)
 			.setName("Auto-start on load")
-			.setDesc("Start the container when the plugin loads.")
+			.setDesc(
+				"Start the container when the plugin loads. If the container is " +
+					"already running from a previous session, this is a fast no-op — " +
+					"compose reuses it.",
+			)
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.autoStartContainer).onChange(async (value) => {
 					this.plugin.settings.autoStartContainer = value;
@@ -208,7 +212,12 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 
 		new Setting(el)
 			.setName("Auto-stop on exit")
-			.setDesc("Stop the container when Obsidian closes.")
+			.setDesc(
+				"Off (default): keep the container running between Obsidian sessions " +
+					"so the next open is instant and any background work continues. " +
+					"On: stop the container on Obsidian exit to free memory and CPU; " +
+					"next open starts it fresh.",
+			)
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.autoStopContainer).onChange(async (value) => {
 					this.plugin.settings.autoStopContainer = value;

@@ -210,6 +210,17 @@ npm run test         # Tests only
 
 See `plugin/CLAUDE.md` for architecture details and conventions.
 
+### Container lifecycle
+
+The plugin's container start/stop model is built on `docker compose up -d`'s native idempotency rather than destroy-and-recreate:
+
+- **Start** (command or auto-start on load) runs `docker compose up -d`. If a container is already running with matching config, it's reused instantly — no recreate, no downtime. If the config has changed (e.g. you edited a setting that flows through an env var), compose detects the drift and recreates. No need to explicitly stop first.
+- **Stop** (command or auto-stop on exit) runs `docker compose down`. Named volumes (`oas-claude-config`, `oas-shell-history`) persist across this.
+- **Restart** (command) explicitly runs `down` then `up -d`. Use this when you want to discard in-container runtime state (tmpfs files, background processes, interactive `sudo apt-get install`s) — not needed for config changes, which the normal Start handles.
+- **Plugin disable** always runs `down` (detached, fire-and-forget). Disabling the plugin is a deliberate "I'm done" signal regardless of the auto-stop setting.
+- **Auto-stop on exit (off by default)** — with the setting off, the container keeps running between Obsidian sessions. Reopening Obsidian is instant (just an idempotent `up -d`), previously-persisted terminal tabs re-attach to the still-running ttyd, and any background processes (long Claude loops, watch tasks) continue. Turn it on if you'd rather free the container's memory/CPU when you close Obsidian and accept a fresh container on next open.
+- **Shell session persistence across Obsidian disconnects** — the *container* now persists correctly, but the *shell process* inside each terminal tab does not. When you close Obsidian or the terminal tab, ttyd sends SIGHUP to the bash PTY and any interactive process running in it dies with it. A long Claude loop that's running in a terminal when you close Obsidian will be killed. Adding a terminal multiplexer (tmux / dtach / abduco) between ttyd and bash would solve this; it's tracked as a future enhancement.
+
 ### Docker resource naming
 
 All Docker resources use the `oas-` prefix (Obsidian Agent Sandbox). Quick checks:

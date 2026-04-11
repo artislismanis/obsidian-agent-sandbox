@@ -212,18 +212,24 @@ export class DockerManager {
 		}
 	}
 
+	/**
+	 * Start or reuse the container.
+	 *
+	 * Runs `docker compose up -d`, which is idempotent: compose leaves
+	 * an existing container alone if its effective config (image, env
+	 * vars, mounts) matches the current spec, and recreates it if any
+	 * value differs. We deliberately do NOT `down` first — that was
+	 * the previous behaviour and it threw away the fast-reuse path,
+	 * making the "Auto-stop on exit = off" setting a trap (the
+	 * container survived exit but got destroyed on the next start).
+	 * For an explicit "force clean recreate" users have `restart()`.
+	 */
 	async start(): Promise<string> {
 		if (this.busy) {
 			throw new Error("Another container operation is in progress. Please wait.");
 		}
 		this.busy = true;
 		try {
-			// Stop first to ensure env vars (PKM_VAULT_PATH) are fresh
-			try {
-				await this.run("docker compose down");
-			} catch {
-				/* may not be running */
-			}
 			return await this.run("docker compose up -d");
 		} finally {
 			this.busy = false;
@@ -273,9 +279,28 @@ export class DockerManager {
 		return this.run("docker compose ps --format json");
 	}
 
-	/** Delegates to start() which does down+up to pick up fresh env vars. */
+	/**
+	 * Force a clean recreate: `down` then `up -d`. Use this when you
+	 * want to discard in-container runtime state (tmpfs, background
+	 * processes, interactive apt-installed packages) or recover from
+	 * a container whose state has drifted. Unlike `start()`, this
+	 * always destroys and recreates regardless of config match.
+	 */
 	async restart(): Promise<string> {
-		return this.start();
+		if (this.busy) {
+			throw new Error("Another container operation is in progress. Please wait.");
+		}
+		this.busy = true;
+		try {
+			try {
+				await this.run("docker compose down");
+			} catch {
+				/* may not be running */
+			}
+			return await this.run("docker compose up -d");
+		} finally {
+			this.busy = false;
+		}
 	}
 
 	async enableFirewall(): Promise<string> {

@@ -69,10 +69,25 @@ export default class AgentSandboxPlugin extends Plugin {
 			}));
 		});
 
-		// Clear terminal tabs persisted from previous session (must wait
-		// for layout restore to complete, otherwise leaves aren't there yet)
+		// Handle terminal tabs persisted from the previous session.
+		// If the container is still running (autoStop=off, Obsidian was
+		// closed without killing the container), leave the tabs alone
+		// so each view's connect() can re-establish its WebSocket to
+		// the still-running ttyd — producing a fresh shell inside the
+		// same container. If the container is stopped (or we can't
+		// tell because docker is misconfigured), detach the tabs so
+		// stale UI doesn't linger.
 		this.app.workspace.onLayoutReady(() => {
-			this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
+			void this.docker
+				.status()
+				.then((out) => {
+					if (!DockerManager.parseIsRunning(out)) {
+						this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
+					}
+				})
+				.catch(() => {
+					this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
+				});
 		});
 
 		this.addRibbonIcon("box", "Open Sandbox Terminal", () => {

@@ -180,6 +180,8 @@ claude
 
 ## 12. Container Lifecycle
 
+### Container-level (shell, from the host)
+
 ```bash
 docker compose restart
 ```
@@ -196,6 +198,55 @@ docker compose up -d
 - [ ] Container comes back up healthy
 - [ ] Named volumes preserve Claude Code config (`oas-claude-config`)
 - [ ] Named volumes preserve shell history (`oas-shell-history`)
+
+### Plugin-level (reuse, recreate, auto-stop semantics)
+
+The plugin runs `docker compose up -d` on Start (idempotent: reuses the running container when config matches, recreates on config drift). Restart explicitly does `down` + `up -d` for a forced clean recreate. These tests confirm the difference.
+
+**Reuse across Obsidian sessions** (the original auto-stop trap):
+
+- [ ] Set **Auto-stop on exit** to **off** in plugin settings.
+- [ ] Start the container from the Obsidian command palette. Note the container ID: `docker compose ps --format json | jq -r '.[0].ID'` (or `docker compose ps` and copy the ID column).
+- [ ] Open a terminal in Obsidian, run `date; atuin history list | head`. Note the current time and history.
+- [ ] Close Obsidian completely. Confirm on the host: `docker compose ps` — container still running.
+- [ ] Reopen Obsidian. Status bar shows `Running` **within a second**, no `Starting` phase.
+- [ ] Container ID is **unchanged** from before close.
+- [ ] Click **Open Sandbox Terminal**. Terminal connects in under a second. `atuin history list | head` shows the commands from before close.
+- [ ] Previously-persisted terminal tabs (if any were open when Obsidian closed) re-attach: they show "Connecting…" then a fresh shell prompt, not a permanent error. The scrollback from the old session is gone (expected — it lived in the previous xterm.js instance), but the container is the same.
+
+**Config-change triggers recreate** (the other half — reuse doesn't mean stuck):
+
+- [ ] With the container running, change **Vault write directory** in plugin settings to something new (e.g. `agent-workspace-test`).
+- [ ] Run **Sandbox: Start Container** from the command palette.
+- [ ] Compose detects the env-var change and recreates: container ID **changes**.
+- [ ] Open a terminal — `ls /workspace/vault/agent-workspace-test/` succeeds (the new mount took effect).
+- [ ] Revert the setting and Start again — container recreates back.
+
+**Explicit clean restart**:
+
+- [ ] With the container running, run **Sandbox: Restart Container** from the command palette.
+- [ ] Container ID **changes** regardless of whether config changed (explicit down + up).
+- [ ] `/tmp` is empty, any background processes from before are gone.
+
+**Auto-stop on = stops on close**:
+
+- [ ] Set **Auto-stop on exit** to **on**.
+- [ ] Start the container. Confirm running on the host.
+- [ ] Close Obsidian. Within 10 seconds, `docker compose ps` shows no `oas-sandbox` container (or it's in the `Exit` state).
+- [ ] Reopen Obsidian, manually Start — fresh container, new ID.
+
+**Auto-stop off = does not stop on close** (the fix):
+
+- [ ] Set **Auto-stop on exit** to **off**. Start the container.
+- [ ] Close Obsidian. `docker compose ps` on the host still shows `oas-sandbox` running.
+- [ ] This behaviour is what makes the reuse test above possible.
+
+**Plugin disable always stops regardless of setting**:
+
+- [ ] Set **Auto-stop on exit** to **off**. Start the container.
+- [ ] Disable the plugin from Obsidian settings (don't close Obsidian).
+- [ ] `docker compose ps` on the host shows the container is stopped.
+- [ ] Re-enable the plugin; if Auto-start is off, the container stays stopped.
 
 ## 13. Network Firewall (optional)
 
