@@ -23,7 +23,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # firewall tools (iptables, ipset, iproute2, dnsutils, aggregate),
 # sudo + gosu for the narrow apt-get sudoers entry and priv-drop in entrypoint
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl git jq fzf ca-certificates gnupg locales \
+    curl git jq ca-certificates gnupg locales \
     ripgrep fd-find tree nano less \
     iptables ipset iproute2 dnsutils aggregate sudo gosu \
     && ln -sf /usr/bin/fdfind /usr/bin/fd \
@@ -128,14 +128,10 @@ RUN curl -fsSL "https://raw.githubusercontent.com/rcaloras/bash-preexec/${BASH_P
        'daemon_enabled = false' \
        > /home/claude/.config/atuin/config.toml
 
-# .bashrc wiring. Ordering is load-bearing:
-#   fzf sourced first (registers Ctrl+T/Alt+C/Ctrl+R)
-#   → bash-preexec sourced (defines preexec_functions/precmd_functions arrays)
-#   → atuin init last (registers into those arrays, rebinds Ctrl+R over fzf).
+# .bashrc wiring. Ordering is load-bearing: bash-preexec must be sourced
+# before atuin init, so that atuin's hooks register into the
+# preexec_functions / precmd_functions arrays bash-preexec defines.
 RUN printf '%s\n' \
-       '' \
-       '# fzf key bindings (Ctrl+T file picker, Alt+C cd picker; Ctrl+R is overridden by atuin below)' \
-       '[ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && source /usr/share/doc/fzf/examples/key-bindings.bash' \
        '' \
        '# atuin shell history (DB stored on the volume-backed history dir)' \
        'export ATUIN_CONFIG_DIR=/home/claude/.config/atuin' \

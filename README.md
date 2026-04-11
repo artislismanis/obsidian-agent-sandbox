@@ -37,7 +37,7 @@ Each terminal tab in Obsidian gets its own independent bash session — run mult
 - **Read-only vault** — Vault mounted read-only; agents can only write to a designated folder (`agent-workspace/` by default)
 - **Claude Code CLI** — Pre-installed and ready to use
 - **Memory MCP** — `@modelcontextprotocol/server-memory` preinstalled, memory file stored in the vault write directory
-- **Dev tools** — Node 22, Python 3.12, ripgrep, fd, fzf, atuin, jq, gh
+- **Dev tools** — Node 22, Python 3.12, ripgrep, fd, atuin, jq, gh
 - **Shell history (atuin)** — Commands are recorded by [atuin](https://atuin.sh) into a persistent SQLite DB on the `oas-shell-history` named volume. Press **Ctrl+R** to open atuin's search UI (scoped by cwd, exit code, session, time). To seed atuin with existing bash history on first run, open a terminal and run `atuin import bash` once.
 - **Network sandboxing** — Optional allowlist-based firewall
 

@@ -56,7 +56,7 @@ docker compose exec sandbox verify.sh
 ```
 
 - [ ] Script runs without errors (now on PATH from `/usr/local/bin/verify.sh`)
-- [ ] **Tool versions** section prints Node, npm, git, ttyd, jq, Claude, gh, fzf, atuin, rg, fd, uv, Python, gosu, sudo
+- [ ] **Tool versions** section prints Node, npm, git, ttyd, jq, Claude, gh, atuin, rg, fd, uv, Python, gosu, sudo
 - [ ] **Mount points** section lists `/workspace` (rw), `/workspace/vault` (ro), `/workspace/vault/agent-workspace` (rw), `/home/claude/.claude` (rw), `/home/claude/.shell-history` (rw)
 - [ ] **Environment variables** section dumps `PKM_VAULT_PATH`, `PKM_WRITE_DIR`, `MEMORY_FILE_PATH`, `TTYD_PORT`, etc.
 - [ ] **Privileges** section shows "running as: claude (uid 1000)" and "sudo apt-get: allowed WITH password"
