@@ -16,23 +16,25 @@ set -u
 # Counter fed by tool_version / tool_present; checked at exit.
 MISSING_TOOLS=0
 
-# Print a "Label:   <first-line-of --version>" row. If the binary isn't
-# on PATH, prints "not found" and increments MISSING_TOOLS.
+# Print a "Label:   <first-line-of version output>" row. If the binary
+# isn't on PATH, prints "not found" and increments MISSING_TOOLS.
+# Optional third arg overrides the default --version flag (e.g. "-V").
 tool_version() {
   local label="$1"
   local binary="$2"
+  local flag="${3:---version}"
   if ! command -v "$binary" >/dev/null 2>&1; then
     printf "%-9s%s\n" "${label}:" "not found"
     MISSING_TOOLS=$((MISSING_TOOLS + 1))
     return
   fi
   local output
-  output=$("$binary" --version 2>&1 | head -1)
+  output=$("$binary" $flag 2>&1 | head -1)
   printf "%-9s%s\n" "${label}:" "${output:-(empty)}"
 }
 
 # Print a "Label:   installed" row if the binary exists, else "not found".
-# Use this for tools that don't support --version (e.g. MCP servers).
+# Use only for tools with no version flag at all (e.g. MCP servers).
 tool_present() {
   local label="$1"
   local binary="$2"
@@ -57,13 +59,13 @@ tool_version "jq"      "jq"
 tool_version "Claude"  "claude"
 tool_version "gh"      "gh"
 tool_version "atuin"   "atuin"
-tool_present "tmux"    "tmux"
+tool_version "tmux"    "tmux" "-V"
 tool_version "rg"      "rg"
 tool_version "fd"      "fd"
 tool_version "uv"      "uv"
 tool_version "Python"  "python3"
-tool_present "gosu"    "gosu"
-tool_present "sudo"    "sudo"
+tool_version "gosu"    "gosu"
+tool_version "sudo"    "sudo"
 
 echo ""
 echo "── Mount points ───────────────────────────────────"
