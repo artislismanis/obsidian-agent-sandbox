@@ -1,5 +1,5 @@
 import type { WorkspaceLeaf } from "obsidian";
-import { FileSystemAdapter, Menu, Notice, Plugin, debounce } from "obsidian";
+import { FileSystemAdapter, Menu, Modal, Notice, Plugin, debounce } from "obsidian";
 import { type AgentSandboxSettings, DEFAULT_SETTINGS, AgentSandboxSettingTab } from "./settings";
 import { DockerManager } from "./docker";
 import type { ContainerState } from "./status-bar";
@@ -57,18 +57,36 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.statusBarEl = this.addStatusBarItem();
 		this.statusBar = new StatusBarManager(this.statusBarEl);
 		this.statusBar.setDetails(TOOLTIP_STOPPED);
-		this.statusBarClickHandler = (evt) => this.showStatusMenu(evt);
+		this.statusBarClickHandler = (evt) => void this.showStatusMenu(evt);
 		this.statusBarEl.addEventListener("click", this.statusBarClickHandler);
 
 		const fwBarEl = this.addStatusBarItem();
 		this.firewallBar = new FirewallStatusBar(fwBarEl, () => this.toggleFirewall());
 
 		this.registerView(VIEW_TYPE_TERMINAL, (leaf: WorkspaceLeaf) => {
-			return new TerminalView(leaf, () => ({
+			const view = new TerminalView(leaf, () => ({
 				ttydPort: this.settings.ttydPort,
 				terminalTheme: this.settings.terminalTheme,
 				terminalFont: this.settings.terminalFont,
 			}));
+			view.onRenameSession = async () => {
+				const oldName = (view.getState().sessionName as string) ?? "";
+				const newName = await this.promptSessionName("Rename Session", oldName);
+				if (!newName || newName === oldName) return;
+				if (oldName) {
+					try {
+						await this.docker.renameSession(oldName, newName);
+					} catch {
+						new Notice("Failed to rename tmux session.");
+						return;
+					}
+				}
+				await leaf.setViewState({
+					type: VIEW_TYPE_TERMINAL,
+					state: { sessionName: newName },
+				});
+			};
+			return view;
 		});
 
 		// Hydrate the status bar from real container state without
@@ -123,6 +141,23 @@ export default class AgentSandboxPlugin extends Plugin {
 			callback: () => this.toggleFirewall(),
 		});
 
+		this.addCommand({
+			id: "open-session",
+			name: "Open Sandbox Session...",
+			callback: async () => {
+				const name = await this.promptSessionName("New Session");
+				if (name) this.activateTerminalView(name);
+			},
+		});
+
+		this.addCommand({
+			id: "open-browser",
+			name: "Open Sandbox in Browser",
+			callback: () => {
+				window.open(`http://localhost:${this.settings.ttydPort}`);
+			},
+		});
+
 		// Stop container on app quit (onunload only fires on plugin disable, not app exit)
 		this.registerEvent(
 			this.app.workspace.on("quit", (tasks) => {
@@ -163,11 +198,12 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.debouncedSaveSettings();
 	}
 
-	async activateTerminalView(): Promise<void> {
+	async activateTerminalView(sessionName?: string): Promise<void> {
 		const leaf = this.app.workspace.getLeaf("tab");
 		await leaf.setViewState({
 			type: VIEW_TYPE_TERMINAL,
 			active: true,
+			state: sessionName ? { sessionName } : {},
 		});
 		this.app.workspace.revealLeaf(leaf);
 	}
@@ -284,9 +320,10 @@ export default class AgentSandboxPlugin extends Plugin {
 
 	// ── Status bar menu ────────────────────────────────────
 
-	private showStatusMenu(evt: MouseEvent): void {
+	private async showStatusMenu(evt: MouseEvent): Promise<void> {
 		const menu = new Menu();
 		const busy = this.docker.isBusy();
+		const running = this.statusBar.getState() === "running";
 
 		menu.addItem((item) =>
 			item
@@ -323,9 +360,39 @@ export default class AgentSandboxPlugin extends Plugin {
 		menu.addSeparator();
 		menu.addItem((item) =>
 			item
-				.setTitle("Open Terminal")
+				.setTitle("New Terminal")
 				.setIcon("terminal")
 				.onClick(() => this.activateTerminalView()),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("New Session...")
+				.setIcon("plus")
+				.setDisabled(!running)
+				.onClick(async () => {
+					const name = await this.promptSessionName("New Session");
+					if (name) this.activateTerminalView(name);
+				}),
+		);
+
+		if (running) {
+			const sessions = await this.docker.listSessions();
+			for (const name of sessions) {
+				menu.addItem((item) =>
+					item
+						.setTitle(`Attach: ${name}`)
+						.setIcon("arrow-right")
+						.onClick(() => this.activateTerminalView(name)),
+				);
+			}
+		}
+
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle("Open in Browser")
+				.setIcon("external-link")
+				.onClick(() => window.open(`http://localhost:${this.settings.ttydPort}`)),
 		);
 		menu.addItem((item) =>
 			item
@@ -421,6 +488,40 @@ export default class AgentSandboxPlugin extends Plugin {
 			this.statusBar.setDetails("Docker unreachable\nClick for options");
 			this.stopHealthPoll();
 		}
+	}
+
+	// ── Session prompt ─────────────────────────────────────
+
+	private promptSessionName(title: string, defaultValue = ""): Promise<string | null> {
+		return new Promise((resolve) => {
+			let resolved = false;
+			const modal = new Modal(this.app);
+			modal.titleEl.setText(title);
+			const input = modal.contentEl.createEl("input", {
+				type: "text",
+				placeholder: "e.g. work, research, debug",
+				value: defaultValue,
+			});
+			input.style.width = "100%";
+			input.addEventListener("keydown", (e) => {
+				if (e.key === "Enter") {
+					const val = input.value.trim();
+					resolved = true;
+					modal.close();
+					resolve(val || null);
+				}
+				if (e.key === "Escape") {
+					resolved = true;
+					modal.close();
+					resolve(null);
+				}
+			});
+			modal.onClose = () => {
+				if (!resolved) resolve(null);
+			};
+			modal.open();
+			input.focus();
+		});
 	}
 
 	// ── Helpers ────────────────────────────────────────────
