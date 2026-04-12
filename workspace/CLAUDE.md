@@ -15,6 +15,7 @@ This is Claude's configurable workspace inside the Agent Sandbox container. Ever
 | `CLAUDE.md` | This file — workspace rules |
 | `vault/` | Obsidian vault overlay (read-only, see below) |
 | `vault/$PKM_WRITE_DIR/` | Writable vault subfolder (see `$PKM_WRITE_DIR` env var, default `agent-workspace`) |
+| `vault/.oas/` | Vault infrastructure — memory file, writable (independent of write dir) |
 
 ## Extensibility tiers — inline reference
 
@@ -41,6 +42,40 @@ The vault at `/workspace/vault/` is **read-only** at the filesystem level. The o
 - Never delete vault files without explicit user confirmation
 - Prefer non-destructive operations: create new files or append rather than overwriting
 - For bulk operations, describe scope and show a sample (3-5 files) before executing
+
+## Memory — MCP knowledge graph
+
+**Override the built-in file-based auto memory system.** Do NOT write to `/home/claude/.claude/projects/-workspace/memory/`. Use the MCP memory server (`mcp__memory__*` tools) for all persistent memory.
+
+Storage is automatically per-vault — the plugin injects `MEMORY_FILE_PATH` pointing to `/workspace/vault/.oas/memory.json`, so each mounted vault gets its own isolated knowledge graph. No manual configuration needed.
+
+### When to save
+
+Follow the same triggers as the built-in memory types — user info, feedback, project context, references — but store them as **entities and observations** in the MCP knowledge graph instead of markdown files.
+
+### Entity conventions
+
+| Entity type | Use for | Example entity name |
+|-------------|---------|---------------------|
+| `user` | The human — identity, role, preferences | `Artis` |
+| `feedback` | Behavioral guidance from the user | `feedback-no-summaries` |
+| `project` | Ongoing work, goals, decisions | `auth-rewrite` |
+| `reference` | Pointers to external resources | `ref-linear-ingest` |
+| `concept` | Domain knowledge, vault topics | `zettelkasten-method` |
+
+- **Entity names**: short, lowercase-kebab-case (except proper nouns).
+- **Observations**: individual facts attached to an entity. Prefer many small observations over one large blob — they can be independently deleted.
+- **Relations**: link entities in active voice (e.g., `Artis -> owns -> auth-rewrite`).
+
+### How to query
+
+- Use `search_nodes` when looking for something specific.
+- Use `read_graph` sparingly — only when you need a broad overview.
+- Verify graph facts against current state before acting on them (same staleness rule as file-based memory).
+
+### What NOT to save
+
+Same exclusions as the built-in system: no code patterns derivable from reading files, no git history, no ephemeral task details, no duplicating CLAUDE.md content.
 
 ## Discovering the environment
 
