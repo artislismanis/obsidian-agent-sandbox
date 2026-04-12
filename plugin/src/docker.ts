@@ -200,14 +200,14 @@ export class DockerManager {
 		}
 	}
 
-	/** Wraps run() with a busy guard to prevent concurrent docker operations. */
-	private async guardedRun(dockerCmd: string): Promise<string> {
+	/** Wraps an async operation with a busy guard to prevent concurrent docker operations. */
+	private async withGuard<T>(fn: () => Promise<T>): Promise<T> {
 		if (this.busy) {
 			throw new Error("Another container operation is in progress. Please wait.");
 		}
 		this.busy = true;
 		try {
-			return await this.run(dockerCmd);
+			return await fn();
 		} finally {
 			this.busy = false;
 		}
@@ -226,19 +226,11 @@ export class DockerManager {
 	 * For an explicit "force clean recreate" users have `restart()`.
 	 */
 	async start(): Promise<string> {
-		if (this.busy) {
-			throw new Error("Another container operation is in progress. Please wait.");
-		}
-		this.busy = true;
-		try {
-			return await this.run("docker compose up -d");
-		} finally {
-			this.busy = false;
-		}
+		return this.withGuard(() => this.run("docker compose up -d"));
 	}
 
 	async stop(): Promise<string> {
-		return this.guardedRun("docker compose down");
+		return this.withGuard(() => this.run("docker compose down"));
 	}
 
 	/** Fire-and-forget stop for plugin unload (parent stays alive). */
@@ -329,31 +321,29 @@ export class DockerManager {
 	 * always destroys and recreates regardless of config match.
 	 */
 	async restart(): Promise<string> {
-		if (this.busy) {
-			throw new Error("Another container operation is in progress. Please wait.");
-		}
-		this.busy = true;
-		try {
+		return this.withGuard(async () => {
 			try {
 				await this.run("docker compose down");
 			} catch {
 				/* may not be running */
 			}
-			return await this.run("docker compose up -d");
-		} finally {
-			this.busy = false;
-		}
+			return this.run("docker compose up -d");
+		});
 	}
 
 	async enableFirewall(): Promise<string> {
-		return this.guardedRun(
-			`docker compose exec --user root ${SERVICE_NAME} /usr/local/bin/init-firewall.sh`,
+		return this.withGuard(() =>
+			this.run(
+				`docker compose exec --user root ${SERVICE_NAME} /usr/local/bin/init-firewall.sh`,
+			),
 		);
 	}
 
 	async disableFirewall(): Promise<string> {
-		return this.guardedRun(
-			`docker compose exec --user root ${SERVICE_NAME} /usr/local/bin/init-firewall.sh --disable`,
+		return this.withGuard(() =>
+			this.run(
+				`docker compose exec --user root ${SERVICE_NAME} /usr/local/bin/init-firewall.sh --disable`,
+			),
 		);
 	}
 

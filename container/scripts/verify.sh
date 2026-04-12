@@ -29,7 +29,7 @@ tool_version() {
     return
   fi
   local output
-  output=$("$binary" $flag 2>&1 | head -1)
+  output=$("$binary" "$flag" 2>&1 | head -1)
   printf "%-9s%s\n" "${label}:" "${output:-(empty)}"
 }
 

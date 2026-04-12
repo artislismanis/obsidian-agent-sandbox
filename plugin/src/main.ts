@@ -278,7 +278,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			const fwOn = await this.docker.firewallStatus();
 			this.firewallBar.setState(fwOn ? "enabled" : "disabled");
 		} catch {
-			this.firewallBar.setState("disabled");
+			this.firewallBar.setState("hidden");
 		}
 	}
 

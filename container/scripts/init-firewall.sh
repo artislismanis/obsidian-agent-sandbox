@@ -63,21 +63,29 @@ ipset create allowed_ips_new hash:net -exist
 ipset flush allowed_ips_new
 
 echo "Resolving domains..."
-FAILED=0
+PIDS=()
 for domain in "${ALLOWED_DOMAINS[@]}"; do
   (
     ips=$(dig +short A "$domain" 2>/dev/null | grep -E '^[0-9]+\.' || true)
     if [ -z "$ips" ]; then
-      echo "WARNING: failed to resolve $domain"
+      echo "WARNING: failed to resolve $domain" >&2
       exit 1
-    else
-      for ip in $ips; do
-        ipset add allowed_ips_new "${ip}/32" -exist
-      done
     fi
+    for ip in $ips; do
+      ipset add allowed_ips_new "${ip}/32" -exist
+    done
   ) &
+  PIDS+=($!)
 done
-wait
+
+FAILED=0
+for pid in "${PIDS[@]}"; do
+  wait "$pid" || FAILED=$((FAILED + 1))
+done
+
+if [ "$FAILED" -gt 0 ]; then
+  echo "WARNING: $FAILED domain(s) failed to resolve — firewall may have gaps" >&2
+fi
 
 # Aggregate into CIDR blocks if possible
 if command -v aggregate &>/dev/null; then
