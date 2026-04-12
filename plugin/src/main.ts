@@ -13,6 +13,7 @@ function toErrorMessage(error: unknown): string {
 }
 
 const TOOLTIP_STOPPED = "Container is not running\nClick for options";
+const HEALTH_POLL_INTERVAL = 30_000;
 
 export default class AgentSandboxPlugin extends Plugin {
 	settings: AgentSandboxSettings = { ...DEFAULT_SETTINGS };
@@ -21,6 +22,7 @@ export default class AgentSandboxPlugin extends Plugin {
 	private firewallBar!: FirewallStatusBar;
 	private statusBarEl: HTMLElement | null = null;
 	private statusBarClickHandler: ((evt: MouseEvent) => void) | null = null;
+	private healthPollId: number | null = null;
 
 	private debouncedSaveSettings = debounce(
 		async () => {
@@ -69,30 +71,14 @@ export default class AgentSandboxPlugin extends Plugin {
 			}));
 		});
 
-		// Hydrate the status bar and terminal tabs from the real
-		// container state. If the container is still running
-		// (autoStop=off, Obsidian was closed without killing it),
-		// leave any persisted terminal tabs in place so each view's
-		// connect() can re-establish its WebSocket — fresh shell,
-		// same container — and flip the status bar to "running" so it
-		// matches reality instead of showing the "stopped" default.
-		// If the container is stopped, or we can't tell because
-		// docker is misconfigured, detach the tabs so stale UI
-		// doesn't linger; the status bar stays at its "stopped"
-		// default (or "error" on the explicit Check Status path).
+		// Hydrate the status bar from real container state without
+		// blocking vault load. If Docker/WSL is unavailable (e.g.
+		// WSL2 not started after a PC restart), the fast-fail probe
+		// (5s timeout) surfaces an error Notice instead of hanging
+		// for 30s. Auto-start is folded in so it only fires after
+		// the probe confirms Docker is reachable.
 		this.app.workspace.onLayoutReady(() => {
-			void this.docker
-				.status()
-				.then(async (out) => {
-					const isRunning = DockerManager.parseIsRunning(out);
-					if (!isRunning) {
-						this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
-					}
-					await this.syncStatusBar(isRunning);
-				})
-				.catch(() => {
-					this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
-				});
+			void this.backgroundStartup();
 		});
 
 		this.addRibbonIcon("box", "Open Sandbox Terminal", () => {
@@ -155,12 +141,12 @@ export default class AgentSandboxPlugin extends Plugin {
 			}),
 		);
 
-		if (this.settings.autoStartContainer) {
-			void this.startContainer();
-		}
+		// Auto-start (if enabled) is handled inside backgroundStartup()
+		// after the fast probe confirms Docker is reachable.
 	}
 
 	onunload() {
+		this.stopHealthPoll();
 		void this.saveData(this.settings);
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
 		this.firewallBar.destroy();
@@ -206,7 +192,10 @@ export default class AgentSandboxPlugin extends Plugin {
 			successMsg: "Sandbox container started.",
 			failurePrefix: "Failed to start container",
 		});
-		if (ok) await this.applyFirewallAfterStart();
+		if (ok) {
+			await this.applyFirewallAfterStart();
+			this.startHealthPoll();
+		}
 	}
 
 	private async stopContainer(): Promise<void> {
@@ -222,6 +211,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		});
 		this.firewallBar.setState("hidden");
 		this.statusBar.setDetails(TOOLTIP_STOPPED);
+		this.stopHealthPoll();
 	}
 
 	private async restartContainer(): Promise<void> {
@@ -236,7 +226,10 @@ export default class AgentSandboxPlugin extends Plugin {
 			successMsg: "Sandbox container restarted.",
 			failurePrefix: "Failed to restart container",
 		});
-		if (ok) await this.applyFirewallAfterStart();
+		if (ok) {
+			await this.applyFirewallAfterStart();
+			this.startHealthPoll();
+		}
 	}
 
 	private async applyFirewallAfterStart(): Promise<void> {
@@ -363,6 +356,76 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.statusBar.setDetails(lines.join("\n"));
 	}
 
+	// ── Background startup ────────────────────────────
+
+	private async backgroundStartup(): Promise<void> {
+		this.statusBar.setState("checking");
+		this.statusBar.setDetails("Checking Docker availability...");
+
+		// Step 1: Wake WSL if needed (fast-fail 5s)
+		try {
+			await this.docker.ensureWslReady();
+		} catch (error: unknown) {
+			this.statusBar.setState("error");
+			const msg = toErrorMessage(error);
+			this.statusBar.setDetails(`WSL error: ${msg}\nClick for options`);
+			new Notice(`Sandbox: ${msg}`);
+			this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
+			return;
+		}
+
+		// Step 2: Quick status probe (5s timeout instead of 30s)
+		try {
+			const output = await this.docker.probeStatus();
+			const isRunning = DockerManager.parseIsRunning(output);
+			if (!isRunning) {
+				this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
+			}
+			await this.syncStatusBar(isRunning);
+
+			// Step 3: Auto-start if configured and not already running
+			if (this.settings.autoStartContainer && !isRunning) {
+				await this.startContainer();
+			}
+
+			this.startHealthPoll();
+		} catch {
+			this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
+			this.statusBar.setState("error");
+			this.statusBar.setDetails("Docker unavailable\nClick for options");
+			new Notice("Sandbox: Docker is not reachable. Start Docker and use Check Status.");
+		}
+	}
+
+	// ── Health poll ───────────────────────────────────
+
+	private startHealthPoll(): void {
+		this.stopHealthPoll();
+		this.healthPollId = this.registerInterval(
+			window.setInterval(() => void this.healthCheck(), HEALTH_POLL_INTERVAL),
+		);
+	}
+
+	private stopHealthPoll(): void {
+		if (this.healthPollId != null) {
+			window.clearInterval(this.healthPollId);
+			this.healthPollId = null;
+		}
+	}
+
+	private async healthCheck(): Promise<void> {
+		if (this.docker.isBusy()) return;
+		try {
+			const output = await this.docker.probeStatus();
+			const isRunning = DockerManager.parseIsRunning(output);
+			await this.syncStatusBar(isRunning);
+		} catch {
+			this.statusBar.setState("error");
+			this.statusBar.setDetails("Docker unreachable\nClick for options");
+			this.stopHealthPoll();
+		}
+	}
+
 	// ── Helpers ────────────────────────────────────────────
 
 	private async ensureWriteDir(): Promise<void> {
@@ -419,6 +482,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			const isRunning = DockerManager.parseIsRunning(output);
 			await this.syncStatusBar(isRunning);
 			new Notice(isRunning ? "Container is running" : "Container is stopped");
+			this.startHealthPoll();
 		} catch (error: unknown) {
 			this.statusBar.setState("error");
 			new Notice(`Failed to get status: ${toErrorMessage(error)}`);

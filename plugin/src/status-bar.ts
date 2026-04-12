@@ -1,10 +1,11 @@
-export type ContainerState = "stopped" | "starting" | "running" | "error";
+export type ContainerState = "stopped" | "starting" | "running" | "error" | "checking";
 
 const STATE_DISPLAY: Record<ContainerState, string> = {
 	stopped: "Sandbox: \u23F9 Stopped",
 	starting: "Sandbox: \u23F3 Starting",
 	running: "Sandbox: \u25B6 Running",
 	error: "Sandbox: \u26A0 Error",
+	checking: "Sandbox: \uD83D\uDD0D Checking",
 };
 
 export class StatusBarManager {

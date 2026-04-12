@@ -13,6 +13,39 @@ describe("DockerManager", () => {
 		});
 	});
 
+	describe("probeStatus rejects when composePath is empty", () => {
+		it("throws when compose path is not configured", async () => {
+			const docker = new DockerManager(() => ({
+				dockerMode: "wsl",
+				composePath: "",
+				wslDistro: "Ubuntu",
+			}));
+			await expect(docker.probeStatus()).rejects.toThrow(
+				"Docker Compose path not configured",
+			);
+		});
+	});
+
+	describe("ensureWslReady", () => {
+		it("is a no-op for local docker mode", async () => {
+			const docker = new DockerManager(() => ({
+				dockerMode: "local",
+				composePath: "/opt/project",
+				wslDistro: "Ubuntu",
+			}));
+			await expect(docker.ensureWslReady()).resolves.toBeUndefined();
+		});
+
+		it("throws on invalid distro name", async () => {
+			const docker = new DockerManager(() => ({
+				dockerMode: "wsl",
+				composePath: "/opt/project",
+				wslDistro: "Bad Name",
+			}));
+			await expect(docker.ensureWslReady()).rejects.toThrow("Invalid WSL distribution name");
+		});
+	});
+
 	describe("parseIsRunning", () => {
 		it("returns true when output contains running state", () => {
 			const output = '{"Name":"pkm-1","State":"running","Status":"Up 2 minutes"}';

@@ -5,6 +5,7 @@ const exec = promisify(execCb);
 
 const VALID_DISTRO_NAME = /^[\w][\w.-]*$/;
 const EXEC_TIMEOUT = 30_000;
+const PROBE_TIMEOUT = 5_000;
 const SERVICE_NAME = "sandbox";
 
 import type { DockerMode } from "./settings";
@@ -100,7 +101,7 @@ export class DockerManager {
 		return this.busy;
 	}
 
-	private async run(dockerCmd: string): Promise<string> {
+	private async run(dockerCmd: string, timeout = EXEC_TIMEOUT): Promise<string> {
 		const {
 			dockerMode,
 			composePath,
@@ -174,7 +175,7 @@ export class DockerManager {
 				? buildWslCommand(composePath, wslDistro, dockerCmd, envVars)
 				: buildLocalCommand(composePath, dockerCmd, envVars);
 		try {
-			const { stdout } = await exec(command, { timeout: EXEC_TIMEOUT, windowsHide: true });
+			const { stdout } = await exec(command, { timeout, windowsHide: true });
 			return stdout.trim();
 		} catch (error: unknown) {
 			const err = error as { stderr?: string; message?: string };
@@ -277,6 +278,47 @@ export class DockerManager {
 
 	async status(): Promise<string> {
 		return this.run("docker compose ps --format json");
+	}
+
+	/** Fast status probe with a short timeout for startup checks and health polls. */
+	async probeStatus(): Promise<string> {
+		return this.run("docker compose ps --format json", PROBE_TIMEOUT);
+	}
+
+	/**
+	 * Ensure WSL is awake before running Docker commands.
+	 * No-op in local mode. In WSL mode, runs a quick `echo ok` to wake
+	 * the distro (or fail fast if WSL/distro is unavailable).
+	 */
+	async ensureWslReady(): Promise<void> {
+		const { dockerMode, wslDistro } = this.getSettings();
+		if (dockerMode !== "wsl") return;
+
+		if (!VALID_DISTRO_NAME.test(wslDistro)) {
+			throw new Error(
+				`Invalid WSL distribution name '${wslDistro}'. Only alphanumeric characters, hyphens, underscores, and dots are allowed.`,
+			);
+		}
+
+		const command = `wsl -d ${wslDistro} -- echo ok`;
+		try {
+			await exec(command, { timeout: PROBE_TIMEOUT, windowsHide: true });
+		} catch (error: unknown) {
+			const err = error as { stderr?: string; message?: string };
+			const combined = (err.stderr || "") + (err.message || "");
+
+			if (combined.includes("is not recognized")) {
+				throw new Error(
+					"WSL is not available. Please ensure WSL is installed and configured.",
+				);
+			}
+			if (combined.includes("No such distribution")) {
+				throw new Error(
+					`WSL distribution '${wslDistro}' not found. Please check your settings.`,
+				);
+			}
+			throw new Error(`WSL is not responding: ${err.stderr || err.message}`);
+		}
 	}
 
 	/**

@@ -42,6 +42,13 @@ describe("StatusBarManager", () => {
 		expect(el.setText).toHaveBeenCalledWith("Sandbox: \u26A0 Error");
 	});
 
+	it("shows checking state", () => {
+		const el = createMockElement();
+		const mgr = new StatusBarManager(el);
+		mgr.setState("checking");
+		expect(el.setText).toHaveBeenCalledWith("Sandbox: \uD83D\uDD0D Checking");
+	});
+
 	it("skips render when state unchanged", () => {
 		const el = createMockElement();
 		const mgr = new StatusBarManager(el);
