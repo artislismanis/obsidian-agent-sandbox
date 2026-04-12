@@ -219,7 +219,12 @@ The plugin's container start/stop model is built on `docker compose up -d`'s nat
 - **Restart** (command) explicitly runs `down` then `up -d`. Use this when you want to discard in-container runtime state (tmpfs files, background processes, interactive `sudo apt-get install`s) — not needed for config changes, which the normal Start handles.
 - **Plugin disable** always runs `down` (detached, fire-and-forget). Disabling the plugin is a deliberate "I'm done" signal regardless of the auto-stop setting.
 - **Auto-stop on exit (off by default)** — with the setting off, the container keeps running between Obsidian sessions. Reopening Obsidian is instant (just an idempotent `up -d`), previously-persisted terminal tabs re-attach to the still-running ttyd, and any background processes (long Claude loops, watch tasks) continue. Turn it on if you'd rather free the container's memory/CPU when you close Obsidian and accept a fresh container on next open.
-- **Shell session persistence across Obsidian disconnects** — the *container* now persists correctly, but the *shell process* inside each terminal tab does not. When you close Obsidian or the terminal tab, ttyd sends SIGHUP to the bash PTY and any interactive process running in it dies with it. A long Claude loop that's running in a terminal when you close Obsidian will be killed. Adding a terminal multiplexer (tmux / dtach / abduco) between ttyd and bash would solve this; it's tracked as a future enhancement.
+- **Shell session persistence across Obsidian disconnects** — regular terminal tabs are ephemeral: close the tab or Obsidian and ttyd kills the bash PTY along with anything running inside it. For long-running work (Claude loops, watch tasks, multi-hour builds), wrap the shell in a named tmux session so it survives the disconnect:
+  ```bash
+  session work            # create or reattach to a named persistent shell
+  claude -p "long task"   # anything inside survives disconnect
+  ```
+  Detach explicitly with `Ctrl-\`, or implicitly by closing the tab or Obsidian. Reattach later with `session work` from any new terminal tab. List active sessions with `sessions`. Multiple clients (e.g. two Obsidian tabs, or Obsidian + a browser on ttyd) can attach to the same session simultaneously with live-synced output. Sessions are ephemeral across container restarts (Restart = clean slate). tmux runs with a minimal no-UI config (mouse off, status off, no prefix key) so the feel is indistinguishable from plain bash.
 
 ### Docker resource naming
 

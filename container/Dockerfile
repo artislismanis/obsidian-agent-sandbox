@@ -35,7 +35,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # sudo + gosu for the narrow apt-get sudoers entry and priv-drop in entrypoint
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git jq ca-certificates gnupg locales \
-    ripgrep fd-find tree nano less \
+    ripgrep fd-find tree nano less tmux \
     iptables ipset iproute2 dnsutils aggregate sudo gosu \
     && ln -sf /usr/bin/fdfind /usr/bin/fd \
     && sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && locale-gen \
@@ -163,6 +163,9 @@ RUN printf '%s\n' \
        'export ATUIN_DB_PATH=/home/claude/.shell-history/atuin/history.db' \
        '[ -f /home/claude/.bash-preexec.sh ] && source /home/claude/.bash-preexec.sh' \
        'command -v atuin >/dev/null && eval "$(atuin init bash)"' \
+       '' \
+       '# Persistent shell sessions via tmux (see ~/.session-helpers.sh)' \
+       '[ -f /home/claude/.session-helpers.sh ] && source /home/claude/.session-helpers.sh' \
        >> /home/claude/.bashrc
 
 # ══════════════════════════════════════════════════════════════
@@ -194,6 +197,10 @@ COPY --chmod=755 scripts/verify.sh /usr/local/bin/verify.sh
 # Terminal entrypoint and session script
 COPY --chown=claude:claude --chmod=755 scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY --chown=claude:claude --chmod=755 scripts/session.sh /usr/local/bin/session.sh
+
+# tmux config + session helpers (opt-in persistent shells)
+COPY --chown=claude:claude --chmod=644 configs/tmux.conf /home/claude/.tmux.conf
+COPY --chown=claude:claude --chmod=644 configs/session-helpers.sh /home/claude/.session-helpers.sh
 
 WORKDIR /workspace
 EXPOSE 7681

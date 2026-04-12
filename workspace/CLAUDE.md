@@ -70,6 +70,26 @@ If you need a system package:
 2. If it's a one-off experiment, the human can run `sudo apt-get install <pkg>` in an interactive ttyd session with the password from their plugin settings.
 3. If it proves useful, the human promotes it to `container/Dockerfile` in a reviewable PR.
 
+## Long-running tasks — persistent shells
+
+ttyd SIGHUPs the PTY on WebSocket close, so anything running in a regular terminal dies when the user closes Obsidian or the tab. If you're about to run something that may outlive an Obsidian session (a long loop, watch mode, a multi-minute build, a research task), wrap it in a persistent shell:
+
+```bash
+# Type this as the first command in the tab, then run Claude /
+# whatever inside. The bash you're sitting in is a child of a tmux
+# session that survives WebSocket drops.
+session work       # or any name: research, tests, loop, ...
+
+# Then inside the persistent shell:
+claude -p "long task here"
+```
+
+List what's alive with `sessions`. Reattach with `session <name>` again (idempotent). Detach explicitly with `Ctrl-\`, or implicitly by closing the tab or Obsidian.
+
+Multiple clients can attach to the same named session simultaneously and see live-synced output — useful if the user wants to watch a running task from both Obsidian and a browser pointed at ttyd.
+
+Sessions are ephemeral across container restarts. If the user asks to persist something across container rebuilds, let them know that's a "clean slate" operation by design.
+
 ## Git operations
 
 You **cannot run git** from inside the container. The monorepo `.git` lives above the mount boundary and is not visible here. All commits to `workspace/` happen on the host.

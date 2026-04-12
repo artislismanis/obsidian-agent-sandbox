@@ -248,6 +248,20 @@ The plugin runs `docker compose up -d` on Start (idempotent: reuses the running 
 - [ ] `docker compose ps` on the host shows the container is stopped.
 - [ ] Re-enable the plugin; if Auto-start is off, the container stays stopped.
 
+**Persistent shell sessions**:
+
+- [ ] `tmux -V` inside the container prints a version.
+- [ ] `type session` inside an interactive login shell reports it as a function.
+- [ ] `session work` enters a fresh bash prompt (inside tmux session `work`). No visible status line, no prefix-key weirdness.
+- [ ] Inside, run `echo pre-disconnect` then `(sleep 600 && echo done) &`. Note the PID.
+- [ ] Close the Obsidian tab. On the host: `docker compose exec sandbox pgrep -a sleep` shows the PID still alive.
+- [ ] Reopen a terminal, run `sessions` — shows `work: ...`. Run `session work` — reattaches. `jobs` shows the background sleep.
+- [ ] `atuin history list | head` — the `echo pre-disconnect` entry is recorded (tmux is transparent to atuin's preexec hooks).
+- [ ] Multi-client sync: open a SECOND Obsidian terminal tab, run `session work`. Both tabs show the same session; a keystroke in either shows up in both. Close one tab; the other remains connected.
+- [ ] Nesting-awareness: while inside `session work`, run `session other`. You should be swapped to `other` via `switch-client` with no "sessions should be nested" error. `session work` from inside `other` swaps back.
+- [ ] Press `Ctrl-\` to detach. You're back at the outer bash.
+- [ ] `docker compose restart sandbox` — sessions are wiped. `sessions` shows `(no sessions)`.
+
 ## 13. Network Firewall (optional)
 
 ```bash
