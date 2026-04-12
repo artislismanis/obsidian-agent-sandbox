@@ -459,11 +459,12 @@ export default class AgentSandboxPlugin extends Plugin {
 			}
 
 			this.startHealthPoll();
-		} catch {
+		} catch (error: unknown) {
 			this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
 			this.statusBar.setState("error");
-			this.statusBar.setDetails("Docker unavailable\nClick for options");
-			new Notice("Sandbox: Docker is not reachable. Start Docker and use Check Status.");
+			const msg = toErrorMessage(error);
+			this.statusBar.setDetails(`Docker error: ${msg}\nClick for options`);
+			new Notice(`Sandbox: ${msg}`);
 		}
 	}
 
@@ -489,9 +490,10 @@ export default class AgentSandboxPlugin extends Plugin {
 			const output = await this.docker.probeStatus();
 			const isRunning = DockerManager.parseIsRunning(output);
 			await this.syncStatusBar(isRunning);
-		} catch {
+		} catch (error: unknown) {
 			this.statusBar.setState("error");
-			this.statusBar.setDetails("Docker unreachable\nClick for options");
+			const msg = toErrorMessage(error);
+			this.statusBar.setDetails(`Docker error: ${msg}\nClick for options`);
 			this.stopHealthPoll();
 		}
 	}
