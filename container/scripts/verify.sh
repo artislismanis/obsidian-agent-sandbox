@@ -88,6 +88,20 @@ print_mount "/workspace/vault/${PKM_WRITE_DIR:-agent-workspace}" "Vault writable
 print_mount "/home/claude/.claude"                              "Claude Code config (named volume)"
 print_mount "/home/claude/.shell-history"                       "Shell history (named volume)"
 
+# Quick write test on the vault write directory — catches UID mismatches
+# or missing rw overlay mounts that findmnt alone won't reveal.
+WRITE_DIR="/workspace/vault/${PKM_WRITE_DIR:-agent-workspace}"
+if [ -d "$WRITE_DIR" ]; then
+  PROBE="$WRITE_DIR/.oas-write-probe"
+  if touch "$PROBE" 2>/dev/null && rm -f "$PROBE"; then
+    printf "  %-48s %s\n" "$WRITE_DIR" "[write OK]"
+  else
+    printf "  %-48s %s\n" "$WRITE_DIR" "[WRITE FAILED — check UID or mount flags]"
+  fi
+else
+  printf "  %-48s %s\n" "$WRITE_DIR" "[MISSING — dir does not exist]"
+fi
+
 echo ""
 echo "── Container env ──────────────────────────────────"
 # Only env vars that docker-compose.yml actually injects into the
@@ -98,7 +112,7 @@ echo "── Container env ─────────────────�
 # bindings — they're not exposed inside the container. Resource limits
 # are surfaced in the next section from cgroup; mount-source paths are
 # visible above in Mount points.
-for var in TERM TTYD_PORT ALLOWED_PRIVATE_HOSTS MEMORY_FILE_PATH; do
+for var in TERM TTYD_PORT PKM_WRITE_DIR ALLOWED_PRIVATE_HOSTS MEMORY_FILE_PATH; do
   printf "  %-24s = %s\n" "$var" "${!var:-<unset>}"
 done
 

@@ -32,6 +32,7 @@ services:
     environment:
       - TERM=xterm-256color
       - ALLOWED_PRIVATE_HOSTS=${ALLOWED_PRIVATE_HOSTS:-}
+      - PKM_WRITE_DIR=${PKM_WRITE_DIR:-agent-workspace}
       - MEMORY_FILE_PATH=/workspace/vault/${PKM_WRITE_DIR:-agent-workspace}/${MEMORY_FILE_NAME:-memory.json}
       - SUDO_PASSWORD=${SUDO_PASSWORD:-}
       - TTYD_PORT=${TTYD_PORT:-7681}

@@ -14,7 +14,7 @@ This is Claude's configurable workspace inside the Agent Sandbox container. Ever
 | `.mcp.json` | MCP server configuration (memory, etc.) |
 | `CLAUDE.md` | This file — workspace rules |
 | `vault/` | Obsidian vault overlay (read-only, see below) |
-| `vault/<writeDir>/` | Writable vault subfolder (default `vault/agent-workspace/`) |
+| `vault/$PKM_WRITE_DIR/` | Writable vault subfolder (see `$PKM_WRITE_DIR` env var, default `agent-workspace`) |
 
 ## Extensibility tiers — inline reference
 
@@ -33,11 +33,11 @@ Three places configuration and capabilities can live. Put new things in the righ
 
 ## Vault write rules
 
-The vault at `/workspace/vault/` is **read-only** at the filesystem level. The only writable path inside the vault is the configured write directory (default `/workspace/vault/agent-workspace/`).
+The vault at `/workspace/vault/` is **read-only** at the filesystem level. The only writable path inside the vault is `/workspace/vault/$PKM_WRITE_DIR/` (the `PKM_WRITE_DIR` env var is set by the plugin; run `echo $PKM_WRITE_DIR` or `verify.sh` to see the current value).
 
 - Read vault files freely from anywhere under `vault/`
 - Writes to `vault/` outside the write directory will fail with "Read-only file system" — this is by design
-- Create/edit/delete files only inside `vault/<writeDir>/`
+- Create/edit/delete files only inside `vault/$PKM_WRITE_DIR/`
 - Never delete vault files without explicit user confirmation
 - Prefer non-destructive operations: create new files or append rather than overwriting
 - For bulk operations, describe scope and show a sample (3-5 files) before executing
