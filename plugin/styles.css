@@ -327,12 +327,6 @@
 	cursor: pointer;
 }
 
-/* ── Ribbon icon disabled state ────────────────────── */
-
-.sandbox-ribbon-disabled {
-	opacity: 0.35;
-}
-
 /* ── Settings input validation ─────────────────────── */
 
 .sandbox-input-error {
