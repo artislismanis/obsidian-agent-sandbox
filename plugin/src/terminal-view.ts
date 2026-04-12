@@ -53,7 +53,7 @@ export class TerminalView extends ItemView {
 
 	async onOpen(): Promise<void> {
 		this.generation++;
-		await this.connect();
+		void this.connect();
 	}
 
 	async onClose(): Promise<void> {
