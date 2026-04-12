@@ -358,6 +358,28 @@ export class DockerManager {
 		}
 	}
 
+	async listSessions(): Promise<string[]> {
+		try {
+			const output = await this.run(
+				`docker compose exec ${SERVICE_NAME} tmux list-sessions -F "#{session_name}"`,
+				PROBE_TIMEOUT,
+			);
+			return output
+				.split("\n")
+				.map((s) => s.trim())
+				.filter(Boolean);
+		} catch {
+			return [];
+		}
+	}
+
+	async renameSession(oldName: string, newName: string): Promise<void> {
+		await this.run(
+			`docker compose exec ${SERVICE_NAME} tmux rename-session -t "${oldName}" "${newName}"`,
+			PROBE_TIMEOUT,
+		);
+	}
+
 	static parseIsRunning(statusOutput: string): boolean {
 		return statusOutput.length > 0 && statusOutput.includes('"running"');
 	}

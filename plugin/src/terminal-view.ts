@@ -1,4 +1,4 @@
-import type { WorkspaceLeaf } from "obsidian";
+import type { Menu, ViewStateResult, WorkspaceLeaf } from "obsidian";
 import { ItemView } from "obsidian";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -26,12 +26,15 @@ export class TerminalView extends ItemView {
 	private instanceId: number;
 	private generation = 0;
 	private connecting = false;
+	private sessionName: string | null = null;
 	private term: Terminal | null = null;
 	private fitAddon: FitAddon | null = null;
 	private ws: WebSocket | null = null;
 	private resizeObserver: ResizeObserver | null = null;
 	private resizeRafId: number | null = null;
 	private termDisposables: { dispose(): void }[] = [];
+
+	onRenameSession: (() => void) | null = null;
 
 	constructor(leaf: WorkspaceLeaf, getSettings: () => TerminalSettings) {
 		super(leaf);
@@ -44,11 +47,48 @@ export class TerminalView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return `Sandbox Terminal ${this.instanceId}`;
+		return this.sessionName
+			? `Session: ${this.sessionName}`
+			: `Sandbox Terminal ${this.instanceId}`;
 	}
 
 	getIcon(): string {
 		return "terminal";
+	}
+
+	getState(): Record<string, unknown> {
+		return { sessionName: this.sessionName };
+	}
+
+	async setState(state: unknown, result: ViewStateResult): Promise<void> {
+		if (state && typeof state === "object" && "sessionName" in state) {
+			const name = (state as { sessionName?: string }).sessionName;
+			this.sessionName = typeof name === "string" ? name : null;
+		}
+		await super.setState(state, result);
+	}
+
+	onPaneMenu(menu: Menu, source: string): void {
+		super.onPaneMenu(menu, source);
+		if (source === "tab-header" && this.sessionName) {
+			menu.addSeparator();
+			menu.addItem((item) =>
+				item
+					.setTitle("Rename Session")
+					.setIcon("pencil")
+					.onClick(() => {
+						this.onRenameSession?.();
+					}),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Detach Session")
+					.setIcon("log-out")
+					.onClick(() => {
+						this.leaf.detach();
+					}),
+			);
+		}
 	}
 
 	async onOpen(): Promise<void> {
@@ -259,6 +299,20 @@ export class TerminalView extends ItemView {
 			});
 			ws.send(textEncoder.encode(msg));
 			term.focus();
+
+			// Inject `session <name>` command to attach to a tmux session.
+			// The 300ms delay gives bash time to render the prompt.
+			if (this.sessionName) {
+				const cmd = `session ${this.sessionName}\n`;
+				setTimeout(() => {
+					if (ws.readyState === WebSocket.OPEN && gen === this.generation) {
+						const payload = new Uint8Array(cmd.length + 1);
+						payload[0] = CMD_INPUT.charCodeAt(0);
+						textEncoder.encodeInto(cmd, payload.subarray(1));
+						ws.send(payload.subarray(0, cmd.length + 1));
+					}
+				}, 300);
+			}
 		};
 
 		ws.onmessage = (event) => {

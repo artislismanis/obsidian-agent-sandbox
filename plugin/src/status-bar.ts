@@ -25,6 +25,10 @@ export class StatusBarManager {
 		this.render();
 	}
 
+	getState(): ContainerState {
+		return this.state;
+	}
+
 	setDetails(details: string): void {
 		this.el.setAttribute("aria-label", details);
 	}
