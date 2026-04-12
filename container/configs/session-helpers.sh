@@ -17,12 +17,16 @@
 #                         inside a tmux session.
 #   sessions              List active persistent sessions.
 
+_list_sessions() {
+    local out
+    out=$(tmux list-sessions 2>/dev/null) && echo "$out" | sed 's/^/  - /' || echo "  (none)"
+}
+
 session() {
     if [ -z "$1" ]; then
         echo "usage: session <session-name>" >&2
         echo "active sessions:" >&2
-        local out
-        out=$(tmux list-sessions 2>/dev/null) && echo "$out" | sed 's/^/  - /' >&2 || echo "  (none)" >&2
+        _list_sessions >&2
         return 1
     fi
     # Ensure the target session exists (no-op if already there).
@@ -39,6 +43,5 @@ session() {
 }
 
 sessions() {
-    local out
-    out=$(tmux list-sessions 2>/dev/null) && echo "$out" | sed 's/^/  - /' || echo "  (none)"
+    _list_sessions
 }

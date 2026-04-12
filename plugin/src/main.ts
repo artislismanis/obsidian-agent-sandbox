@@ -140,9 +140,6 @@ export default class AgentSandboxPlugin extends Plugin {
 				}
 			}),
 		);
-
-		// Auto-start (if enabled) is handled inside backgroundStartup()
-		// after the fast probe confirms Docker is reachable.
 	}
 
 	onunload() {
