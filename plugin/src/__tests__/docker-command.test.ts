@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildWslCommand, buildLocalCommand, windowsToWslPath } from "../docker";
+import {
+	buildWslCommand,
+	buildLocalCommand,
+	buildLocalWindowsCommand,
+	windowsToWslPath,
+} from "../docker";
 
 describe("buildWslCommand", () => {
 	it("builds a basic command", () => {
@@ -147,6 +152,70 @@ describe("buildLocalCommand", () => {
 			MY_VAR: 'value with "quotes"',
 		});
 		expect(cmd).toContain('\\"quotes\\"');
+	});
+});
+
+describe("buildLocalWindowsCommand", () => {
+	it("builds a basic command using cd /d for Windows paths", () => {
+		const cmd = buildLocalWindowsCommand(
+			"Z:\\GitHubRepos\\obsidian-agent-sandbox\\container",
+			"docker compose up -d",
+		);
+		expect(cmd).toBe(
+			'cd /d "Z:\\GitHubRepos\\obsidian-agent-sandbox\\container" && docker compose up -d',
+		);
+	});
+
+	it("does not use bash wrapper", () => {
+		const cmd = buildLocalWindowsCommand("C:\\project", "docker compose up -d");
+		expect(cmd).not.toContain("bash");
+		expect(cmd).not.toContain("export");
+	});
+
+	it("includes env vars using set command", () => {
+		const cmd = buildLocalWindowsCommand("C:\\project", "docker compose up -d", {
+			PKM_VAULT_PATH: "C:\\Users\\foo\\vault",
+		});
+		expect(cmd).toContain('set "PKM_VAULT_PATH=C:\\Users\\foo\\vault"');
+		expect(cmd).toContain("&& cd /d");
+	});
+
+	it("handles multiple env vars", () => {
+		const cmd = buildLocalWindowsCommand("C:\\project", "docker compose up -d", {
+			PKM_VAULT_PATH: "C:\\Users\\foo\\vault",
+			PKM_WRITE_DIR: "agent-workspace",
+			TTYD_PORT: "7681",
+		});
+		expect(cmd).toContain('set "PKM_VAULT_PATH=C:\\Users\\foo\\vault"');
+		expect(cmd).toContain('set "PKM_WRITE_DIR=agent-workspace"');
+		expect(cmd).toContain('set "TTYD_PORT=7681"');
+		expect(cmd).toContain(" && cd /d ");
+	});
+
+	it("omits env prefix when no env vars provided", () => {
+		const cmd = buildLocalWindowsCommand("C:\\project", "docker compose up -d", {});
+		expect(cmd).not.toContain("set");
+		expect(cmd).toBe('cd /d "C:\\project" && docker compose up -d');
+	});
+
+	it("handles paths with spaces", () => {
+		const cmd = buildLocalWindowsCommand(
+			"C:\\Users\\My User\\My Project",
+			"docker compose up -d",
+		);
+		expect(cmd).toContain('cd /d "C:\\Users\\My User\\My Project"');
+	});
+
+	it("escapes double quotes in path", () => {
+		const cmd = buildLocalWindowsCommand('C:\\a "quoted" path', "docker compose up -d");
+		expect(cmd).toContain('cd /d "C:\\a ""quoted"" path"');
+	});
+
+	it("escapes double quotes in env var values", () => {
+		const cmd = buildLocalWindowsCommand("C:\\project", "docker compose up -d", {
+			MY_VAR: 'value with "quotes"',
+		});
+		expect(cmd).toContain('set "MY_VAR=value with ""quotes"""');
 	});
 });
 

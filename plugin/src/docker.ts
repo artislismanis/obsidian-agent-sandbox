@@ -89,6 +89,28 @@ export function buildLocalCommand(
 	return `bash -c "${cmdSafe}"`;
 }
 
+/**
+ * Builds a command string for Windows cmd.exe when using Local Docker mode.
+ * Uses `set` for env vars and `cd /d` for Windows drive paths.
+ * No explicit shell wrapper — exec() uses cmd.exe on Windows by default.
+ */
+export function buildLocalWindowsCommand(
+	composePath: string,
+	dockerCmd: string,
+	envVars: Record<string, string> = {},
+): string {
+	const escapedPath = composePath.replace(/"/g, '""');
+
+	const envParts = Object.entries(envVars).map(([key, value]) => {
+		const escapedValue = value.replace(/"/g, '""');
+		return `set "${key}=${escapedValue}"`;
+	});
+
+	const envPart = envParts.length > 0 ? envParts.join(" && ") + " && " : "";
+
+	return `${envPart}cd /d "${escapedPath}" && ${dockerCmd}`;
+}
+
 export class DockerManager {
 	private getSettings: () => DockerManagerSettings;
 	private busy = false;
@@ -173,7 +195,9 @@ export class DockerManager {
 		const command =
 			dockerMode === "wsl"
 				? buildWslCommand(composePath, wslDistro, dockerCmd, envVars)
-				: buildLocalCommand(composePath, dockerCmd, envVars);
+				: process.platform === "win32"
+					? buildLocalWindowsCommand(composePath, dockerCmd, envVars)
+					: buildLocalCommand(composePath, dockerCmd, envVars);
 		try {
 			const { stdout } = await exec(command, { timeout, windowsHide: true });
 			return stdout.trim();
