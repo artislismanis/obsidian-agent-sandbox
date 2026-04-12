@@ -340,14 +340,14 @@ export default class AgentSandboxPlugin extends Plugin {
 			item
 				.setTitle("Stop Container")
 				.setIcon("square")
-				.setDisabled(busy)
+				.setDisabled(busy || !running)
 				.onClick(() => this.stopContainer()),
 		);
 		menu.addItem((item) =>
 			item
 				.setTitle("Restart Container")
 				.setIcon("refresh-cw")
-				.setDisabled(busy)
+				.setDisabled(busy || !running)
 				.onClick(() => this.restartContainer()),
 		);
 		menu.addSeparator();
