@@ -278,6 +278,11 @@ export class TerminalView extends ItemView {
 		);
 
 		term.attachCustomKeyEventHandler((event) => {
+			// Prevent Escape from bubbling to Obsidian's navigation handler
+			if (event.key === "Escape") {
+				event.stopPropagation();
+				return true;
+			}
 			if (event.ctrlKey && event.shiftKey && event.key === "V" && event.type === "keydown") {
 				navigator.clipboard.readText().then(
 					(text) => term.paste(text),
