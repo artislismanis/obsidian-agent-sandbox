@@ -25,7 +25,6 @@ main.ts (Plugin entry, commands, lifecycle, context menu, firewall toggle)
 ├── status-bar.ts      — StatusBarManager + FirewallStatusBar: state display
 ├── terminal-view.ts   — TerminalView: xterm.js + WebSocket to ttyd
 ├── ttyd-client.ts     — Pure functions: polling, auth token, URL building
-├── workspace-readme.ts — README content for vault workspace folder
 └── validation.ts      — Shared input validators (used by settings.ts and docker.ts)
 ```
 

@@ -6,7 +6,6 @@ import type { ContainerState } from "./status-bar";
 import { FirewallStatusBar, StatusBarManager } from "./status-bar";
 import { TerminalView, VIEW_TYPE_TERMINAL } from "./terminal-view";
 import { isValidWriteDir } from "./validation";
-import { WORKSPACE_README } from "./workspace-readme";
 
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -546,14 +545,6 @@ export default class AgentSandboxPlugin extends Plugin {
 			}
 		} catch {
 			/* folder may already exist from concurrent start */
-		}
-		try {
-			const readmePath = `${dir}/README.md`;
-			if (!(await this.app.vault.adapter.exists(readmePath))) {
-				await this.app.vault.adapter.write(readmePath, WORKSPACE_README);
-			}
-		} catch {
-			/* README may already exist */
 		}
 	}
 
