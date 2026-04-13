@@ -40,21 +40,6 @@ export class TerminalView extends ItemView {
 		super(leaf);
 		this.getSettings = getSettings;
 		this.instanceId = nextInstanceId++;
-
-		// Register a scope so Obsidian routes key events to us when focused.
-		// Returning false prevents Obsidian's "navigate back" on Escape.
-		// Since the scope blocks the DOM event from reaching xterm.js,
-		// we manually send the Escape character over the WebSocket.
-		this.scope = new Scope(this.app.scope);
-		this.scope.register([], "Escape", () => {
-			if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-				const payload = new Uint8Array(2);
-				payload[0] = CMD_INPUT.charCodeAt(0);
-				payload[1] = 0x1b; // ESC
-				this.ws.send(payload);
-			}
-			return false;
-		});
 	}
 
 	getViewType(): string {
@@ -108,6 +93,23 @@ export class TerminalView extends ItemView {
 
 	async onOpen(): Promise<void> {
 		this.generation++;
+
+		// Obsidian's Scope system intercepts Escape for "navigate back" before
+		// the DOM event reaches xterm.js. Register a Scope handler that blocks
+		// Obsidian's navigation and manually sends the ESC byte (0x1b) over the
+		// WebSocket. This is equivalent to what xterm.js does internally — it
+		// translates Escape into the same 0x1b byte via onData → WebSocket.
+		this.scope = new Scope(this.app.scope);
+		this.scope.register([], "Escape", () => {
+			if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+				const payload = new Uint8Array(2);
+				payload[0] = CMD_INPUT.charCodeAt(0);
+				payload[1] = 0x1b;
+				this.ws.send(payload);
+			}
+			return false;
+		});
+
 		void this.connect();
 	}
 
