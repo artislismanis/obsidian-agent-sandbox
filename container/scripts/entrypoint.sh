@@ -30,8 +30,18 @@ ensure_ownership() {
         local current_uid
         current_uid=$(stat -c '%u' "$dir" 2>/dev/null || echo "")
         if [[ -n "$current_uid" && "$current_uid" != "$claude_uid" ]]; then
-            echo "entrypoint: chowning $dir (was uid $current_uid, claude is $claude_uid)"
-            chown -R "${claude_uid}:${claude_gid}" "$dir"
+            echo "entrypoint: fixing ownership on $dir (uid $current_uid → $claude_uid)"
+            # Try chown first (works on native Linux and named volumes)
+            chown -R "${claude_uid}:${claude_gid}" "$dir" 2>/dev/null || true
+            # Verify it worked — on 9p/drvfs mounts (Windows), chown may
+            # succeed silently without effect. Fall back to chmod so the
+            # claude user can write regardless of ownership.
+            local new_uid
+            new_uid=$(stat -c '%u' "$dir" 2>/dev/null || echo "")
+            if [[ "$new_uid" != "$claude_uid" ]]; then
+                echo "entrypoint: chown ineffective on $dir (9p/drvfs mount?), using chmod"
+                chmod -R a+rwX "$dir" 2>/dev/null || true
+            fi
         fi
     fi
 }
