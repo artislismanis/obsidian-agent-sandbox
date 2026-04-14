@@ -55,6 +55,12 @@ ALLOWED_DOMAINS=(
   security.ubuntu.com
   ports.ubuntu.com
   keyserver.ubuntu.com
+
+  # Atlassian — MCP server and Jira/Confluence API access
+  mcp.atlassian.com
+  auth.atlassian.com
+  api.atlassian.com
+  id.atlassian.com
 )
 
 # Build a temporary ipset, then atomically swap to avoid races
