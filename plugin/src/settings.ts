@@ -23,6 +23,14 @@ export interface AgentSandboxSettings {
 	containerCpus: string;
 	autoEnableFirewall: boolean;
 	sudoPassword: string;
+	mcpEnabled: boolean;
+	mcpPort: number;
+	mcpToken: string;
+	mcpTierRead: boolean;
+	mcpTierWriteScoped: boolean;
+	mcpTierWriteVault: boolean;
+	mcpTierNavigate: boolean;
+	mcpTierManage: boolean;
 }
 
 export type TerminalSettings = Pick<
@@ -47,9 +55,17 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	containerCpus: "4",
 	autoEnableFirewall: false,
 	sudoPassword: "",
+	mcpEnabled: true,
+	mcpPort: 28080,
+	mcpToken: "",
+	mcpTierRead: true,
+	mcpTierWriteScoped: true,
+	mcpTierWriteVault: false,
+	mcpTierNavigate: false,
+	mcpTierManage: false,
 };
 
-type TabId = "general" | "terminal" | "advanced";
+type TabId = "general" | "terminal" | "advanced" | "mcp";
 
 export class AgentSandboxSettingTab extends PluginSettingTab {
 	plugin: AgentSandboxPlugin;
@@ -85,6 +101,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			case "advanced":
 				this.renderAdvanced(contentEl);
 				break;
+			case "mcp":
+				this.renderMcp(contentEl);
+				break;
 		}
 	}
 
@@ -94,6 +113,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			{ id: "general", label: "General" },
 			{ id: "terminal", label: "Terminal" },
 			{ id: "advanced", label: "Advanced" },
+			{ id: "mcp", label: "MCP" },
 		];
 		for (const tab of tabs) {
 			const btn = tabBar.createEl("button", {
@@ -294,6 +314,125 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						this.plugin.settings.terminalFont = value;
 						this.plugin.saveSettings();
 					}),
+			);
+	}
+
+	private renderMcp(el: HTMLElement): void {
+		new Setting(el).setName("Server").setHeading();
+
+		new Setting(el)
+			.setName("Enable MCP server")
+			.setDesc(
+				"Run an MCP server that exposes vault tools to Claude Code inside the container. " +
+					"The server starts automatically with the plugin when enabled.",
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.mcpEnabled).onChange(async (value) => {
+					this.plugin.settings.mcpEnabled = value;
+					this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(el)
+			.setName("MCP port")
+			.setDesc("Port for the MCP Streamable HTTP endpoint.")
+			.addText((text) => {
+				text.setPlaceholder("28080")
+					.setValue(String(this.plugin.settings.mcpPort))
+					.onChange(async (value) => {
+						const port = parseInt(value, 10);
+						if (!isNaN(port) && port > 0 && port <= 65535) {
+							this.plugin.settings.mcpPort = port;
+							this.plugin.saveSettings();
+							text.inputEl.removeClass("sandbox-input-error");
+						} else {
+							text.inputEl.addClass("sandbox-input-error");
+						}
+					});
+			});
+
+		new Setting(el)
+			.setName("Auth token")
+			.setDesc(
+				"Bearer token for MCP authentication. Auto-generated and passed to the container.",
+			)
+			.addText((text) => {
+				text.setValue(this.plugin.settings.mcpToken).setDisabled(true);
+				text.inputEl.style.fontFamily = "monospace";
+				text.inputEl.style.fontSize = "11px";
+			})
+			.addButton((btn) =>
+				btn.setButtonText("Regenerate").onClick(async () => {
+					const { generateToken } = await import("./mcp-server");
+					this.plugin.settings.mcpToken = generateToken();
+					this.plugin.saveSettings();
+					this.display();
+				}),
+			);
+
+		new Setting(el).setName("Permissions").setHeading();
+
+		const desc = el.createDiv({ cls: "setting-item-description" });
+		desc.style.marginBottom = "12px";
+		desc.setText("Control which vault capabilities Claude can access through MCP tools.");
+
+		new Setting(el)
+			.setName("Read")
+			.setDesc("Search, read files, query metadata, tags, links, backlinks, frontmatter.")
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.mcpTierRead).onChange(async (value) => {
+					this.plugin.settings.mcpTierRead = value;
+					this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(el)
+			.setName("Write (scoped)")
+			.setDesc(
+				"Create and modify files within the vault write directory only (" +
+					(this.plugin.settings.vaultWriteDir || "agent-workspace") +
+					"/).",
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.mcpTierWriteScoped).onChange(async (value) => {
+					this.plugin.settings.mcpTierWriteScoped = value;
+					this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(el)
+			.setName("Write (vault-wide)")
+			.setDesc(
+				"Create and modify files anywhere in the vault. Allows Claude to modify any file.",
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.mcpTierWriteVault).onChange(async (value) => {
+					this.plugin.settings.mcpTierWriteVault = value;
+					this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(el)
+			.setName("Navigate")
+			.setDesc("Open files and affect what you see in the Obsidian editor.")
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.mcpTierNavigate).onChange(async (value) => {
+					this.plugin.settings.mcpTierNavigate = value;
+					this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(el)
+			.setName("Manage")
+			.setDesc(
+				"Rename, move, and delete files with automatic link updates. " +
+					"Allows structural changes to your vault.",
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.mcpTierManage).onChange(async (value) => {
+					this.plugin.settings.mcpTierManage = value;
+					this.plugin.saveSettings();
+				}),
 			);
 	}
 
