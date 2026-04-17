@@ -1,4 +1,5 @@
 import type { App, TFile, CachedMetadata } from "obsidian";
+import { prepareSimpleSearch } from "obsidian";
 import { z } from "zod/v4";
 
 export type PermissionTier = "read" | "writeScoped" | "writeVault" | "navigate" | "manage";
@@ -134,7 +135,6 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 		handler: async (args) => {
 			const query = args.query as string;
 			const limit = (args.limit as number | undefined) ?? 20;
-			const { prepareSimpleSearch } = await import("obsidian");
 			const search = prepareSimpleSearch(query);
 			const results: string[] = [];
 			for (const file of app.vault.getMarkdownFiles()) {
@@ -334,205 +334,141 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 		},
 	});
 
-	// ── Write Scoped tier ────────────────────────────
+	// ── Write tools (scoped + vault-wide via factory) ────
 
-	tools.push({
-		name: "vault_create",
-		tier: "writeScoped",
-		config: {
-			title: "Create file",
-			description: "Create a new file within the vault write directory.",
-			inputSchema: {
-				path: z.string().describe("Path from vault root (must be within write directory)"),
-				content: z.string().optional().describe("Initial content (default empty)"),
+	function addWriteTools(
+		tier: PermissionTier,
+		suffix: string,
+		scopeLabel: string,
+		guardPath: (path: string) => McpToolResult | null,
+		resolveForWrite: (args: Record<string, unknown>) => TFile | McpToolResult,
+	): void {
+		tools.push({
+			name: `vault_create${suffix}`,
+			tier,
+			config: {
+				title: `Create file${scopeLabel}`,
+				description: `Create a new file${scopeLabel}.`,
+				inputSchema: {
+					path: z.string().describe("Path from vault root"),
+					content: z.string().optional().describe("Initial content (default empty)"),
+				},
 			},
-		},
-		handler: async (args) => {
-			const path = args.path as string;
-			const writeDir = getWriteDir();
-			if (!isWithinWriteDir(path, writeDir))
-				return error(`Path must be within the write directory '${writeDir}'.`);
-			const existing = app.vault.getFileByPath(path);
-			if (existing) return error("File already exists. Use vault_modify to update it.");
-			const content = (args.content as string | undefined) ?? "";
-			await app.vault.create(path, content);
-			return text(`Created ${path}`);
-		},
-	});
+			handler: async (args) => {
+				const path = args.path as string;
+				const guard = guardPath(path);
+				if (guard) return guard;
+				if (app.vault.getFileByPath(path))
+					return error("File already exists. Use vault_modify to update it.");
+				await app.vault.create(path, (args.content as string | undefined) ?? "");
+				return text(`Created ${path}`);
+			},
+		});
 
-	tools.push({
-		name: "vault_modify",
-		tier: "writeScoped",
-		config: {
-			title: "Modify file",
-			description: "Replace the full contents of a file within the write directory.",
-			inputSchema: {
-				path: z.string().describe("Path from vault root (must be within write directory)"),
-				content: z.string().describe("New file content"),
+		tools.push({
+			name: `vault_modify${suffix}`,
+			tier,
+			config: {
+				title: `Modify file${scopeLabel}`,
+				description: `Replace the full contents of a file${scopeLabel}.`,
+				inputSchema: {
+					file: z.string().optional().describe("File name"),
+					path: z.string().optional().describe("Exact path from vault root"),
+					content: z.string().describe("New file content"),
+				},
 			},
-		},
-		handler: async (args) => {
-			const path = args.path as string;
-			const writeDir = getWriteDir();
-			if (!isWithinWriteDir(path, writeDir))
-				return error(`Path must be within the write directory '${writeDir}'.`);
-			const f = app.vault.getFileByPath(path);
-			if (!f) return error("File not found.");
-			await app.vault.modify(f, args.content as string);
-			return text(`Modified ${path}`);
-		},
-	});
+			handler: async (args) => {
+				const result = resolveForWrite(args);
+				if ("isError" in result) return result as McpToolResult;
+				const f = result as TFile;
+				await app.vault.modify(f, args.content as string);
+				return text(`Modified ${f.path}`);
+			},
+		});
 
-	tools.push({
-		name: "vault_append",
-		tier: "writeScoped",
-		config: {
-			title: "Append to file",
-			description: "Append content to the end of a file within the write directory.",
-			inputSchema: {
-				path: z.string().describe("Path from vault root (must be within write directory)"),
-				content: z.string().describe("Content to append"),
+		tools.push({
+			name: `vault_append${suffix}`,
+			tier,
+			config: {
+				title: `Append to file${scopeLabel}`,
+				description: `Append content to the end of a file${scopeLabel}.`,
+				inputSchema: {
+					file: z.string().optional().describe("File name"),
+					path: z.string().optional().describe("Exact path from vault root"),
+					content: z.string().describe("Content to append"),
+				},
 			},
-		},
-		handler: async (args) => {
-			const path = args.path as string;
-			const writeDir = getWriteDir();
-			if (!isWithinWriteDir(path, writeDir))
-				return error(`Path must be within the write directory '${writeDir}'.`);
-			const f = app.vault.getFileByPath(path);
-			if (!f) return error("File not found.");
-			await app.vault.append(f, "\n" + (args.content as string));
-			return text(`Appended to ${path}`);
-		},
-	});
+			handler: async (args) => {
+				const result = resolveForWrite(args);
+				if ("isError" in result) return result as McpToolResult;
+				const f = result as TFile;
+				await app.vault.append(f, "\n" + (args.content as string));
+				return text(`Appended to ${f.path}`);
+			},
+		});
 
-	tools.push({
-		name: "vault_frontmatter_set",
-		tier: "writeScoped",
-		config: {
-			title: "Set frontmatter property",
-			description: "Set a YAML frontmatter property on a file within the write directory.",
-			inputSchema: {
-				path: z.string().describe("Path from vault root (must be within write directory)"),
-				property: z.string().describe("Property name"),
-				value: z.string().describe("Property value (JSON-encoded for objects/arrays)"),
+		tools.push({
+			name: `vault_frontmatter_set${suffix}`,
+			tier,
+			config: {
+				title: `Set frontmatter${scopeLabel}`,
+				description: `Set a YAML frontmatter property on a file${scopeLabel}.`,
+				inputSchema: {
+					file: z.string().optional().describe("File name"),
+					path: z.string().optional().describe("Exact path from vault root"),
+					property: z.string().describe("Property name"),
+					value: z.string().describe("Property value (JSON-encoded for objects/arrays)"),
+				},
 			},
-		},
-		handler: async (args) => {
-			const path = args.path as string;
+			handler: async (args) => {
+				const result = resolveForWrite(args);
+				if ("isError" in result) return result as McpToolResult;
+				const f = result as TFile;
+				const prop = args.property as string;
+				const raw = args.value as string;
+				let value: unknown;
+				try {
+					value = JSON.parse(raw);
+				} catch {
+					value = raw;
+				}
+				await app.fileManager.processFrontMatter(f, (fm) => {
+					fm[prop] = value;
+				});
+				return text(`Set ${prop} on ${f.path}`);
+			},
+		});
+	}
+
+	addWriteTools(
+		"writeScoped",
+		"",
+		" (within write directory)",
+		(path) => {
 			const writeDir = getWriteDir();
-			if (!isWithinWriteDir(path, writeDir))
-				return error(`Path must be within the write directory '${writeDir}'.`);
-			const f = app.vault.getFileByPath(path);
-			if (!f) return error("File not found.");
-			const prop = args.property as string;
-			const raw = args.value as string;
-			let value: unknown;
-			try {
-				value = JSON.parse(raw);
-			} catch {
-				value = raw;
+			return isWithinWriteDir(path, writeDir)
+				? null
+				: error(`Path must be within the write directory '${writeDir}'.`);
+		},
+		(args) => {
+			const path = args.path as string | undefined;
+			if (path) {
+				const writeDir = getWriteDir();
+				if (!isWithinWriteDir(path, writeDir))
+					return error(`Path must be within the write directory '${writeDir}'.`);
 			}
-			await app.fileManager.processFrontMatter(f, (fm) => {
-				fm[prop] = value;
-			});
-			return text(`Set ${prop} on ${path}`);
-		},
-	});
-
-	// ── Write Vault tier (same tools, no path restriction) ────
-
-	tools.push({
-		name: "vault_create_anywhere",
-		tier: "writeVault",
-		config: {
-			title: "Create file (vault-wide)",
-			description: "Create a new file anywhere in the vault.",
-			inputSchema: {
-				path: z.string().describe("Path from vault root"),
-				content: z.string().optional().describe("Initial content (default empty)"),
-			},
-		},
-		handler: async (args) => {
-			const path = args.path as string;
-			const existing = app.vault.getFileByPath(path);
-			if (existing) return error("File already exists.");
-			const content = (args.content as string | undefined) ?? "";
-			await app.vault.create(path, content);
-			return text(`Created ${path}`);
-		},
-	});
-
-	tools.push({
-		name: "vault_modify_anywhere",
-		tier: "writeVault",
-		config: {
-			title: "Modify file (vault-wide)",
-			description: "Replace the full contents of any file in the vault.",
-			inputSchema: {
-				file: z.string().optional().describe("File name"),
-				path: z.string().optional().describe("Exact path from vault root"),
-				content: z.string().describe("New file content"),
-			},
-		},
-		handler: async (args) => {
 			const f = resolveFile(app, args);
-			if (!f) return error("File not found.");
-			await app.vault.modify(f, args.content as string);
-			return text(`Modified ${f.path}`);
+			return f ?? error("File not found.");
 		},
-	});
+	);
 
-	tools.push({
-		name: "vault_append_anywhere",
-		tier: "writeVault",
-		config: {
-			title: "Append to file (vault-wide)",
-			description: "Append content to any file in the vault.",
-			inputSchema: {
-				file: z.string().optional().describe("File name"),
-				path: z.string().optional().describe("Exact path from vault root"),
-				content: z.string().describe("Content to append"),
-			},
-		},
-		handler: async (args) => {
-			const f = resolveFile(app, args);
-			if (!f) return error("File not found.");
-			await app.vault.append(f, "\n" + (args.content as string));
-			return text(`Appended to ${f.path}`);
-		},
-	});
-
-	tools.push({
-		name: "vault_frontmatter_set_anywhere",
-		tier: "writeVault",
-		config: {
-			title: "Set frontmatter (vault-wide)",
-			description: "Set a YAML frontmatter property on any file in the vault.",
-			inputSchema: {
-				file: z.string().optional().describe("File name"),
-				path: z.string().optional().describe("Exact path from vault root"),
-				property: z.string().describe("Property name"),
-				value: z.string().describe("Property value (JSON-encoded for objects/arrays)"),
-			},
-		},
-		handler: async (args) => {
-			const f = resolveFile(app, args);
-			if (!f) return error("File not found.");
-			const prop = args.property as string;
-			const raw = args.value as string;
-			let value: unknown;
-			try {
-				value = JSON.parse(raw);
-			} catch {
-				value = raw;
-			}
-			await app.fileManager.processFrontMatter(f, (fm) => {
-				fm[prop] = value;
-			});
-			return text(`Set ${prop} on ${f.path}`);
-		},
-	});
+	addWriteTools(
+		"writeVault",
+		"_anywhere",
+		" (vault-wide)",
+		() => null,
+		(args) => resolveFile(app, args) ?? error("File not found."),
+	);
 
 	// ── Navigate tier ─────────────────────────────────
 

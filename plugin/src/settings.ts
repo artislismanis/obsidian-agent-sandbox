@@ -376,64 +376,54 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		desc.style.marginBottom = "12px";
 		desc.setText("Control which vault capabilities Claude can access through MCP tools.");
 
-		new Setting(el)
-			.setName("Read")
-			.setDesc("Search, read files, query metadata, tags, links, backlinks, frontmatter.")
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.mcpTierRead).onChange(async (value) => {
-					this.plugin.settings.mcpTierRead = value;
-					this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(el)
-			.setName("Write (scoped)")
-			.setDesc(
-				"Create and modify files within the vault write directory only (" +
+		const tiers: {
+			key: keyof AgentSandboxSettings;
+			name: string;
+			desc: string;
+		}[] = [
+			{
+				key: "mcpTierRead",
+				name: "Read",
+				desc: "Search, read files, query metadata, tags, links, backlinks, frontmatter.",
+			},
+			{
+				key: "mcpTierWriteScoped",
+				name: "Write (scoped)",
+				desc:
+					"Create and modify files within the vault write directory only (" +
 					(this.plugin.settings.vaultWriteDir || "agent-workspace") +
 					"/).",
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.mcpTierWriteScoped).onChange(async (value) => {
-					this.plugin.settings.mcpTierWriteScoped = value;
-					this.plugin.saveSettings();
-				}),
-			);
+			},
+			{
+				key: "mcpTierWriteVault",
+				name: "Write (vault-wide)",
+				desc: "Create and modify files anywhere in the vault. Allows Claude to modify any file.",
+			},
+			{
+				key: "mcpTierNavigate",
+				name: "Navigate",
+				desc: "Open files and affect what you see in the Obsidian editor.",
+			},
+			{
+				key: "mcpTierManage",
+				name: "Manage",
+				desc: "Rename, move, and delete files with automatic link updates. Allows structural changes to your vault.",
+			},
+		];
 
-		new Setting(el)
-			.setName("Write (vault-wide)")
-			.setDesc(
-				"Create and modify files anywhere in the vault. Allows Claude to modify any file.",
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.mcpTierWriteVault).onChange(async (value) => {
-					this.plugin.settings.mcpTierWriteVault = value;
-					this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(el)
-			.setName("Navigate")
-			.setDesc("Open files and affect what you see in the Obsidian editor.")
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.mcpTierNavigate).onChange(async (value) => {
-					this.plugin.settings.mcpTierNavigate = value;
-					this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(el)
-			.setName("Manage")
-			.setDesc(
-				"Rename, move, and delete files with automatic link updates. " +
-					"Allows structural changes to your vault.",
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.mcpTierManage).onChange(async (value) => {
-					this.plugin.settings.mcpTierManage = value;
-					this.plugin.saveSettings();
-				}),
-			);
+		for (const tier of tiers) {
+			new Setting(el)
+				.setName(tier.name)
+				.setDesc(tier.desc)
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.plugin.settings[tier.key] as boolean)
+						.onChange(async (value) => {
+							(this.plugin.settings[tier.key] as boolean) = value;
+							this.plugin.saveSettings();
+						}),
+				);
+		}
 	}
 
 	private renderAdvanced(el: HTMLElement): void {

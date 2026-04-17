@@ -14,9 +14,12 @@ export interface McpServerConfig {
 	getWriteDir: () => string;
 }
 
+const SESSION_TIMEOUT_MS = 10 * 60_000;
+
 export class ObsidianMcpServer {
 	private httpServer: Server | null = null;
 	private transports = new Map<string, StreamableHTTPServerTransport>();
+	private sessionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 	private app: App;
 	private config: McpServerConfig;
 	private tools: McpToolDef[] = [];
@@ -44,6 +47,9 @@ export class ObsidianMcpServer {
 	}
 
 	async stop(): Promise<void> {
+		for (const timeout of this.sessionTimeouts.values()) clearTimeout(timeout);
+		this.sessionTimeouts.clear();
+
 		for (const transport of this.transports.values()) {
 			await transport.close?.();
 		}
@@ -55,6 +61,27 @@ export class ObsidianMcpServer {
 			});
 			this.httpServer = null;
 		}
+	}
+
+	private resetSessionTimeout(sid: string): void {
+		const existing = this.sessionTimeouts.get(sid);
+		if (existing) clearTimeout(existing);
+		this.sessionTimeouts.set(
+			sid,
+			setTimeout(() => {
+				const transport = this.transports.get(sid);
+				if (transport) void transport.close?.();
+				this.transports.delete(sid);
+				this.sessionTimeouts.delete(sid);
+			}, SESSION_TIMEOUT_MS),
+		);
+	}
+
+	private cleanupSession(sid: string): void {
+		this.transports.delete(sid);
+		const timeout = this.sessionTimeouts.get(sid);
+		if (timeout) clearTimeout(timeout);
+		this.sessionTimeouts.delete(sid);
 	}
 
 	isRunning(): boolean {
@@ -142,6 +169,7 @@ export class ObsidianMcpServer {
 		const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
 		if (sessionId && this.transports.has(sessionId)) {
+			this.resetSessionTimeout(sessionId);
 			const transport = this.transports.get(sessionId)!;
 			await transport.handleRequest(req, res, body);
 			return;
@@ -151,12 +179,13 @@ export class ObsidianMcpServer {
 			sessionIdGenerator: () => randomUUID(),
 			onsessioninitialized: (sid: string) => {
 				this.transports.set(sid, transport);
+				this.resetSessionTimeout(sid);
 			},
 		});
 
 		transport.onclose = () => {
 			const sid = transport.sessionId;
-			if (sid) this.transports.delete(sid);
+			if (sid) this.cleanupSession(sid);
 		};
 
 		const server = this.createMcpServer();
