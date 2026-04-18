@@ -35,8 +35,14 @@ if grep -qi microsoft /proc/version 2>/dev/null && [[ -f /run/wsl-resolv.conf ]]
     wsl_host=$(awk '/^nameserver/ {print $2; exit}' /run/wsl-resolv.conf)
     if [[ -n "$wsl_host" && "$wsl_host" != "127.0.0.1" && "$wsl_host" != "127.0.0.53" ]]; then
         echo "entrypoint: WSL2 detected — routing host.docker.internal to Windows host at $wsl_host"
-        sed -i '/host\.docker\.internal/d' /etc/hosts
-        echo "$wsl_host  host.docker.internal" >> /etc/hosts
+        # /etc/hosts is a bind-mount inside Docker; sed -i fails because it
+        # tries to rename a temp file across mount boundaries. Use cp instead.
+        local tmp
+        tmp=$(mktemp)
+        grep -v 'host\.docker\.internal' /etc/hosts > "$tmp"
+        echo "$wsl_host  host.docker.internal" >> "$tmp"
+        cp "$tmp" /etc/hosts
+        rm -f "$tmp"
     fi
 fi
 
