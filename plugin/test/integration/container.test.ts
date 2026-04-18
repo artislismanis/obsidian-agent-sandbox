@@ -4,6 +4,7 @@ import {
 	isDockerAvailable,
 	isImageBuilt,
 	containerExec,
+	containerExecRoot,
 	containerLogs,
 	TTYD_PORT,
 } from "./helpers";
@@ -87,7 +88,7 @@ describe.skipIf(SKIP_NO_IMAGE)("Container", () => {
 
 	// ── sudo model ──
 	it("sudo is narrow (apt-get/apt only)", () => {
-		const output = containerExec("sudo -l -U claude");
+		const output = containerExecRoot("sudo -l -U claude");
 		expect(output).toContain("/usr/bin/apt-get");
 		expect(output).toContain("/usr/bin/apt");
 		expect(output).not.toContain("NOPASSWD");

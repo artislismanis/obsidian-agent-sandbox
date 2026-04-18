@@ -143,6 +143,20 @@ export function containerExec(cmd: string): string {
 	// Direct exec is faster and avoids docker-compose's internal exec-id
 	// tracking, which was producing spurious "No such exec instance"
 	// errors in fast-running test suites.
+	//
+	// Run as `claude` (non-root) to match how ttyd sessions run in prod.
+	// Claude Code refuses to run as root ("cannot be used with root/sudo
+	// privileges"), and this also catches any bugs where the plugin
+	// assumes root privileges it shouldn't have.
+	return execSync(`docker exec -i -u claude oas-test-sandbox ${cmd}`, execOpts).toString().trim();
+}
+
+/**
+ * Run a command inside the container as root. Needed for tests that
+ * exercise root-only operations like iptables (firewall) or that
+ * deliberately test the sudo gate.
+ */
+export function containerExecRoot(cmd: string): string {
 	return execSync(`docker exec -i oas-test-sandbox ${cmd}`, execOpts).toString().trim();
 }
 

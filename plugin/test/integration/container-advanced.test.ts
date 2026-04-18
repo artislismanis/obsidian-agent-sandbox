@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { isDockerAvailable, isImageBuilt, containerExec, TTYD_PORT } from "./helpers";
+import {
+	isDockerAvailable,
+	isImageBuilt,
+	containerExec,
+	containerExecRoot,
+	TTYD_PORT,
+} from "./helpers";
 
 const SKIP = !isDockerAvailable() || !isImageBuilt();
 
@@ -50,11 +56,11 @@ describe.skipIf(SKIP)("Container — advanced (firewall, tmux, port remap)", () 
 	// `docker compose exec --user root`. Our containerExec uses the default user
 	// (claude). We call it via `sudo -n` with the known password from compose env.
 	it("firewall init script exists and is executable", () => {
-		expect(containerExec("test -x /usr/local/bin/init-firewall.sh && echo ok")).toBe("ok");
+		expect(containerExecRoot("test -x /usr/local/bin/init-firewall.sh && echo ok")).toBe("ok");
 	});
 
 	it("firewall status is queryable", () => {
-		const status = containerExec("/usr/local/bin/init-firewall.sh --status");
+		const status = containerExecRoot("/usr/local/bin/init-firewall.sh --status");
 		expect(["enabled", "disabled"]).toContain(status);
 	});
 });

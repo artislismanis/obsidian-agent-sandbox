@@ -8,17 +8,10 @@ export default defineConfig({
 		testTimeout: 60_000,
 		hookTimeout: 120_000,
 		// All integration test files share ONE Docker container, brought up
-		// and torn down by globalSetup. This is dramatically faster than
-		// per-file lifecycles (one 10s start instead of three) and eliminates
-		// race conditions from multiple files fighting over the same
-		// container name.
+		// and torn down by globalSetup.
 		globalSetup: ["./test/integration/globalSetup.ts"],
-		// Still serialize execution to avoid concurrent docker exec races.
+		// Serialize to avoid concurrent docker exec races.
 		fileParallelism: false,
-		pool: "threads",
-		poolOptions: {
-			threads: { singleThread: true },
-		},
 		sequence: { concurrent: false },
 	},
 });
