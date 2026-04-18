@@ -1,13 +1,8 @@
 /**
  * Global setup/teardown for the integration test suite.
  *
- * Runs the test container ONCE before all test files, and tears it down
- * ONCE at the end. Per-file beforeAll/afterAll hooks no longer need to
- * manage container lifecycle — they just exec into the shared container.
- *
- * This dramatically reduces wall-clock time (one 10s container startup
- * instead of one per test file) and eliminates the race conditions that
- * came from multiple files fighting over the same container name.
+ * Runs ONCE before all test files, once after. Brings up the shared
+ * test container so individual test files don't manage lifecycle.
  */
 
 import {
@@ -20,38 +15,32 @@ import {
 	TTYD_PORT,
 } from "./helpers";
 
-export async function setup(): Promise<void> {
+export default async function globalSetup(): Promise<() => Promise<void>> {
 	if (!isDockerAvailable()) {
-		// eslint-disable-next-line no-console
-		console.log("[integration] Docker unavailable — tests will skip");
-		return;
+		process.stderr.write("[integration] Docker unavailable — tests will skip\n");
+		return async () => {};
 	}
 	if (!isImageBuilt()) {
-		// eslint-disable-next-line no-console
-		console.log("[integration] oas-sandbox image not built — tests will skip");
-		return;
+		process.stderr.write("[integration] oas-sandbox image not built — tests will skip\n");
+		return async () => {};
 	}
 
-	// eslint-disable-next-line no-console
-	console.log("[integration] starting test container...");
+	process.stderr.write("[integration] starting test container...\n");
 	containerUp();
 
-	// Best-effort: seed Claude auth from the live volume if it exists.
-	// Tests that need Claude will skip if seeding fails.
 	const seeded = seedClaudeAuth();
-	// eslint-disable-next-line no-console
-	console.log(
-		seeded ? "[integration] Claude auth seeded" : "[integration] no live Claude auth to seed",
+	process.stderr.write(
+		seeded
+			? "[integration] Claude auth seeded from live oas-claude-config volume\n"
+			: "[integration] no live Claude auth to seed (claude-code tests will skip)\n",
 	);
 
+	process.stderr.write(`[integration] waiting for ttyd health on port ${TTYD_PORT}...\n`);
 	await waitForHealth(`http://127.0.0.1:${TTYD_PORT}`, 60000);
-	// eslint-disable-next-line no-console
-	console.log("[integration] container healthy");
-}
+	process.stderr.write("[integration] container healthy, starting tests\n");
 
-export async function teardown(): Promise<void> {
-	if (!isDockerAvailable()) return;
-	// eslint-disable-next-line no-console
-	console.log("[integration] tearing down test container...");
-	containerDown();
+	return async () => {
+		process.stderr.write("[integration] tearing down test container...\n");
+		containerDown();
+	};
 }
