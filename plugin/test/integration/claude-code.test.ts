@@ -29,7 +29,7 @@ describe.skipIf(SKIP)("Claude Code — programmatic (authenticated from live vol
 			throw new Error("Failed to seed Claude auth from live volume");
 		}
 		await waitForHealth(`http://127.0.0.1:${TTYD_PORT}`, 60000);
-	});
+	}, 120000);
 
 	afterAll(() => {
 		// docker compose down -v removes the test volume, so the

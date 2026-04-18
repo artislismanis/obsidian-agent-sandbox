@@ -25,7 +25,7 @@ describe.skipIf(SKIP)("Firewall", () => {
 	beforeAll(async () => {
 		containerUp();
 		await waitForHealth(`http://127.0.0.1:${TTYD_PORT}`, 60000);
-	});
+	}, 120000);
 
 	afterAll(() => {
 		try {
@@ -91,7 +91,7 @@ describe.skipIf(SKIP)("Persistent shell sessions (tmux)", () => {
 	beforeAll(async () => {
 		containerUp();
 		await waitForHealth(`http://127.0.0.1:${TTYD_PORT}`, 60000);
-	});
+	}, 120000);
 
 	afterAll(() => {
 		try {
@@ -133,7 +133,7 @@ describe.skipIf(SKIP)("Port remapping", () => {
 	beforeAll(async () => {
 		containerUp();
 		await waitForHealth(`http://127.0.0.1:${TTYD_PORT}`, 60000);
-	});
+	}, 120000);
 
 	afterAll(() => {
 		try {

@@ -24,7 +24,7 @@ describe.skipIf(SKIP)("MCP server integration with container", () => {
 	beforeAll(async () => {
 		containerUp();
 		await waitForHealth(`http://127.0.0.1:${TTYD_PORT}`, 60000);
-	});
+	}, 120000);
 
 	afterAll(() => {
 		try {

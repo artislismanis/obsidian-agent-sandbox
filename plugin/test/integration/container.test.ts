@@ -32,7 +32,7 @@ describe.skipIf(SKIP_NO_IMAGE)("Container lifecycle", () => {
 	beforeAll(async () => {
 		containerUp();
 		await waitForHealth(`http://127.0.0.1:${TTYD_PORT}`, 60000);
-	});
+	}, 120000);
 
 	afterAll(() => {
 		try {
@@ -119,7 +119,7 @@ describe.skipIf(SKIP_NO_IMAGE)("Docker resource naming (oas-test prefix in tests
 	beforeAll(async () => {
 		containerUp();
 		await waitForHealth(`http://127.0.0.1:${TTYD_PORT}`, 60000);
-	});
+	}, 120000);
 
 	afterAll(() => {
 		try {

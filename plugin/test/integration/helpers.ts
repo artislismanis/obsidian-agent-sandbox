@@ -92,11 +92,22 @@ export function seedClaudeAuth(): boolean {
 }
 
 export function containerUp(): void {
+	// Ensure a clean slate — removes any stale container, network, or
+	// volume from a previous test run. Cheap no-op when nothing exists.
+	try {
+		compose("down -v --remove-orphans");
+	} catch {
+		// no state to clean
+	}
 	compose("up -d");
 }
 
 export function containerDown(): void {
-	compose("down -v");
+	try {
+		compose("down -v --remove-orphans");
+	} catch {
+		// best effort
+	}
 }
 
 export function containerExec(cmd: string): string {
