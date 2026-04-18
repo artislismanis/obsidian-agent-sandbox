@@ -1,7 +1,9 @@
 import type { App } from "obsidian";
-import { PluginSettingTab, Setting } from "obsidian";
+import { Modal, PluginSettingTab, Setting } from "obsidian";
 import type AgentSandboxPlugin from "./main";
 import { isValidBindAddress, isValidCpus, isValidMemory, isValidPrivateHosts } from "./validation";
+import { existsSync } from "fs";
+import { join } from "path";
 
 export type TerminalThemeMode = "obsidian" | "dark" | "light";
 export type DockerMode = "wsl" | "local";
@@ -18,6 +20,8 @@ export interface AgentSandboxSettings {
 	autoStopContainer: boolean;
 	terminalTheme: TerminalThemeMode;
 	terminalFont: string;
+	terminalFontSize: number;
+	terminalScrollback: number;
 	allowedPrivateHosts: string;
 	containerMemory: string;
 	containerCpus: string;
@@ -35,7 +39,7 @@ export interface AgentSandboxSettings {
 
 export type TerminalSettings = Pick<
 	AgentSandboxSettings,
-	"ttydPort" | "terminalTheme" | "terminalFont"
+	"ttydPort" | "terminalTheme" | "terminalFont" | "terminalFontSize" | "terminalScrollback"
 >;
 
 export const DEFAULT_SETTINGS: AgentSandboxSettings = {
@@ -50,6 +54,8 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	autoStopContainer: false,
 	terminalTheme: "obsidian",
 	terminalFont: "",
+	terminalFontSize: 14,
+	terminalScrollback: 10000,
 	allowedPrivateHosts: "",
 	containerMemory: "8G",
 	containerCpus: "4",
@@ -70,22 +76,44 @@ type TabId = "general" | "terminal" | "advanced" | "mcp";
 export class AgentSandboxSettingTab extends PluginSettingTab {
 	plugin: AgentSandboxPlugin;
 	private activeTab: TabId = "general";
+	private restartNeeded = false;
 
 	constructor(app: App, plugin: AgentSandboxPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
+	hide(): void {
+		if (!this.restartNeeded) return;
+		this.restartNeeded = false;
+		if (!this.plugin.isContainerRunning()) return;
+		const modal = new Modal(this.app);
+		modal.titleEl.setText("Restart Container?");
+		modal.contentEl.createEl("p", {
+			text: "You changed settings that require a container restart. Restart now? This will stop all active terminal sessions.",
+		});
+		modal.contentEl.createDiv({ cls: "modal-button-container" }, (div) => {
+			div.createEl("button", { text: "Later", cls: "mod-muted" }, (btn) => {
+				btn.addEventListener("click", () => modal.close());
+			});
+			div.createEl("button", { text: "Restart", cls: "mod-cta" }, (btn) => {
+				btn.addEventListener("click", () => {
+					modal.close();
+					void this.plugin.restartContainer();
+				});
+			});
+		});
+		modal.open();
+	}
+
+	private markRestart(): void {
+		this.restartNeeded = true;
+	}
+
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
 		containerEl.addClass("sandbox-settings");
-
-		const warning = containerEl.createDiv({ cls: "sandbox-settings-warning" });
-		warning.createSpan({ cls: "sandbox-settings-warning-icon", text: "⚠" });
-		warning.createSpan({
-			text: "Most settings require a container restart to take effect.",
-		});
 
 		this.renderTabs(containerEl);
 
@@ -151,35 +179,48 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 
 		const isWsl = this.plugin.settings.dockerMode === "wsl";
 
-		new Setting(el)
-			.setName("Docker Compose path")
-			.setDesc(
-				isWsl
-					? "Absolute WSL path to the directory containing docker-compose.yml."
-					: "Absolute path to the directory containing docker-compose.yml.",
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder(
-						isWsl
-							? "/home/user/obsidian-agent-sandbox/container"
-							: "/opt/obsidian-agent-sandbox/container",
-					)
-					.setValue(this.plugin.settings.dockerComposeFilePath)
-					.onChange(async (value) => {
-						this.plugin.settings.dockerComposeFilePath = value;
-						this.plugin.saveSettings();
-					}),
-			);
+		const composeDesc = isWsl
+			? "Absolute WSL path to the directory containing docker-compose.yml. Requires restart."
+			: "Absolute path to the directory containing docker-compose.yml. Requires restart.";
+
+		const composeSetting = new Setting(el).setName("Docker Compose path").setDesc(composeDesc);
+
+		if (
+			!isWsl &&
+			this.plugin.settings.dockerComposeFilePath &&
+			!existsSync(join(this.plugin.settings.dockerComposeFilePath, "docker-compose.yml"))
+		) {
+			composeSetting.descEl.createEl("br");
+			composeSetting.descEl.createEl("strong", {
+				text: "docker-compose.yml not found at this path.",
+				cls: "sandbox-settings-warning-text",
+			});
+		}
+
+		composeSetting.addText((text) =>
+			text
+				.setPlaceholder(
+					isWsl
+						? "/home/user/obsidian-agent-sandbox/container"
+						: "/opt/obsidian-agent-sandbox/container",
+				)
+				.setValue(this.plugin.settings.dockerComposeFilePath)
+				.onChange(async (value) => {
+					this.plugin.settings.dockerComposeFilePath = value;
+					this.plugin.saveSettings();
+					this.markRestart();
+				}),
+		);
 
 		if (isWsl) {
 			new Setting(el)
 				.setName("WSL distribution")
-				.setDesc("The WSL distribution used for running Docker commands.")
+				.setDesc("The WSL distribution used for running Docker commands. Requires restart.")
 				.addText((text) =>
 					text.setValue(this.plugin.settings.wslDistroName).onChange(async (value) => {
 						this.plugin.settings.wslDistroName = value;
 						this.plugin.saveSettings();
+						this.markRestart();
 					}),
 				);
 		}
@@ -188,7 +229,8 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.setName("Vault write directory")
 			.setDesc(
 				"Folder inside the vault where the container can write. " +
-					"The rest of the vault is mounted read-only. Created automatically on start.",
+					"The rest of the vault is mounted read-only. Created automatically on start. " +
+					"Requires restart.",
 			)
 			.addText((text) =>
 				text
@@ -197,6 +239,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.vaultWriteDir = value;
 						this.plugin.saveSettings();
+						this.markRestart();
 					}),
 			);
 
@@ -204,7 +247,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.setName("Memory file name")
 			.setDesc(
 				"Filename for the memory MCP server, stored in the vault's .oas/ directory " +
-					"(independent of the write directory). Claude uses this to persist memory across sessions.",
+					"(independent of the write directory). Requires restart.",
 			)
 			.addText((text) =>
 				text
@@ -213,6 +256,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.memoryFileName = value;
 						this.plugin.saveSettings();
+						this.markRestart();
 					}),
 			);
 
@@ -249,13 +293,16 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	private renderTerminal(el: HTMLElement): void {
 		new Setting(el)
 			.setName("Port")
-			.setDesc("The host port mapped to ttyd inside the container (default: 7681).")
+			.setDesc(
+				"The host port mapped to ttyd inside the container (default: 7681). Requires restart.",
+			)
 			.addText((text) => {
 				text.setValue(String(this.plugin.settings.ttydPort)).onChange(async (value) => {
 					const port = parseInt(value, 10);
 					if (!isNaN(port) && port > 0 && port <= 65535) {
 						this.plugin.settings.ttydPort = port;
 						this.plugin.saveSettings();
+						this.markRestart();
 						text.inputEl.removeClass("sandbox-input-error");
 					} else {
 						text.inputEl.addClass("sandbox-input-error");
@@ -263,12 +310,16 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				});
 			});
 
+		const bindDesc =
+			this.plugin.settings.ttydBindAddress === "0.0.0.0"
+				? "Warning: 0.0.0.0 exposes ttyd to your network without authentication. " +
+					"Anyone on your network can access the terminal. Requires restart."
+				: "IP address ttyd binds to on the host. Default 127.0.0.1 (localhost only). " +
+					"Requires restart.";
+
 		new Setting(el)
 			.setName("Bind address")
-			.setDesc(
-				"IP address ttyd binds to on the host. Default 127.0.0.1 (localhost only). " +
-					"Set to 0.0.0.0 to allow network access.",
-			)
+			.setDesc(bindDesc)
 			.addText((text) => {
 				text.setPlaceholder("127.0.0.1")
 					.setValue(this.plugin.settings.ttydBindAddress)
@@ -276,7 +327,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						if (isValidBindAddress(value)) {
 							this.plugin.settings.ttydBindAddress = value;
 							this.plugin.saveSettings();
+							this.markRestart();
 							text.inputEl.removeClass("sandbox-input-error");
+							this.display();
 						} else {
 							text.inputEl.addClass("sandbox-input-error");
 						}
@@ -315,6 +368,42 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						this.plugin.saveSettings();
 					}),
 			);
+
+		new Setting(el)
+			.setName("Font size")
+			.setDesc("Terminal font size in pixels (8–32).")
+			.addText((text) => {
+				text.setPlaceholder("14")
+					.setValue(String(this.plugin.settings.terminalFontSize))
+					.onChange(async (value) => {
+						const size = parseInt(value, 10);
+						if (!isNaN(size) && size >= 8 && size <= 32) {
+							this.plugin.settings.terminalFontSize = size;
+							this.plugin.saveSettings();
+							text.inputEl.removeClass("sandbox-input-error");
+						} else {
+							text.inputEl.addClass("sandbox-input-error");
+						}
+					});
+			});
+
+		new Setting(el)
+			.setName("Scrollback")
+			.setDesc("Number of lines of terminal history to keep (100–100,000).")
+			.addText((text) => {
+				text.setPlaceholder("10000")
+					.setValue(String(this.plugin.settings.terminalScrollback))
+					.onChange(async (value) => {
+						const lines = parseInt(value, 10);
+						if (!isNaN(lines) && lines >= 100 && lines <= 100000) {
+							this.plugin.settings.terminalScrollback = lines;
+							this.plugin.saveSettings();
+							text.inputEl.removeClass("sandbox-input-error");
+						} else {
+							text.inputEl.addClass("sandbox-input-error");
+						}
+					});
+			});
 	}
 
 	private renderMcp(el: HTMLElement): void {
@@ -433,7 +522,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.setName("Memory limit")
 			.setDesc(
 				"Maximum memory for the container (e.g. 4G, 8G, 16G). " +
-					"On WSL2, also check .wslconfig memory allocation.",
+					"On WSL2, also check .wslconfig memory allocation. Requires restart.",
 			)
 			.addText((text) => {
 				text.setPlaceholder("8G")
@@ -442,6 +531,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						if (isValidMemory(value)) {
 							this.plugin.settings.containerMemory = value;
 							this.plugin.saveSettings();
+							this.markRestart();
 							text.inputEl.removeClass("sandbox-input-error");
 						} else {
 							text.inputEl.addClass("sandbox-input-error");
@@ -451,7 +541,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 
 		new Setting(el)
 			.setName("CPU limit")
-			.setDesc("Maximum CPU cores for the container.")
+			.setDesc("Maximum CPU cores for the container. Requires restart.")
 			.addText((text) => {
 				text.setPlaceholder("4")
 					.setValue(this.plugin.settings.containerCpus)
@@ -459,6 +549,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						if (isValidCpus(value)) {
 							this.plugin.settings.containerCpus = value;
 							this.plugin.saveSettings();
+							this.markRestart();
 							text.inputEl.removeClass("sandbox-input-error");
 						} else {
 							text.inputEl.addClass("sandbox-input-error");
@@ -486,7 +577,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.setDesc(
 				"Comma-separated IPs or CIDRs allowed through the firewall. " +
 					"Use for local services like NAS, API servers, etc. " +
-					"The Docker gateway is always allowed.",
+					"The Docker gateway is always allowed. Requires restart.",
 			)
 			.addText((text) => {
 				text.setPlaceholder("e.g. 192.168.1.100, 10.0.0.0/8")
@@ -495,6 +586,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						if (isValidPrivateHosts(value)) {
 							this.plugin.settings.allowedPrivateHosts = value;
 							this.plugin.saveSettings();
+							this.markRestart();
 							text.inputEl.removeClass("sandbox-input-error");
 						} else {
 							text.inputEl.addClass("sandbox-input-error");
@@ -507,8 +599,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.setDesc(
 				"Password for the narrow apt-get/apt sudo inside the container. " +
 					"Used by humans during interactive sessions to test-install tools. " +
-					"Matches the default in container/.env.example. " +
-					"This is a human-intent gate, not a security boundary — see README > Development.",
+					"Matches the default in container/.env.example. Requires restart.",
 			)
 			.addText((text) =>
 				text
@@ -517,6 +608,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.sudoPassword = value;
 						this.plugin.saveSettings();
+						this.markRestart();
 					}),
 			);
 	}

@@ -72,6 +72,8 @@ export default class AgentSandboxPlugin extends Plugin {
 				ttydPort: this.settings.ttydPort,
 				terminalTheme: this.settings.terminalTheme,
 				terminalFont: this.settings.terminalFont,
+				terminalFontSize: this.settings.terminalFontSize,
+				terminalScrollback: this.settings.terminalScrollback,
 			}));
 			view.onRenameSession = async () => {
 				const oldName = (view.getState().sessionName as string) ?? "";
@@ -104,18 +106,14 @@ export default class AgentSandboxPlugin extends Plugin {
 		});
 
 		this.addRibbonIcon("box", "Open Sandbox Terminal", () => {
-			if (this.statusBar.getState() !== "running") {
-				new Notice("Container is not running. Start it first.");
-				return;
-			}
-			this.activateTerminalView();
+			void this.openTerminalOrPromptStart();
 		});
 
 		this.addCommand({
 			id: "open-claude-terminal",
 			name: "Open Sandbox Terminal",
 			callback: () => {
-				this.activateTerminalView();
+				void this.openTerminalOrPromptStart();
 			},
 		});
 
@@ -221,6 +219,50 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.debouncedSaveSettings();
 	}
 
+	isContainerRunning(): boolean {
+		return this.statusBar.getState() === "running";
+	}
+
+	private async openTerminalOrPromptStart(): Promise<void> {
+		if (this.isContainerRunning()) {
+			await this.activateTerminalView();
+			return;
+		}
+		const confirmed = await this.promptConfirm(
+			"Start Container?",
+			"The container is not running. Start it now?",
+		);
+		if (!confirmed) return;
+		await this.startContainer();
+		if (this.isContainerRunning()) {
+			await this.activateTerminalView();
+		}
+	}
+
+	private promptConfirm(title: string, message: string): Promise<boolean> {
+		return new Promise((resolve) => {
+			const modal = new Modal(this.app);
+			modal.titleEl.setText(title);
+			modal.contentEl.createEl("p", { text: message });
+			modal.contentEl.createDiv({ cls: "modal-button-container" }, (div) => {
+				div.createEl("button", { text: "Cancel", cls: "mod-muted" }, (btn) => {
+					btn.addEventListener("click", () => {
+						modal.close();
+						resolve(false);
+					});
+				});
+				div.createEl("button", { text: "Start", cls: "mod-cta" }, (btn) => {
+					btn.addEventListener("click", () => {
+						modal.close();
+						resolve(true);
+					});
+				});
+			});
+			modal.onClose = () => resolve(false);
+			modal.open();
+		});
+	}
+
 	async activateTerminalView(sessionName?: string): Promise<void> {
 		const leaf = this.app.workspace.getLeaf("tab");
 		await leaf.setViewState({
@@ -270,7 +312,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.stopHealthPoll();
 	}
 
-	private async restartContainer(): Promise<void> {
+	async restartContainer(): Promise<void> {
 		if (this.docker.isBusy()) {
 			new Notice("Another container operation is in progress.");
 			return;

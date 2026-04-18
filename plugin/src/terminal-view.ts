@@ -268,10 +268,10 @@ export class TerminalView extends ItemView {
 
 		const term = new Terminal({
 			cursorBlink: true,
-			fontSize: 14,
+			fontSize: settings.terminalFontSize,
 			fontFamily,
 			theme,
-			scrollback: 10000,
+			scrollback: settings.terminalScrollback,
 			rightClickSelectsWord: true,
 		});
 
