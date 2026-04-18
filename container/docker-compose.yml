@@ -31,12 +31,6 @@ services:
       # Named volumes (OAS-prefixed)
       - oas-claude-config:/home/claude/.claude
       - oas-shell-history:/home/claude/.shell-history
-      # WSL2 host resolution: the entrypoint reads this to find the actual
-      # Windows host IP and override host.docker.internal (which otherwise
-      # maps to the Docker bridge gateway, not the Windows machine).
-      # On native Linux this file also exists but the override is skipped
-      # (entrypoint checks /proc/version for the WSL2 kernel string).
-      - /etc/resolv.conf:/run/wsl-resolv.conf:ro
     environment:
       - TERM=xterm-256color
       - ALLOWED_PRIVATE_HOSTS=${ALLOWED_PRIVATE_HOSTS:-}
@@ -47,6 +41,7 @@ services:
       - TTYD_PORT=${TTYD_PORT:-7681}
       - OAS_MCP_TOKEN=${OAS_MCP_TOKEN:-}
       - OAS_MCP_PORT=${OAS_MCP_PORT:-28080}
+      - OAS_HOST_IP=${OAS_HOST_IP:-}
     sysctls:
       # IPv6 disabled — simplifies firewall (IPv4-only rules) and matches
       # common local network configs. All allowlisted domains resolve A records.

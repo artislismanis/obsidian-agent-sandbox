@@ -2,22 +2,6 @@ import { browser, expect, $, $$ } from "@wdio/globals";
 import { describe, it, before, after } from "mocha";
 import { obsidianPage } from "wdio-obsidian-service";
 
-const PLUGIN_ID = "obsidian-agent-sandbox";
-
-// WebdriverIO's text-match selector (=text) is not valid CSS and cannot be
-// nested inside :has(). Use full-document XPath that resolves in a single
-// query (no chaining) to avoid stale-element races on re-renders.
-const SI = (name: string) =>
-	`//div[contains(concat(" ",normalize-space(@class)," ")," setting-item ") and ` +
-	`descendant::*[contains(@class,"setting-item-name") and normalize-space(.)="${name}"]]`;
-
-function settingInput(name: string) {
-	return $(`${SI(name)}//input[@type="text"]`);
-}
-function settingDescription(name: string) {
-	return $(`${SI(name)}//*[contains(@class,"setting-item-description")]`);
-}
-
 async function openPluginSettings(): Promise<void> {
 	await browser.executeObsidianCommand("app:open-settings");
 	const tab = $(".vertical-tab-nav-item*=Agent Sandbox");
@@ -34,6 +18,27 @@ async function switchTab(label: string): Promise<void> {
 async function closeSettings(): Promise<void> {
 	await browser.keys("Escape");
 	await browser.pause(300);
+}
+
+// WebDriverIO's `=text` shorthand doesn't work nested inside `:has()`,
+// and native CSS `:has()` has no text-match syntax. Use XPath to select
+// a .setting-item by the exact text of its .setting-item-name child.
+function settingItemXPath(name: string): string {
+	return (
+		`//*[contains(concat(' ', normalize-space(@class), ' '), ' setting-item ')]` +
+		`[.//*[contains(concat(' ', normalize-space(@class), ' '), ' setting-item-name ')]` +
+		`[normalize-space(.)='${name}']]`
+	);
+}
+
+function settingInput(name: string) {
+	return $(`${settingItemXPath(name)}//input[@type='text']`);
+}
+
+function settingDesc(name: string) {
+	return $(
+		`${settingItemXPath(name)}//*[contains(concat(' ', normalize-space(@class), ' '), ' setting-item-description ')]`,
+	);
 }
 
 describe("Settings — validation and warnings", function () {
@@ -110,16 +115,17 @@ describe("Settings — validation and warnings", function () {
 			await bindInput.setValue("0.0.0.0");
 			await browser.pause(500);
 
-			const desc = settingDescription("Bind address");
-			expect(await desc.getText()).toContain("Warning");
+			// Settings re-renders on bind address change, so the element is stale.
+			// Re-query the description each time.
+			expect(await settingDesc("Bind address").getText()).toContain("Warning");
 
-			await bindInput.setValue("127.0.0.1");
+			await settingInput("Bind address").setValue("127.0.0.1");
 			await browser.pause(500);
-			expect(await desc.getText()).not.toContain("Warning");
+			expect(await settingDesc("Bind address").getText()).not.toContain("Warning");
 		});
 
 		it("theme and font have no restart labels", async function () {
-			const themeDesc = settingDescription("Terminal theme");
+			const themeDesc = settingDesc("Terminal theme");
 			await expect(themeDesc).toExist();
 			expect(await themeDesc.getText()).not.toContain("Requires restart");
 		});
@@ -219,3 +225,15 @@ describe("Settings — validation and warnings", function () {
 		await closeSettings();
 	});
 });
+
+// Note on tests that are NOT here:
+// - "settings persist across Obsidian reload": the wdio-obsidian-service
+//   uses an ephemeral vault copy per Obsidian launch, so data.json written
+//   during one launch is wiped before the next. Persistence is Obsidian's
+//   responsibility (saveData/loadData).
+// - "plugin survives disable/enable cycle": the service installs the
+//   plugin via in-memory mechanisms; after disablePluginAndSave() the
+//   main.js file is absent from the vault's plugin directory, so
+//   enablePlugin() fails with ENOENT. This is a harness limitation,
+//   not a plugin bug. onunload cleanup is covered by unit tests on
+//   StatusBarManager.destroy(), FirewallStatusBar.destroy(), etc.

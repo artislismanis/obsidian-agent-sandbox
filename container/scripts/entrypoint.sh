@@ -23,26 +23,21 @@ unset SUDO_PASSWORD
 # INSIDE WSL2, not the Windows host. The Obsidian plugin's MCP server runs on
 # Windows and is unreachable at 172.17.0.1.
 #
-# Fix: detect WSL2 via /proc/version, read the actual Windows host IP from the
-# WSL2 resolv.conf (mounted at /run/wsl-resolv.conf), and override the hosts
-# entry. The WSL2 resolv.conf nameserver is always the vEthernet (WSL) adapter
-# IP on Windows — the gateway that WSL2 uses to reach Windows.
+# Fix: the plugin detects the Windows vEthernet (WSL) adapter IP via
+# os.networkInterfaces() and passes it as OAS_HOST_IP. When set, override
+# host.docker.internal with that IP so the container can reach Windows.
 #
-# On native Linux the fix is skipped (host.docker.internal = 172.17.0.1 is
-# correct there). On macOS Docker Desktop the volume mount won't exist, so
-# the condition is also skipped.
-if grep -qi microsoft /proc/version 2>/dev/null && [[ -f /run/wsl-resolv.conf ]]; then
-    wsl_host=$(awk '/^nameserver/ {print $2; exit}' /run/wsl-resolv.conf)
-    if [[ -n "$wsl_host" && "$wsl_host" != "127.0.0.1" && "$wsl_host" != "127.0.0.53" ]]; then
-        echo "entrypoint: WSL2 detected — routing host.docker.internal to Windows host at $wsl_host"
-        # /etc/hosts is a bind-mount inside Docker; sed -i fails because it
-        # tries to rename a temp file across mount boundaries. Use cp instead.
-        tmp=$(mktemp)
-        grep -v 'host\.docker\.internal' /etc/hosts > "$tmp"
-        echo "$wsl_host  host.docker.internal" >> "$tmp"
-        cp "$tmp" /etc/hosts
-        rm -f "$tmp"
-    fi
+# On native Linux / macOS, OAS_HOST_IP is not set so this block is skipped
+# and host.docker.internal keeps its default (correct) value.
+if [[ -n "${OAS_HOST_IP:-}" ]]; then
+    echo "entrypoint: overriding host.docker.internal → ${OAS_HOST_IP} (Windows WSL host)"
+    # /etc/hosts is a bind-mount inside Docker; sed -i fails because it
+    # tries to rename a temp file across mount boundaries. Use cp instead.
+    tmp=$(mktemp)
+    grep -v 'host\.docker\.internal' /etc/hosts > "$tmp"
+    echo "${OAS_HOST_IP}  host.docker.internal" >> "$tmp"
+    cp "$tmp" /etc/hosts
+    rm -f "$tmp"
 fi
 
 # Fix directory ownership if it doesn't match claude's current uid.
