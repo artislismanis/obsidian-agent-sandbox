@@ -4,8 +4,13 @@
 //
 // Presents as a stdio MCP server to Claude Code. When the Obsidian plugin's
 // HTTP server is reachable it proxies all requests through; when it is not
-// (Obsidian closed, plugin disabled) it responds as an empty MCP server so
-// other stdio servers such as memory are unaffected.
+// (Obsidian closed, plugin disabled, not yet started) it responds as an empty
+// MCP server so other stdio servers such as memory are unaffected.
+//
+// Connectivity is re-probed before every request, with a 30-second positive
+// cache. This means the proxy recovers automatically when Obsidian starts
+// after the container, or when MCP is toggled on in the plugin settings —
+// no container restart needed.
 
 const http = require("http");
 const net = require("net");
@@ -14,6 +19,12 @@ const readline = require("readline");
 const PORT = parseInt(process.env.OAS_MCP_PORT || "28080", 10);
 const TOKEN = process.env.OAS_MCP_TOKEN || "";
 const HOST = "host.docker.internal";
+
+// Cache: re-probe at most once every PROBE_TTL_MS when available,
+// immediately when unavailable (so recovery is fast).
+const PROBE_TTL_MS = 30_000;
+let lastProbeTime = 0;
+let lastProbeResult = false;
 
 let sessionId = null;
 
@@ -31,6 +42,17 @@ function probePort() {
 			resolve(false);
 		});
 	});
+}
+
+async function isAvailable() {
+	const now = Date.now();
+	// Skip re-probe if last result was positive and within TTL
+	if (lastProbeResult && now - lastProbeTime < PROBE_TTL_MS) {
+		return true;
+	}
+	lastProbeResult = await probePort();
+	lastProbeTime = now;
+	return lastProbeResult;
 }
 
 function httpPost(message) {
@@ -76,12 +98,20 @@ function httpPost(message) {
 					}
 				});
 
-				res.on("error", reject);
+				res.on("error", (err) => {
+					// Mark as unavailable so next request re-probes
+					lastProbeResult = false;
+					reject(err);
+				});
 			},
 		);
-		req.on("error", reject);
+		req.on("error", (err) => {
+			lastProbeResult = false;
+			reject(err);
+		});
 		req.on("timeout", () => {
 			req.destroy();
+			lastProbeResult = false;
 			reject(new Error("timeout"));
 		});
 		req.write(payload);
@@ -110,8 +140,6 @@ function unavailableResult(id, method) {
 }
 
 async function main() {
-	const available = await probePort();
-
 	const rl = readline.createInterface({ input: process.stdin, terminal: false });
 
 	for await (const line of rl) {
@@ -123,6 +151,8 @@ async function main() {
 
 		// Notifications have no id — no response required
 		if (msg.id === undefined) continue;
+
+		const available = await isAvailable();
 
 		if (!available) {
 			process.stdout.write(JSON.stringify(unavailableResult(msg.id, msg.method)) + "\n");
