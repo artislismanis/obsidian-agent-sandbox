@@ -10,7 +10,19 @@ export default defineConfig({
 		// Integration tests share a Docker container keyed by compose project
 		// name (oas-test). Running files in parallel causes one file's
 		// afterAll (containerDown) to tear down the container the other
-		// file is still using. Force sequential execution.
+		// file is still using. Force single-threaded execution.
+		//
+		// fileParallelism alone wasn't enough in vitest 4 — poolOptions
+		// with singleThread is what actually serializes.
 		fileParallelism: false,
+		pool: "threads",
+		poolOptions: {
+			threads: {
+				singleThread: true,
+			},
+		},
+		sequence: {
+			concurrent: false,
+		},
 	},
 });

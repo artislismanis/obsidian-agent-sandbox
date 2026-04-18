@@ -27,12 +27,17 @@ describe.skipIf(SKIP)("Container — advanced (firewall, tmux, port remap)", () 
 	});
 
 	it("session-helpers.sh is installed in the image", () => {
-		// Look for the file in any of the likely install locations.
-		// Content: a shell function named `session` that wraps tmux.
+		// Lives at /home/claude/.session-helpers.sh (dotfile).
+		// Sourced by session.sh (the ttyd entrypoint) for interactive shells.
+		const output = containerExec("test -f /home/claude/.session-helpers.sh && echo ok");
+		expect(output).toBe("ok");
+	});
+
+	it("session helper defines the `session` function when sourced", () => {
 		const output = containerExec(
-			"bash -c 'find /home/claude /etc -name session-helpers.sh 2>/dev/null | head -1'",
+			"bash -c 'source /home/claude/.session-helpers.sh && type session'",
 		);
-		expect(output).toMatch(/session-helpers\.sh/);
+		expect(output).toContain("function");
 	});
 
 	it("can create and list a tmux session", () => {
