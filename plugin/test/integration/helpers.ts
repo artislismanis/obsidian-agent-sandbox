@@ -14,8 +14,7 @@ const execOpts: ExecSyncOptions = {
 		...process.env,
 		PKM_VAULT_PATH: VAULT_DIR,
 		PKM_WRITE_DIR: "agent-workspace",
-		TTYD_PORT: String(TTYD_PORT),
-		TTYD_BIND: "127.0.0.1",
+		TEST_HOST_TTYD_PORT: String(TTYD_PORT),
 		CONTAINER_MEMORY: "4G",
 		CONTAINER_CPUS: "2",
 		OAS_MCP_TOKEN: MCP_TOKEN,
@@ -97,6 +96,23 @@ export function httpGet(url: string): Promise<number> {
 	return new Promise((resolve, reject) => {
 		http.get(url, (res) => resolve(res.statusCode ?? 0)).on("error", reject);
 	});
+}
+
+/**
+ * Parse a response body that may be JSON or SSE (Server-Sent Events).
+ * MCP Streamable HTTP may return either format; SSE looks like:
+ *   event: message
+ *   data: {"jsonrpc":"2.0", ...}
+ */
+export function parseJsonOrSse(body: string): unknown {
+	const trimmed = body.trim();
+	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+		return JSON.parse(trimmed);
+	}
+	// SSE: find the first `data: ` line and parse its payload as JSON
+	const match = trimmed.match(/^data:\s*(.+)$/m);
+	if (match) return JSON.parse(match[1]);
+	throw new Error(`Cannot parse response body: ${body.slice(0, 200)}`);
 }
 
 export function httpPost(

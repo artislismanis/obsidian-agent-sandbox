@@ -8,6 +8,7 @@ import {
 	waitForHealth,
 	httpPost,
 	httpGet,
+	parseJsonOrSse,
 	TTYD_PORT,
 	MCP_PORT,
 	MCP_TOKEN,
@@ -154,7 +155,7 @@ describe.skipIf(SKIP)("MCP HTTP server (standalone, no Obsidian)", () => {
 			{ Authorization: `Bearer ${MCP_TOKEN}` },
 		);
 		expect(res.status).toBe(200);
-		const body = JSON.parse(res.body);
+		const body = parseJsonOrSse(res.body) as { result?: unknown };
 		expect(body.result).toBeDefined();
 	});
 
