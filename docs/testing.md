@@ -109,11 +109,26 @@ claude
 
 | # | Test | Steps | Expected |
 |---|------|-------|----------|
-| 6.1 | Settings tab renders | Open Settings > Community Plugins > Agent Sandbox | All fields visible: compose path, WSL distro, ttyd port, bind address, terminal theme, auto-start toggle, auto-stop toggle |
-| 6.2 | Default values | Open settings tab fresh | WSL distro = "Ubuntu", port = 7681, bind address = "127.0.0.1", theme = "Follow Obsidian theme", both toggles off |
+| 6.1 | Settings tab renders | Open Settings > Community Plugins > Agent Sandbox | Four tabs visible: General, Terminal, Advanced, MCP. All fields render in each tab |
+| 6.2 | Default values | Open settings tab fresh | WSL distro = "Ubuntu", port = 7681, bind address = "127.0.0.1", theme = "Follow Obsidian theme", font size = 14, scrollback = 10000, both auto toggles off |
 | 6.3 | Values persist | Change compose path, restart Obsidian | Value persists |
 | 6.4 | Debounced save | Type rapidly in a text field, check `data.json` | File updates ~500ms after last keystroke |
 | 6.5 | Save on unload | Change a value, immediately disable the plugin | Re-enable; changed value persists |
+| 6.6 | Per-setting restart labels | Check descriptions for port, bind address, memory, CPU, compose path, write dir, sudo password | Each description ends with "Requires restart." |
+| 6.7 | No restart label on non-restart settings | Check descriptions for terminal theme, font, font size, scrollback, auto-start/stop | No "Requires restart." text |
+| 6.8 | Compose path validation (Local mode) | Set Docker mode to Local, enter a nonexistent path | Warning appears: "docker-compose.yml not found at this path" |
+| 6.9 | Compose path validation (WSL mode) | Set Docker mode to WSL, enter any path | No filesystem validation warning (WSL paths can't be checked from host) |
+| 6.10 | Bind address security warning | Set bind address to 0.0.0.0 | Description changes to warn about network exposure without authentication |
+| 6.11 | Bind address normal | Set bind address to 127.0.0.1 | Normal description, no security warning |
+| 6.12 | Font size setting | Change font size to 20 in Terminal tab | Value accepted, no error |
+| 6.13 | Font size validation | Enter "abc" or "50" in font size field | Red border on input (out of 8–32 range or invalid) |
+| 6.14 | Scrollback setting | Change scrollback to 50000 in Terminal tab | Value accepted, no error |
+| 6.15 | Scrollback validation | Enter "50" or "200000" in scrollback field | Red border on input (out of 100–100000 range) |
+| 6.16 | Restart prompt on close | Change port (restart-needing), close settings tab | Modal appears: "Settings changed that require a container restart. Restart now?" with Restart/Later buttons |
+| 6.17 | Restart prompt — Later | Click "Later" on restart modal | Modal closes, container keeps running with old settings |
+| 6.18 | Restart prompt — Restart | Click "Restart" on restart modal | Container restarts. Notice confirms. Terminal sessions disconnected |
+| 6.19 | No restart prompt for non-restart settings | Change only terminal theme, close settings | No restart modal appears |
+| 6.20 | No restart prompt when container stopped | Change port with container stopped, close settings | No restart modal (nothing to restart) |
 
 ## 7. Container Management (requires Docker + WSL)
 
@@ -137,9 +152,17 @@ claude
 
 | # | Test | Steps | Expected |
 |---|------|-------|----------|
-| 8.1 | Open via ribbon | Click terminal icon in left ribbon | Terminal pane opens at bottom |
-| 8.2 | Open via command | Cmd palette > "Open Sandbox Terminal" | New terminal pane opens |
+| 8.1 | Open via ribbon (running) | Click terminal icon in left ribbon with container running | Terminal pane opens |
+| 8.2 | Open via command (running) | Cmd palette > "Open Sandbox Terminal" with container running | New terminal pane opens |
 | 8.3 | Terminal connects | With container running | Loading message, then xterm.js terminal renders |
+| 8.15 | Open via ribbon (stopped) | Click terminal icon with container stopped | Modal: "The container is not running. Start it now?" with Start/Cancel |
+| 8.16 | Auto-start — Start | Click "Start" on the auto-start modal | Container starts, then terminal opens automatically |
+| 8.17 | Auto-start — Cancel | Click "Cancel" on the auto-start modal | Modal closes, no container start, no terminal |
+| 8.18 | Open via command (stopped) | Cmd palette > "Open Sandbox Terminal" with container stopped | Same auto-start modal as ribbon |
+| 8.19 | Font size applied | Set font size to 20, open new terminal | Terminal text renders at 20px (visibly larger) |
+| 8.20 | Font size default | Reset font size to 14, open new terminal | Terminal text renders at default size |
+| 8.21 | Scrollback applied | Set scrollback to 500, open terminal, run a command that outputs 1000 lines | Only ~500 lines retained when scrolling up |
+| 8.22 | Scrollback default | Set scrollback to 10000, open terminal | Full 10000 lines of scrollback available |
 | 8.4 | Terminal is interactive | Type commands | Input/output works, shell responds |
 | 8.5 | Theme - follow Obsidian | Set theme to "Follow Obsidian theme", open terminal | Colors match Obsidian theme |
 | 8.6 | Theme - dark | Set theme to "Dark", open terminal | Dark background (#1e1e1e) |
