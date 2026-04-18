@@ -35,6 +35,7 @@ export interface AgentSandboxSettings {
 	mcpTierWriteVault: boolean;
 	mcpTierNavigate: boolean;
 	mcpTierManage: boolean;
+	mcpTierExtensions: boolean;
 }
 
 export type TerminalSettings = Pick<
@@ -69,6 +70,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	mcpTierWriteVault: false,
 	mcpTierNavigate: false,
 	mcpTierManage: false,
+	mcpTierExtensions: false,
 };
 
 type TabId = "general" | "terminal" | "advanced" | "mcp";
@@ -498,6 +500,11 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				name: "Manage",
 				desc: "Rename, move, and delete files with automatic link updates. Allows structural changes to your vault.",
 			},
+			{
+				key: "mcpTierExtensions",
+				name: "Extensions",
+				desc: "Access third-party plugin APIs (Dataview, Templater, Tasks, Canvas). Requires target plugins to be installed.",
+			},
 		];
 
 		for (const tier of tiers) {
@@ -510,6 +517,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						.onChange(async (value) => {
 							(this.plugin.settings[tier.key] as boolean) = value;
 							this.plugin.saveSettings();
+							void this.plugin.restartMcpIfRunning();
 						}),
 				);
 		}

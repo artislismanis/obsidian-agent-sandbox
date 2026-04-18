@@ -229,6 +229,37 @@ describe("ObsidianMcpServer", () => {
 		});
 	});
 
+	describe("health check", () => {
+		it("returns status, tool count, and uptime", async () => {
+			const res = await httpRequest("GET", "/mcp/health", {
+				Authorization: `Bearer ${TEST_TOKEN}`,
+			});
+			expect(res.status).toBe(200);
+			const body = JSON.parse(res.body);
+			expect(body.status).toBe("ok");
+			expect(typeof body.tools).toBe("number");
+			expect(typeof body.uptimeMs).toBe("number");
+			expect(body.uptimeMs).toBeGreaterThanOrEqual(0);
+		});
+	});
+
+	describe("audit log", () => {
+		it("returns entries array", async () => {
+			const res = await httpRequest("GET", "/mcp/audit", {
+				Authorization: `Bearer ${TEST_TOKEN}`,
+			});
+			expect(res.status).toBe(200);
+			const body = JSON.parse(res.body);
+			expect(Array.isArray(body.entries)).toBe(true);
+		});
+	});
+
+	describe("tool count", () => {
+		it("returns count via getToolCount()", () => {
+			expect(typeof server.getToolCount()).toBe("number");
+		});
+	});
+
 	describe("stop", () => {
 		it("stops cleanly and reports not running", async () => {
 			const tempServer = new ObsidianMcpServer(app as never, {

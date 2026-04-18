@@ -3,7 +3,13 @@ import { prepareSimpleSearch } from "obsidian";
 import { z } from "zod/v4";
 import { isPathWithinDir } from "./validation";
 
-export type PermissionTier = "read" | "writeScoped" | "writeVault" | "navigate" | "manage";
+export type PermissionTier =
+	| "read"
+	| "writeScoped"
+	| "writeVault"
+	| "navigate"
+	| "manage"
+	| "extensions";
 
 export interface McpToolDef {
 	name: string;

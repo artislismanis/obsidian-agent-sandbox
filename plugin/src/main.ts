@@ -392,7 +392,14 @@ export default class AgentSandboxPlugin extends Plugin {
 		if (this.settings.mcpTierWriteVault) tiers.add("writeVault");
 		if (this.settings.mcpTierNavigate) tiers.add("navigate");
 		if (this.settings.mcpTierManage) tiers.add("manage");
+		if (this.settings.mcpTierExtensions) tiers.add("extensions");
 		return tiers;
+	}
+
+	async restartMcpIfRunning(): Promise<void> {
+		if (!this.mcpServer?.isRunning()) return;
+		await this.stopMcpServer();
+		await this.startMcpServer();
 	}
 
 	private async startMcpServer(): Promise<void> {
@@ -526,10 +533,15 @@ export default class AgentSandboxPlugin extends Plugin {
 		const fwState = this.firewallBar.getState();
 		const fwLabel =
 			fwState === "enabled" ? "enabled" : fwState === "disabled" ? "disabled" : "n/a";
+		const mcpRunning = this.mcpServer?.isRunning() ?? false;
+		const mcpLabel = mcpRunning
+			? `port ${this.settings.mcpPort}, ${this.mcpServer!.getToolCount()} tools`
+			: "off";
 		const lines = [
 			"Container: running",
 			`Port: ${this.settings.ttydPort}`,
 			`Firewall: ${fwLabel}`,
+			`MCP: ${mcpLabel}`,
 			"",
 			"Click for options",
 		];

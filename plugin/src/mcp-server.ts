@@ -16,6 +16,82 @@ export interface McpServerConfig {
 
 const SESSION_TIMEOUT_MS = 10 * 60_000;
 const MAX_BODY_BYTES = 1024 * 1024;
+const MAX_RESPONSE_BYTES = 512_000;
+const RATE_WINDOW_MS = 60_000;
+const RATE_LIMIT_READ = 60;
+const RATE_LIMIT_WRITE = 20;
+const AUDIT_MAX_ENTRIES = 200;
+
+// ── Rate limiter ─────────────────────────────────────
+
+interface RateBucket {
+	timestamps: number[];
+}
+
+class RateLimiter {
+	private buckets = new Map<string, RateBucket>();
+	private limits = new Map<string, number>();
+	private defaultRead: number;
+	private defaultWrite: number;
+
+	constructor(defaultRead: number, defaultWrite: number) {
+		this.defaultRead = defaultRead;
+		this.defaultWrite = defaultWrite;
+	}
+
+	setLimit(toolName: string, maxPerMinute: number): void {
+		this.limits.set(toolName, maxPerMinute);
+	}
+
+	check(toolName: string, tier: PermissionTier): boolean {
+		const limit = this.limits.get(toolName) ?? this.defaultForTier(tier);
+		const now = Date.now();
+		let bucket = this.buckets.get(toolName);
+		if (!bucket) {
+			bucket = { timestamps: [] };
+			this.buckets.set(toolName, bucket);
+		}
+		bucket.timestamps = bucket.timestamps.filter((t) => now - t < RATE_WINDOW_MS);
+		if (bucket.timestamps.length >= limit) return false;
+		bucket.timestamps.push(now);
+		return true;
+	}
+
+	private defaultForTier(tier: PermissionTier): number {
+		return tier === "read" || tier === "navigate" ? this.defaultRead : this.defaultWrite;
+	}
+}
+
+// ── Audit log ────────────────────────────────────────
+
+export interface AuditEntry {
+	timestamp: number;
+	tool: string;
+	success: boolean;
+	durationMs: number;
+}
+
+class AuditLog {
+	private entries: AuditEntry[] = [];
+	private maxEntries: number;
+
+	constructor(maxEntries: number) {
+		this.maxEntries = maxEntries;
+	}
+
+	record(entry: AuditEntry): void {
+		this.entries.push(entry);
+		if (this.entries.length > this.maxEntries) {
+			this.entries = this.entries.slice(-this.maxEntries);
+		}
+	}
+
+	getEntries(): readonly AuditEntry[] {
+		return this.entries;
+	}
+}
+
+// ── MCP server ───────────────────────────────────────
 
 export class ObsidianMcpServer {
 	private httpServer: Server | null = null;
@@ -24,6 +100,9 @@ export class ObsidianMcpServer {
 	private app: App;
 	private config: McpServerConfig;
 	private tools: McpToolDef[] = [];
+	private startTime = 0;
+	private rateLimiter = new RateLimiter(RATE_LIMIT_READ, RATE_LIMIT_WRITE);
+	private auditLog = new AuditLog(AUDIT_MAX_ENTRIES);
 
 	constructor(app: App, config: McpServerConfig) {
 		this.app = app;
@@ -36,6 +115,8 @@ export class ObsidianMcpServer {
 		this.tools = buildTools(this.app, this.config.getWriteDir).filter((t) =>
 			this.config.enabledTiers.has(t.tier),
 		);
+
+		this.startTime = Date.now();
 
 		this.httpServer = createServer((req, res) => {
 			void this.handleRequest(req, res);
@@ -89,6 +170,14 @@ export class ObsidianMcpServer {
 		return this.httpServer !== null;
 	}
 
+	getToolCount(): number {
+		return this.tools.length;
+	}
+
+	getAuditEntries(): readonly AuditEntry[] {
+		return this.auditLog.getEntries();
+	}
+
 	private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
 		res.setHeader("Access-Control-Allow-Origin", "*");
 		res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
@@ -111,6 +200,17 @@ export class ObsidianMcpServer {
 		}
 
 		const url = new URL(req.url ?? "/", `http://localhost:${this.config.port}`);
+
+		if (url.pathname === "/mcp/health") {
+			this.handleHealth(res);
+			return;
+		}
+
+		if (url.pathname === "/mcp/audit") {
+			this.handleAudit(res);
+			return;
+		}
+
 		if (url.pathname !== "/mcp") {
 			res.writeHead(404);
 			res.end("Not Found");
@@ -127,6 +227,22 @@ export class ObsidianMcpServer {
 			res.writeHead(405);
 			res.end("Method Not Allowed");
 		}
+	}
+
+	private handleHealth(res: ServerResponse): void {
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(
+			JSON.stringify({
+				status: "ok",
+				tools: this.tools.length,
+				uptimeMs: Date.now() - this.startTime,
+			}),
+		);
+	}
+
+	private handleAudit(res: ServerResponse): void {
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(JSON.stringify({ entries: this.auditLog.getEntries() }));
 	}
 
 	private checkAuth(req: IncomingMessage): boolean {
@@ -169,14 +285,43 @@ export class ObsidianMcpServer {
 
 		for (const tool of this.tools) {
 			server.registerTool(tool.name, tool.config, async (args) => {
+				if (!this.rateLimiter.check(tool.name, tool.tier)) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Rate limit exceeded for ${tool.name}. Try again shortly.`,
+							},
+						],
+						isError: true,
+					};
+				}
+
+				const start = Date.now();
+				let success = true;
 				try {
-					return await tool.handler(args as Record<string, unknown>);
+					const result = await tool.handler(args as Record<string, unknown>);
+					const text = result.content?.[0]?.text;
+					if (text && Buffer.byteLength(text) > MAX_RESPONSE_BYTES) {
+						result.content[0].text =
+							text.slice(0, MAX_RESPONSE_BYTES) + "\n\n[truncated]";
+					}
+					if (result.isError) success = false;
+					return result;
 				} catch (err: unknown) {
+					success = false;
 					const msg = err instanceof Error ? err.message : String(err);
 					return {
 						content: [{ type: "text" as const, text: `Error: ${msg}` }],
 						isError: true,
 					};
+				} finally {
+					this.auditLog.record({
+						timestamp: Date.now(),
+						tool: tool.name,
+						success,
+						durationMs: Date.now() - start,
+					});
 				}
 			});
 		}
