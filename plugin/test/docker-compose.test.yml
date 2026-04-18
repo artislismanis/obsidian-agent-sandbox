@@ -12,6 +12,7 @@ services:
             - ../../workspace:/workspace:rw
             - ${PKM_VAULT_PATH}:/workspace/vault:ro
             - ${PKM_VAULT_PATH}/${PKM_WRITE_DIR:-agent-workspace}:/workspace/vault/${PKM_WRITE_DIR:-agent-workspace}:rw
+            - ${PKM_VAULT_PATH}/.oas:/workspace/vault/.oas:rw
             - oas-test-claude-config:/home/claude/.claude
             - oas-test-shell-history:/home/claude/.shell-history
         environment:

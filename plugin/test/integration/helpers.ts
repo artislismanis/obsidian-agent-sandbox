@@ -78,7 +78,19 @@ export async function waitForHealth(
 		}
 		await new Promise((r) => setTimeout(r, intervalMs));
 	}
-	throw new Error(`Health check timeout for ${url} after ${timeoutMs}ms`);
+	let diag = "";
+	try {
+		diag = "\n\n--- container logs ---\n" + containerLogs();
+	} catch {
+		diag = "\n(could not fetch container logs)";
+	}
+	try {
+		const ps = compose("ps --format json");
+		diag += "\n\n--- container status ---\n" + ps;
+	} catch {
+		// best effort
+	}
+	throw new Error(`Health check timeout for ${url} after ${timeoutMs}ms${diag}`);
 }
 
 export function httpGet(url: string): Promise<number> {
@@ -101,7 +113,11 @@ export function httpPost(
 				port: parsed.port,
 				path: parsed.pathname,
 				method: "POST",
-				headers: { "Content-Type": "application/json", ...headers },
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json, text/event-stream",
+					...headers,
+				},
 			},
 			(res: http.IncomingMessage) => {
 				let buf = "";
