@@ -44,14 +44,27 @@ No leaf module imports from another leaf — only `main.ts` wires them together.
 
 ## Testing
 
-Vitest test files (`npm run test`):
+Three automated layers — see `docs/testing.md` for full setup, prerequisites, and coverage.
+
+| Layer | Command | Time | Dependencies |
+|-------|---------|------|--------------|
+| Unit (`src/__tests__/`) | `npm run test` | ~1.5s | none |
+| Integration (`test/integration/`) | `npm run test:integration` | ~30s | Docker + built `oas-sandbox:latest` |
+| E2E (`test/e2e/specs/`) | `npm run test:e2e` / `test:e2e:headless` | ~25s | Obsidian (auto-downloaded); display or xvfb |
+
+Vitest unit test files (`npm run test`):
 - `docker.test.ts` — `parseIsRunning()` static method, compose path validation
 - `docker-command.test.ts` — `buildWslCommand()` escaping/validation, `buildLocalCommand()` double-quote escaping, `windowsToWslPath()` conversion, env var injection
 - `status-bar.test.ts` — `StatusBarManager` state transitions and tooltips, `FirewallStatusBar` states/clicks/destroy
 - `ttyd-client.test.ts` — Polling, URL construction (mocks `requestUrl`)
 - `validation.test.ts` — All input validators (writeDir, privateHosts, memory, cpus, bindAddress) with octet/CIDR range checks, edge cases, DockerManager integration, busy guard
+- `mcp-auth.test.ts`, `mcp-path-traversal.test.ts`, `mcp-tools.test.ts` — MCP auth, path-safety, tool handlers
 
-The Obsidian API-dependent modules (main.ts, settings.ts, terminal-view.ts) are not unit tested — they would require mocking Plugin, ItemView, WorkspaceLeaf, etc. Test pure logic by extracting it into testable modules (docker.ts, ttyd-client.ts, status-bar.ts).
+Integration tests share one `oas-test-sandbox` container via `globalSetup.ts`. The container is isolated from your live `oas-sandbox` via the `oas-test` compose project prefix. Claude-Code subsuite seeds auth from the live `oas_oas-claude-config` volume when present (see `docs/testing.md` for setup), otherwise skips.
+
+E2E tests use `wdio-obsidian-service`. Each spec launches a fresh Obsidian against an ephemeral copy of `test/e2e/vaults/simple/`.
+
+The Obsidian API-dependent modules (main.ts, settings.ts, terminal-view.ts) are not unit tested — they would require mocking Plugin, ItemView, WorkspaceLeaf, etc. Instead they're exercised end-to-end by the e2e suite. Keep pure logic in testable modules (docker.ts, ttyd-client.ts, status-bar.ts, validation.ts, mcp-*.ts).
 
 ## Conventions
 
