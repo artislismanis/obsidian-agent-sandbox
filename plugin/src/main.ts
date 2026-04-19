@@ -663,13 +663,15 @@ export default class AgentSandboxPlugin extends Plugin {
 					allowlist.length > 0 || blocklist.length > 0
 						? { allowlist, blocklist }
 						: undefined,
-				reviewFn: this.settings.mcpTierWriteReviewed
-					? async (req) => new DiffReviewModal(this.app, req).review()
-					: undefined,
-				reviewBatchFn: this.settings.mcpTierWriteReviewed
-					? async (req) => new BatchReviewModal(this.app, req).review()
-					: undefined,
-				onActivity: (update) => this.onAgentActivity(update),
+				hooks: {
+					review: this.settings.mcpTierWriteReviewed
+						? async (req) => new DiffReviewModal(this.app, req).review()
+						: undefined,
+					reviewBatch: this.settings.mcpTierWriteReviewed
+						? async (req) => new BatchReviewModal(this.app, req).review()
+						: undefined,
+					onActivity: (update) => this.onAgentActivity(update),
+				},
 			});
 			await this.mcpServer.start();
 		} catch (error: unknown) {

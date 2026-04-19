@@ -24,15 +24,22 @@ export interface ActivityEntry {
 
 const ACTIVITY_STALE_MS = 10 * 60_000;
 
+export interface McpServerHooks {
+	/** Fired on writes when the reviewed tier is enabled — presents a diff modal. */
+	review?: ReviewFn;
+	/** Fired on batch writes (vault_batch_frontmatter) when review is enabled. */
+	reviewBatch?: ReviewBatchFn;
+	/** Called on every `agent_status_set` tool invocation. */
+	onActivity?: OnActivity;
+}
+
 export interface McpServerConfig {
 	port: number;
 	token: string;
 	enabledTiers: Set<PermissionTier>;
 	getWriteDir: () => string;
 	pathFilter?: PathFilter;
-	reviewFn?: ReviewFn;
-	reviewBatchFn?: ReviewBatchFn;
-	onActivity?: OnActivity;
+	hooks?: McpServerHooks;
 }
 
 const SESSION_TIMEOUT_MS = 10 * 60_000;
@@ -191,13 +198,14 @@ export class ObsidianMcpServer {
 
 		this.cache = new VaultCache(this.app.metadataCache);
 		this.auditLog.setSink(createFileAuditSink(this.app));
+		const hooks = this.config.hooks ?? {};
 		this.tools = buildTools(
 			this.app,
 			this.config.getWriteDir,
 			this.config.pathFilter,
-			this.config.reviewFn,
+			hooks.review,
 			this.cache,
-			this.config.reviewBatchFn,
+			hooks.reviewBatch,
 			(update) => this.recordActivity(update),
 		).filter((t) => this.config.enabledTiers.has(t.tier));
 
@@ -269,7 +277,7 @@ export class ObsidianMcpServer {
 			detail: update.detail,
 			updatedAt: Date.now(),
 		});
-		this.config.onActivity?.(update);
+		this.config.hooks?.onActivity?.(update);
 	}
 
 	/** Returns the current activity map with stale `working` entries rolled to `idle`. */
