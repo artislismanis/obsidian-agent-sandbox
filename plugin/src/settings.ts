@@ -36,6 +36,8 @@ export interface AgentSandboxSettings {
 	mcpTierNavigate: boolean;
 	mcpTierManage: boolean;
 	mcpTierExtensions: boolean;
+	mcpPathAllowlist: string;
+	mcpPathBlocklist: string;
 }
 
 export type TerminalSettings = Pick<
@@ -71,6 +73,8 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	mcpTierNavigate: false,
 	mcpTierManage: false,
 	mcpTierExtensions: false,
+	mcpPathAllowlist: "",
+	mcpPathBlocklist: "",
 };
 
 type TabId = "general" | "terminal" | "advanced" | "mcp";
@@ -521,6 +525,38 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						}),
 				);
 		}
+
+		new Setting(el).setName("Path restrictions").setHeading();
+
+		new Setting(el)
+			.setName("Allowed paths")
+			.setDesc(
+				"Comma-separated folder prefixes. If set, only these paths are accessible. Empty = all paths.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("notes/,projects/")
+					.setValue(this.plugin.settings.mcpPathAllowlist)
+					.onChange(async (value) => {
+						this.plugin.settings.mcpPathAllowlist = value;
+						this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(el)
+			.setName("Blocked paths")
+			.setDesc(
+				"Comma-separated folder prefixes. These paths are always denied, even if allowed above.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("private/,secrets/")
+					.setValue(this.plugin.settings.mcpPathBlocklist)
+					.onChange(async (value) => {
+						this.plugin.settings.mcpPathBlocklist = value;
+						this.plugin.saveSettings();
+					}),
+			);
 	}
 
 	private renderAdvanced(el: HTMLElement): void {

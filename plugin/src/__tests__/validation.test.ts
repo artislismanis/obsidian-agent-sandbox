@@ -5,6 +5,7 @@ import {
 	isValidMemory,
 	isValidCpus,
 	isValidBindAddress,
+	isPathAllowed,
 } from "../validation";
 import { DockerManager } from "../docker";
 
@@ -126,5 +127,33 @@ describe("DockerManager.isBusy()", () => {
 			wslDistro: "Ubuntu",
 		}));
 		expect(docker.isBusy()).toBe(false);
+	});
+});
+
+describe("isPathAllowed", () => {
+	it("allows everything with empty lists", () => {
+		expect(isPathAllowed("notes/secret.md", [], [])).toBe(true);
+	});
+
+	it("allowlist restricts to matching prefixes", () => {
+		expect(isPathAllowed("notes/file.md", ["notes/"], [])).toBe(true);
+		expect(isPathAllowed("private/file.md", ["notes/"], [])).toBe(false);
+	});
+
+	it("blocklist denies matching paths", () => {
+		expect(isPathAllowed("private/secret.md", [], ["private/"])).toBe(false);
+		expect(isPathAllowed("notes/file.md", [], ["private/"])).toBe(true);
+	});
+
+	it("blocklist overrides allowlist", () => {
+		expect(isPathAllowed("notes/private/x.md", ["notes/"], ["notes/private/"])).toBe(false);
+	});
+
+	it("handles nested paths", () => {
+		expect(isPathAllowed("notes/sub/deep/file.md", ["notes/"], [])).toBe(true);
+	});
+
+	it("rejects path-prefix attacks", () => {
+		expect(isPathAllowed("notes-evil/file.md", ["notes/"], [])).toBe(false);
 	});
 });

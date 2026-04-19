@@ -405,11 +405,23 @@ export default class AgentSandboxPlugin extends Plugin {
 	private async startMcpServer(): Promise<void> {
 		if (this.mcpServer?.isRunning()) return;
 		try {
+			const allowlist = this.settings.mcpPathAllowlist
+				.split(",")
+				.map((s) => s.trim())
+				.filter(Boolean);
+			const blocklist = this.settings.mcpPathBlocklist
+				.split(",")
+				.map((s) => s.trim())
+				.filter(Boolean);
 			this.mcpServer = new ObsidianMcpServer(this.app, {
 				port: this.settings.mcpPort,
 				token: this.settings.mcpToken,
 				enabledTiers: this.getEnabledTiers(),
 				getWriteDir: () => this.settings.vaultWriteDir,
+				pathFilter:
+					allowlist.length > 0 || blocklist.length > 0
+						? { allowlist, blocklist }
+						: undefined,
 			});
 			await this.mcpServer.start();
 		} catch (error: unknown) {

@@ -1,7 +1,7 @@
 import type { App, TFile, CachedMetadata } from "obsidian";
 import { prepareSimpleSearch } from "obsidian";
 import { z } from "zod/v4";
-import { isPathWithinDir } from "./validation";
+import { isPathWithinDir, isPathAllowed } from "./validation";
 
 export type PermissionTier =
 	| "read"
@@ -63,18 +63,32 @@ function formatTags(cache: CachedMetadata | null): string[] {
 	return [...new Set(tags)];
 }
 
-function resolveFile(app: App, args: Record<string, unknown>): TFile | null {
-	const path = args.path as string | undefined;
-	const file = args.file as string | undefined;
-	if (path) return app.vault.getFileByPath(path) ?? null;
-	if (file) {
-		const resolved = app.metadataCache.getFirstLinkpathDest(file, "");
-		return resolved ?? null;
-	}
-	return null;
+export interface PathFilter {
+	allowlist: string[];
+	blocklist: string[];
 }
 
-export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
+function resolveFile(
+	app: App,
+	args: Record<string, unknown>,
+	pathFilter?: PathFilter,
+): TFile | null {
+	const path = args.path as string | undefined;
+	const file = args.file as string | undefined;
+	let resolved: TFile | null = null;
+	if (path) resolved = app.vault.getFileByPath(path) ?? null;
+	else if (file) resolved = app.metadataCache.getFirstLinkpathDest(file, "") ?? null;
+	if (resolved && pathFilter) {
+		if (!isPathAllowed(resolved.path, pathFilter.allowlist, pathFilter.blocklist)) return null;
+	}
+	return resolved;
+}
+
+export function buildTools(
+	app: App,
+	getWriteDir: () => string,
+	pathFilter?: PathFilter,
+): McpToolDef[] {
 	const tools: McpToolDef[] = [];
 
 	// ── Read tier ─────────────────────────────────────
@@ -91,7 +105,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 			},
 		},
 		handler: async (args) => {
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			if (!f) return error("File not found.");
 			const content = await app.vault.read(f);
 			return text(content);
@@ -167,7 +181,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 			},
 		},
 		handler: async (args) => {
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			if (!f) return error("File not found.");
 			return text(fileToInfo(f));
 		},
@@ -186,7 +200,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 			},
 		},
 		handler: async (args) => {
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			if (f) {
 				const cache = app.metadataCache.getFileCache(f);
 				const tags = formatTags(cache);
@@ -217,7 +231,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 			},
 		},
 		handler: async (args) => {
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			if (!f) return error("File not found.");
 			const cache = app.metadataCache.getFileCache(f);
 			const fm = cache?.frontmatter;
@@ -248,7 +262,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 			},
 		},
 		handler: async (args) => {
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			if (!f) return error("File not found.");
 			const resolved = app.metadataCache.resolvedLinks[f.path] ?? {};
 			const entries = Object.entries(resolved).map(
@@ -270,7 +284,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 			},
 		},
 		handler: async (args) => {
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			if (!f) return error("File not found.");
 			const backlinks: string[] = [];
 			for (const [source, targets] of Object.entries(app.metadataCache.resolvedLinks)) {
@@ -292,7 +306,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 			},
 		},
 		handler: async (args) => {
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			if (!f) return error("File not found.");
 			const cache = app.metadataCache.getFileCache(f);
 			const headings = cache?.headings ?? [];
@@ -447,7 +461,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 			},
 		},
 		handler: async (args) => {
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			if (!f) return error("File not found.");
 			const depth = Math.min(Math.max((args.depth as number | undefined) ?? 1, 1), 5);
 			const graph = buildLinkGraph();
@@ -908,7 +922,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 				if (!isPathWithinDir(path, writeDir))
 					return error(`Path must be within the write directory '${writeDir}'.`);
 			}
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			return f ?? error("File not found.");
 		},
 	);
@@ -918,7 +932,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 		"_anywhere",
 		" (vault-wide)",
 		() => null,
-		(args) => resolveFile(app, args) ?? error("File not found."),
+		(args) => resolveFile(app, args, pathFilter) ?? error("File not found."),
 	);
 
 	// ── Navigate tier ─────────────────────────────────
@@ -936,7 +950,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 			},
 		},
 		handler: async (args) => {
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			if (!f) return error("File not found.");
 			const leaf = app.workspace.getLeaf(args.newTab ? "tab" : false);
 			await leaf.openFile(f);
@@ -959,7 +973,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 			},
 		},
 		handler: async (args) => {
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			if (!f) return error("File not found.");
 			const newName = args.name as string;
 			const ext = newName.includes(".") ? "" : `.${f.extension}`;
@@ -983,7 +997,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 			},
 		},
 		handler: async (args) => {
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			if (!f) return error("File not found.");
 			const dest = args.to as string;
 			const newPath = `${dest}/${f.name}`;
@@ -1004,7 +1018,7 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 			},
 		},
 		handler: async (args) => {
-			const f = resolveFile(app, args);
+			const f = resolveFile(app, args, pathFilter);
 			if (!f) return error("File not found.");
 			await app.vault.trash(f, true);
 			return text(`Deleted ${f.path}`);
