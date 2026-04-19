@@ -51,6 +51,46 @@ export function error(msg: string): McpToolResult {
 	return { content: [{ type: "text", text: msg }], isError: true };
 }
 
+/**
+ * Build a tool definition whose handler receives args typed to the inferred
+ * zod schema. Runtime parsing runs before the handler fires; schema-mismatch
+ * inputs return an error result instead of throwing or silently feeding
+ * undefined into casts. Handlers can destructure directly:
+ *
+ *   defineTool({
+ *     name: "vault_read",
+ *     inputSchema: { path: z.string() },
+ *     handler: async ({ path }) => { ... },
+ *   })
+ */
+export function defineTool<S extends Record<string, z.ZodType>>(def: {
+	name: string;
+	tier: PermissionTier;
+	title: string;
+	description: string;
+	inputSchema?: S;
+	handler: (args: z.infer<z.ZodObject<S>>) => Promise<McpToolResult>;
+}): McpToolDef {
+	const schema = def.inputSchema ? z.object(def.inputSchema) : null;
+	return {
+		name: def.name,
+		tier: def.tier,
+		config: {
+			title: def.title,
+			description: def.description,
+			inputSchema: def.inputSchema,
+		},
+		handler: async (raw) => {
+			if (!schema) return def.handler({} as z.infer<z.ZodObject<S>>);
+			const parsed = schema.safeParse(raw);
+			if (!parsed.success) {
+				return error(`Invalid arguments: ${parsed.error.message}`);
+			}
+			return def.handler(parsed.data as z.infer<z.ZodObject<S>>);
+		},
+	};
+}
+
 function fileToInfo(file: TFile): string {
 	return [
 		`path: ${file.path}`,
@@ -85,14 +125,12 @@ export interface PathFilter {
 
 function resolveFile(
 	app: App,
-	args: Record<string, unknown>,
+	args: { file?: string; path?: string },
 	pathFilter?: PathFilter,
 ): TFile | null {
-	const path = args.path as string | undefined;
-	const file = args.file as string | undefined;
 	let resolved: TFile | null = null;
-	if (path) resolved = app.vault.getFileByPath(path) ?? null;
-	else if (file) resolved = app.metadataCache.getFirstLinkpathDest(file, "") ?? null;
+	if (args.path) resolved = app.vault.getFileByPath(args.path) ?? null;
+	else if (args.file) resolved = app.metadataCache.getFirstLinkpathDest(args.file, "") ?? null;
 	if (resolved && pathFilter) {
 		if (!isPathAllowed(resolved.path, pathFilter.allowlist, pathFilter.blocklist)) return null;
 	}
@@ -155,53 +193,51 @@ export function buildTools(
 
 	// ── Read tier ─────────────────────────────────────
 
-	tools.push({
-		name: "vault_read",
-		tier: "read",
-		config: {
+	tools.push(
+		defineTool({
+			name: "vault_read",
+			tier: "read",
 			title: "Read file",
 			description: "Read the contents of a file in the vault.",
 			inputSchema: {
 				file: z.string().optional().describe("File name (wikilink-style resolution)"),
 				path: z.string().optional().describe("Exact path from vault root"),
 			},
-		},
-		handler: async (args) => {
-			const f = resolveFile(app, args, pathFilter);
-			if (!f) return error("File not found.");
-			const content = await app.vault.read(f);
-			return text(content);
-		},
-	});
+			handler: async ({ file, path }) => {
+				const f = resolveFile(app, { file, path }, pathFilter);
+				if (!f) return error("File not found.");
+				const content = await app.vault.read(f);
+				return text(content);
+			},
+		}),
+	);
 
-	tools.push({
-		name: "vault_list",
-		tier: "read",
-		config: {
+	tools.push(
+		defineTool({
+			name: "vault_list",
+			tier: "read",
 			title: "List files",
 			description: "List files in the vault. Optionally filter by folder or extension.",
 			inputSchema: {
 				folder: z.string().optional().describe("Filter by folder path"),
 				extension: z.string().optional().describe("Filter by extension (e.g. md, json)"),
 			},
-		},
-		handler: async (args) => {
-			let files = app.vault.getFiles();
-			const folder = args.folder as string | undefined;
-			const ext = args.extension as string | undefined;
-			if (folder)
-				files = files.filter(
-					(f) => f.path.startsWith(folder + "/") || f.path.startsWith(folder),
-				);
-			if (ext) files = files.filter((f) => f.extension === ext);
-			return text(files.map((f) => f.path).join("\n") || "(no files)");
-		},
-	});
+			handler: async ({ folder, extension }) => {
+				let files = app.vault.getFiles();
+				if (folder)
+					files = files.filter(
+						(f) => f.path.startsWith(folder + "/") || f.path.startsWith(folder),
+					);
+				if (extension) files = files.filter((f) => f.extension === extension);
+				return text(files.map((f) => f.path).join("\n") || "(no files)");
+			},
+		}),
+	);
 
-	tools.push({
-		name: "vault_search",
-		tier: "read",
-		config: {
+	tools.push(
+		defineTool({
+			name: "vault_search",
+			tier: "read",
 			title: "Search vault",
 			description:
 				"Search for text across all markdown files in the vault. Returns matching file paths with context.",
@@ -209,30 +245,29 @@ export function buildTools(
 				query: z.string().describe("Search query text"),
 				limit: z.number().optional().describe("Max results (default 20)"),
 			},
-		},
-		handler: async (args) => {
-			const query = args.query as string;
-			const limit = (args.limit as number | undefined) ?? 20;
-			const search = prepareSimpleSearch(query);
-			const results: string[] = [];
-			await forEachMarkdownChunked((file, content) => {
-				const match = search(content);
-				if (!match) return;
-				const firstOffset = match.matches[0]?.[0] ?? 0;
-				const start = Math.max(0, firstOffset - 60);
-				const end = Math.min(content.length, firstOffset + 120);
-				const snippet = content.slice(start, end).replace(/\n/g, " ");
-				results.push(`${file.path}: ...${snippet}...`);
-				return results.length >= limit;
-			});
-			return text(results.join("\n") || "No matches found.");
-		},
-	});
+			handler: async ({ query, limit: limitArg }) => {
+				const limit = limitArg ?? 20;
+				const search = prepareSimpleSearch(query);
+				const results: string[] = [];
+				await forEachMarkdownChunked((file, content) => {
+					const match = search(content);
+					if (!match) return;
+					const firstOffset = match.matches[0]?.[0] ?? 0;
+					const start = Math.max(0, firstOffset - 60);
+					const end = Math.min(content.length, firstOffset + 120);
+					const snippet = content.slice(start, end).replace(/\n/g, " ");
+					results.push(`${file.path}: ...${snippet}...`);
+					return results.length >= limit;
+				});
+				return text(results.join("\n") || "No matches found.");
+			},
+		}),
+	);
 
-	tools.push({
-		name: "vault_search_fuzzy",
-		tier: "read",
-		config: {
+	tools.push(
+		defineTool({
+			name: "vault_search_fuzzy",
+			tier: "read",
 			title: "Fuzzy search vault",
 			description:
 				"Fuzzy full-text search across all markdown files — tolerates typos and approximate matches. Results are score-sorted.",
@@ -240,28 +275,27 @@ export function buildTools(
 				query: z.string().describe("Search query text (fuzzy matched)"),
 				limit: z.number().optional().describe("Max results (default 20)"),
 			},
-		},
-		handler: async (args) => {
-			const query = args.query as string;
-			const limit = (args.limit as number | undefined) ?? 20;
-			const search = prepareFuzzySearch(query);
-			const hits: { path: string; score: number; snippet: string }[] = [];
-			await forEachMarkdownChunked((file, content) => {
-				const match = search(content);
-				if (!match) return;
-				const firstOffset = match.matches[0]?.[0] ?? 0;
-				const start = Math.max(0, firstOffset - 60);
-				const end = Math.min(content.length, firstOffset + 120);
-				const snippet = content.slice(start, end).replace(/\n/g, " ");
-				hits.push({ path: file.path, score: match.score, snippet });
-			});
-			hits.sort((a, b) => b.score - a.score);
-			const formatted = hits
-				.slice(0, limit)
-				.map((h) => `${h.path} (score ${h.score.toFixed(2)}): ...${h.snippet}...`);
-			return text(formatted.join("\n") || "No matches found.");
-		},
-	});
+			handler: async ({ query, limit: limitArg }) => {
+				const limit = limitArg ?? 20;
+				const search = prepareFuzzySearch(query);
+				const hits: { path: string; score: number; snippet: string }[] = [];
+				await forEachMarkdownChunked((file, content) => {
+					const match = search(content);
+					if (!match) return;
+					const firstOffset = match.matches[0]?.[0] ?? 0;
+					const start = Math.max(0, firstOffset - 60);
+					const end = Math.min(content.length, firstOffset + 120);
+					const snippet = content.slice(start, end).replace(/\n/g, " ");
+					hits.push({ path: file.path, score: match.score, snippet });
+				});
+				hits.sort((a, b) => b.score - a.score);
+				const formatted = hits
+					.slice(0, limit)
+					.map((h) => `${h.path} (score ${h.score.toFixed(2)}): ...${h.snippet}...`);
+				return text(formatted.join("\n") || "No matches found.");
+			},
+		}),
+	);
 
 	tools.push({
 		name: "vault_file_info",
