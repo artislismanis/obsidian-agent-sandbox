@@ -104,6 +104,8 @@ Access capabilities of other installed Obsidian plugins via `app.plugins.getPlug
 - [x] Path-based allowlists/blocklists (protect specific folders)
 - [x] Rate limiting per tool (token-bucket, 60/min reads, 20/min writes)
 - [x] Operation audit log (in-memory ring buffer, GET /mcp/audit endpoint)
+- [x] Review guard covers all 8 write operations (was create+modify only — silent bypass via append/patch/search_replace/frontmatter/prepend closed)
+- [x] Capability tiers vs escalation tiers — settings UI split; `read`/`writeScoped` always-on when MCP enabled, gated toggles for `writeReviewed`/`writeVault`/`navigate`/`manage`/`extensions`
 - [ ] Symlink resolution in path validation
 
 ### Format Awareness
@@ -123,9 +125,22 @@ Obsidian markdown conventions (wikilinks, callouts, embeds, properties) are hand
 - [x] Wire into `addWriteTools()` factory — reviewed-tier tools call reviewFn before executing
 - [x] Review modal for file creation — show proposed path + content
 - [x] Review modal for file modification — show old vs new content diff
+- [x] Review modal for append/prepend/patch/search_replace — full-file diff preview
+- [x] Review modal for frontmatter set/delete — JSON-stringified old vs new frontmatter preview
+- [x] `WriteOperation` union type replaces stringly-typed operation; modal shows human labels
+- [x] `runWrite` helper — structural review gate that makes bypass impossible to reintroduce
 - [ ] Review modal for rename/move/delete — show operation description + affected links
 - [ ] Batch review option — queue multiple proposed changes, review all at once
 - [ ] Audit trail — log approved/rejected operations to a file for later review
+
+### Skills (workflow guidance)
+Curated skills living under `workspace/.claude/skills/` that teach Claude how to chain MCP tools for common vault tasks.
+- [x] `research-topic` — discovery via `vault_search` → `vault_context` → `vault_graph_neighborhood`
+- [x] `link-hygiene` — `vault_unresolved` + `vault_orphans` + `vault_suggest_links` + fix loop
+- [x] `reviewed-edit` — safe out-of-workspace writes via `_reviewed` tools
+- [ ] `tag-audit` — `vault_tags` + `vault_properties` → merge/rename via `vault_search_replace`
+- [ ] `daily-review` — `vault_recent` + `vault_context` for "what did I work on this week"
+- [ ] `note-refactor` — `vault_backlinks` pre-check before rename/move/delete
 
 ## Phase 5: UX & Integration Depth
 
@@ -140,8 +155,22 @@ Deeper Obsidian integration and workflow improvements.
 ### Container Improvements
 - [ ] Container ID verification (prevent connecting to wrong container)
 - [ ] Port conflict pre-flight check
-- [ ] Firewall state polling (detect out-of-band changes)
+- [x] Firewall state refresh (detect out-of-band changes) — event-driven on focus / status-bar hover / container-state transitions, plus 5-min safety-net poll; replaced the prior unconditional 30s exec
 - [ ] Session cleanup / garbage collection for stale tmux sessions
+
+### Firewall allowlist expansion
+The container's `init-firewall.sh` allowlist should cover the services we integrate with out of the box, with room to grow. Each entry is a documented, reversible opt-in — the default-deny posture is preserved.
+- [ ] Atlassian (Jira, Confluence) — `*.atlassian.net`, `*.atlassian.com`, MCP/API endpoints
+- [ ] Slack — `*.slack.com`, `slack.com/api`, MCP endpoints
+- [ ] Google (Workspace) — `*.googleapis.com`, `accounts.google.com`, Gmail/Calendar/Drive MCP endpoints
+- [ ] Document the allowlist extension point so users can add their own services without editing the shipped script
+
+### Activity feedback
+Inspired by Windows Terminal's Claude Code status icon — show the user whether Claude is working or waiting for input without them having to look at the terminal tab.
+- [ ] Status bar indicator: idle / working / awaiting input, driven by an MCP/in-container signal
+- [ ] Optional audible or tray notification when Claude transitions to "awaiting input" after a long-running task
+- [ ] Terminal tab title decoration when the active tab is backgrounded
+- Design sketch: agent running in the container writes state transitions to a well-known path (e.g. `/workspace/.claude/state/activity.json` with `{ status: "idle" | "working" | "awaiting_input", since: ts }`); plugin watches the file (or polls at a low rate) and drives the UI. MCP is not strictly required but is a natural transport if we'd rather not file-watch.
 
 ### Terminal Polish
 - [ ] Clipboard auto-copy opt-out setting
@@ -175,6 +204,9 @@ Prepare for the official Obsidian community plugin directory.
 - [x] E2E test selector fixes (XPath replacing invalid :has() CSS selectors)
 - [x] Test automation documentation (docs/testing.md — three layers, prerequisites, coverage)
 - [x] Phase 1 UX Quick Wins: font size, scrollback, auto-start prompt, per-setting restart labels, bind address warning, compose path validation
+- [x] Phase 4H MCP simplification pass: tier restructure (capabilities vs escalations), review-bypass fix across 8 write handlers, `runWrite` + `forEachMarkdownChunked` helpers, VaultCache wired into link graph, ttyd protocol enum cleanup, `addWriteTools` config object, event-driven firewall refresh, status-bar change detection, vault_search/suggest_links/batch_frontmatter chunked parallelism
+- [x] Initial skill set: `research-topic`, `link-hygiene`, `reviewed-edit`
+- [x] Tests grown from 233 → 255 (review coverage, tier derivation, chunked early-exit, cache invalidation)
 
 ## Ecosystem References
 

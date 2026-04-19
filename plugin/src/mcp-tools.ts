@@ -105,6 +105,26 @@ export function buildTools(
 ): McpToolDef[] {
 	const tools: McpToolDef[] = [];
 
+	/**
+	 * Iterate the vault's markdown files in parallel chunks, short-circuiting
+	 * when the handler returns `true`. Used by any tool that wants parallel
+	 * cachedReads without loading the entire vault at once.
+	 */
+	async function forEachMarkdownChunked(
+		handler: (file: TFile, content: string) => boolean | void | Promise<boolean | void>,
+		files: TFile[] = app.vault.getMarkdownFiles(),
+		chunkSize = 20,
+	): Promise<void> {
+		for (let i = 0; i < files.length; i += chunkSize) {
+			const chunk = files.slice(i, i + chunkSize);
+			const contents = await Promise.all(chunk.map((f) => app.vault.cachedRead(f)));
+			for (let j = 0; j < chunk.length; j++) {
+				const stop = await handler(chunk[j], contents[j]);
+				if (stop) return;
+			}
+		}
+	}
+
 	// ── Read tier ─────────────────────────────────────
 
 	tools.push({
@@ -166,24 +186,17 @@ export function buildTools(
 			const query = args.query as string;
 			const limit = (args.limit as number | undefined) ?? 20;
 			const search = prepareSimpleSearch(query);
-			const files = app.vault.getMarkdownFiles();
 			const results: string[] = [];
-			const CHUNK = 20;
-			for (let i = 0; i < files.length && results.length < limit; i += CHUNK) {
-				const chunk = files.slice(i, i + CHUNK);
-				const contents = await Promise.all(chunk.map((f) => app.vault.cachedRead(f)));
-				for (let j = 0; j < chunk.length; j++) {
-					const content = contents[j];
-					const match = search(content);
-					if (!match) continue;
-					const firstOffset = match.matches[0]?.[0] ?? 0;
-					const start = Math.max(0, firstOffset - 60);
-					const end = Math.min(content.length, firstOffset + 120);
-					const snippet = content.slice(start, end).replace(/\n/g, " ");
-					results.push(`${chunk[j].path}: ...${snippet}...`);
-					if (results.length >= limit) break;
-				}
-			}
+			await forEachMarkdownChunked((file, content) => {
+				const match = search(content);
+				if (!match) return;
+				const firstOffset = match.matches[0]?.[0] ?? 0;
+				const start = Math.max(0, firstOffset - 60);
+				const end = Math.min(content.length, firstOffset + 120);
+				const snippet = content.slice(start, end).replace(/\n/g, " ");
+				results.push(`${file.path}: ...${snippet}...`);
+				return results.length >= limit;
+			});
 			return text(results.join("\n") || "No matches found.");
 		},
 	});
@@ -703,25 +716,19 @@ export function buildTools(
 				.getMarkdownFiles()
 				.filter((other) => !alreadyLinked.has(other.path));
 			const candidates: { path: string; score: number }[] = [];
-			const CHUNK = 20;
-			for (let i = 0; i < others.length; i += CHUNK) {
-				const chunk = others.slice(i, i + CHUNK);
-				const contents = await Promise.all(chunk.map((o) => app.vault.cachedRead(o)));
-				for (let j = 0; j < chunk.length; j++) {
-					const other = chunk[j];
-					let score = 0;
-					if (wordSet.has(other.basename.toLowerCase())) score += 5;
-					const otherWords = contents[j]
-						.toLowerCase()
-						.replace(/[^\w\s]/g, " ")
-						.split(/\s+/)
-						.filter((w) => w.length > 3);
-					for (const w of otherWords) {
-						if (wordSet.has(w)) score++;
-					}
-					if (score > 0) candidates.push({ path: other.path, score });
+			await forEachMarkdownChunked((other, otherContent) => {
+				let score = 0;
+				if (wordSet.has(other.basename.toLowerCase())) score += 5;
+				const otherWords = otherContent
+					.toLowerCase()
+					.replace(/[^\w\s]/g, " ")
+					.split(/\s+/)
+					.filter((w) => w.length > 3);
+				for (const w of otherWords) {
+					if (wordSet.has(w)) score++;
 				}
-			}
+				if (score > 0) candidates.push({ path: other.path, score });
+			}, others);
 
 			candidates.sort((a, b) => b.score - a.score);
 			const results = candidates.slice(0, limit).map((c) => `${c.path} (score: ${c.score})`);
@@ -748,6 +755,34 @@ export function buildTools(
 			description,
 		});
 		return result.approved ? null : error("Change rejected by user.");
+	}
+
+	/**
+	 * Review-gate + apply + success wrapper shared by all 8 write handlers.
+	 * Handler code is reduced to: resolve the file, compute the change, pass
+	 * the diff preview here. This is the only site that calls `requireReview`.
+	 */
+	async function runWrite(op: {
+		operation: WriteOperation;
+		filePath: string;
+		oldContent?: string;
+		newContent?: string;
+		description: string;
+		review: ReviewFn | undefined;
+		apply: () => Promise<unknown>;
+		successMsg: string;
+	}): Promise<McpToolResult> {
+		const rejected = await requireReview(
+			op.review,
+			op.operation,
+			op.filePath,
+			op.oldContent,
+			op.newContent,
+			op.description,
+		);
+		if (rejected) return rejected;
+		await op.apply();
+		return text(op.successMsg);
 	}
 
 	/** Snapshot a file's frontmatter for review preview. Excludes Obsidian's internal `position`. */
@@ -788,17 +823,15 @@ export function buildTools(
 				if (app.vault.getFileByPath(path))
 					return error("File already exists. Use vault_modify to update it.");
 				const content = (args.content as string | undefined) ?? "";
-				const rejected = await requireReview(
+				return runWrite({
+					operation: "create",
+					filePath: path,
+					newContent: content,
+					description: `Create new file: ${path}`,
 					review,
-					"create",
-					path,
-					undefined,
-					content,
-					`Create new file: ${path}`,
-				);
-				if (rejected) return rejected;
-				await app.vault.create(path, content);
-				return text(`Created ${path}`);
+					apply: () => app.vault.create(path, content),
+					successMsg: `Created ${path}`,
+				});
 			},
 		});
 
@@ -819,17 +852,16 @@ export function buildTools(
 				if ("isError" in result) return result as McpToolResult;
 				const f = result as TFile;
 				const newContent = args.content as string;
-				const rejected = await requireReview(
-					review,
-					"modify",
-					f.path,
-					await app.vault.read(f),
+				return runWrite({
+					operation: "modify",
+					filePath: f.path,
+					oldContent: review ? await app.vault.read(f) : undefined,
 					newContent,
-					`Modify file: ${f.path}`,
-				);
-				if (rejected) return rejected;
-				await app.vault.modify(f, newContent);
-				return text(`Modified ${f.path}`);
+					description: `Modify file: ${f.path}`,
+					review,
+					apply: () => app.vault.modify(f, newContent),
+					successMsg: `Modified ${f.path}`,
+				});
 			},
 		});
 
@@ -850,19 +882,17 @@ export function buildTools(
 				if ("isError" in result) return result as McpToolResult;
 				const f = result as TFile;
 				const addition = args.content as string;
-				const oldContent = await app.vault.read(f);
-				const newContent = oldContent + "\n" + addition;
-				const rejected = await requireReview(
-					review,
-					"append",
-					f.path,
+				const oldContent = review ? await app.vault.read(f) : undefined;
+				return runWrite({
+					operation: "append",
+					filePath: f.path,
 					oldContent,
-					newContent,
-					`Append to ${f.path}`,
-				);
-				if (rejected) return rejected;
-				await app.vault.append(f, "\n" + addition);
-				return text(`Appended to ${f.path}`);
+					newContent: oldContent === undefined ? undefined : oldContent + "\n" + addition,
+					description: `Append to ${f.path}`,
+					review,
+					apply: () => app.vault.append(f, "\n" + addition),
+					successMsg: `Appended to ${f.path}`,
+				});
 			},
 		});
 
@@ -892,20 +922,19 @@ export function buildTools(
 					value = raw;
 				}
 				const oldFm = frontmatterSnapshot(f);
-				const newFm = { ...oldFm, [prop]: value };
-				const rejected = await requireReview(
+				return runWrite({
+					operation: "frontmatter_set",
+					filePath: f.path,
+					oldContent: JSON.stringify(oldFm, null, 2),
+					newContent: JSON.stringify({ ...oldFm, [prop]: value }, null, 2),
+					description: `Set frontmatter '${prop}' on ${f.path}`,
 					review,
-					"frontmatter_set",
-					f.path,
-					JSON.stringify(oldFm, null, 2),
-					JSON.stringify(newFm, null, 2),
-					`Set frontmatter '${prop}' on ${f.path}`,
-				);
-				if (rejected) return rejected;
-				await app.fileManager.processFrontMatter(f, (fm) => {
-					fm[prop] = value;
+					apply: () =>
+						app.fileManager.processFrontMatter(f, (fm) => {
+							fm[prop] = value;
+						}),
+					successMsg: `Set ${prop} on ${f.path}`,
 				});
-				return text(`Set ${prop} on ${f.path}`);
 			},
 		});
 
@@ -932,19 +961,19 @@ export function buildTools(
 				const oldFm = frontmatterSnapshot(f);
 				const { [prop]: _removed, ...newFm } = oldFm;
 				void _removed;
-				const rejected = await requireReview(
+				return runWrite({
+					operation: "frontmatter_delete",
+					filePath: f.path,
+					oldContent: JSON.stringify(oldFm, null, 2),
+					newContent: JSON.stringify(newFm, null, 2),
+					description: `Delete frontmatter '${prop}' from ${f.path}`,
 					review,
-					"frontmatter_delete",
-					f.path,
-					JSON.stringify(oldFm, null, 2),
-					JSON.stringify(newFm, null, 2),
-					`Delete frontmatter '${prop}' from ${f.path}`,
-				);
-				if (rejected) return rejected;
-				await app.fileManager.processFrontMatter(f, (fm) => {
-					delete fm[prop];
+					apply: () =>
+						app.fileManager.processFrontMatter(f, (fm) => {
+							delete fm[prop];
+						}),
+					successMsg: `Deleted ${prop} from ${f.path}`,
 				});
-				return text(`Deleted ${prop} from ${f.path}`);
 			},
 		});
 
@@ -997,17 +1026,16 @@ export function buildTools(
 					});
 				});
 				if (count === 0) return error("No matches found.");
-				const rejected = await requireReview(
+				return runWrite({
+					operation: "search_replace",
+					filePath: f.path,
+					oldContent: content,
+					newContent: updated,
+					description: `Replace ${count} occurrence(s) in ${f.path}`,
 					review,
-					"search_replace",
-					f.path,
-					content,
-					updated,
-					`Replace ${count} occurrence(s) in ${f.path}`,
-				);
-				if (rejected) return rejected;
-				await app.vault.modify(f, updated);
-				return text(`Replaced ${count} occurrence(s) in ${f.path}`);
+					apply: () => app.vault.modify(f, updated),
+					successMsg: `Replaced ${count} occurrence(s) in ${f.path}`,
+				});
 			},
 		});
 
@@ -1043,17 +1071,16 @@ export function buildTools(
 				const after = existing.slice(insertPos);
 				const sep = insertPos > 0 && !before.endsWith("\n") ? "\n" : "";
 				const updated = before + sep + (args.content as string) + "\n" + after;
-				const rejected = await requireReview(
+				return runWrite({
+					operation: "prepend",
+					filePath: f.path,
+					oldContent: existing,
+					newContent: updated,
+					description: `Prepend to ${f.path}`,
 					review,
-					"prepend",
-					f.path,
-					existing,
-					updated,
-					`Prepend to ${f.path}`,
-				);
-				if (rejected) return rejected;
-				await app.vault.modify(f, updated);
-				return text(`Prepended to ${f.path}`);
+					apply: () => app.vault.modify(f, updated),
+					successMsg: `Prepended to ${f.path}`,
+				});
 			},
 		});
 
@@ -1116,17 +1143,16 @@ export function buildTools(
 							insertContent,
 							...lines.slice(endLine),
 						].join("\n");
-						const rejected = await requireReview(
+						return runWrite({
+							operation: "patch",
+							filePath: f.path,
+							oldContent: existing,
+							newContent: updated,
+							description: `Patch ${f.path} after heading '${headingArg}'`,
 							review,
-							"patch",
-							f.path,
-							existing,
-							updated,
-							`Patch ${f.path} after heading '${headingArg}'`,
-						);
-						if (rejected) return rejected;
-						await app.vault.modify(f, updated);
-						return text(`Patched ${f.path} after heading '${headingArg}'`);
+							apply: () => app.vault.modify(f, updated),
+							successMsg: `Patched ${f.path} after heading '${headingArg}'`,
+						});
 					}
 				} else {
 					targetLine = lineArg! - 1;
@@ -1142,17 +1168,16 @@ export function buildTools(
 					lines.splice(targetLine + 1, 0, insertContent);
 				}
 				const updated = lines.join("\n");
-				const rejected = await requireReview(
+				return runWrite({
+					operation: "patch",
+					filePath: f.path,
+					oldContent: existing,
+					newContent: updated,
+					description: `Patch ${f.path} at line ${targetLine + 1}`,
 					review,
-					"patch",
-					f.path,
-					existing,
-					updated,
-					`Patch ${f.path} at line ${targetLine + 1}`,
-				);
-				if (rejected) return rejected;
-				await app.vault.modify(f, updated);
-				return text(`Patched ${f.path} at line ${targetLine + 1}`);
+					apply: () => app.vault.modify(f, updated),
+					successMsg: `Patched ${f.path} at line ${targetLine + 1}`,
+				});
 			},
 		});
 	}
@@ -1335,10 +1360,9 @@ export function buildTools(
 
 			const search = prepareSimpleSearch(query);
 			const matched: TFile[] = [];
-			for (const file of app.vault.getMarkdownFiles()) {
-				const content = await app.vault.cachedRead(file);
+			await forEachMarkdownChunked((file, content) => {
 				if (search(content)) matched.push(file);
-			}
+			});
 
 			if (matched.length === 0) return text("No files matched the query.");
 
