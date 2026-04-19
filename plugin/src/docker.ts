@@ -1,4 +1,5 @@
 import { exec as execCb, spawn } from "child_process";
+import { createServer } from "net";
 import { networkInterfaces } from "os";
 import { promisify } from "util";
 
@@ -434,6 +435,42 @@ export class DockerManager {
 		);
 	}
 
+	/**
+	 * Probe host-local ports for availability. Returns an array of ports
+	 * already bound by a non-compose process. Used as a pre-flight check
+	 * before `docker compose up -d`.
+	 */
+	async checkPortConflicts(ports: number[], host = "127.0.0.1"): Promise<number[]> {
+		const conflicts: number[] = [];
+		await Promise.all(
+			ports.map(
+				(port) =>
+					new Promise<void>((resolve) => {
+						const tester = createServer();
+						tester.once("error", (err: NodeJS.ErrnoException) => {
+							if (err.code === "EADDRINUSE") conflicts.push(port);
+							resolve();
+						});
+						tester.once("listening", () => {
+							tester.close(() => resolve());
+						});
+						tester.listen(port, host);
+					}),
+			),
+		);
+		return conflicts.sort((a, b) => a - b);
+	}
+
+	/** Returns the current container ID, or empty string if not running. */
+	async getContainerId(): Promise<string> {
+		try {
+			const output = await this.run(`docker compose ps -q ${SERVICE_NAME}`, PROBE_TIMEOUT);
+			return output.trim();
+		} catch {
+			return "";
+		}
+	}
+
 	async firewallStatus(): Promise<boolean> {
 		try {
 			const output = await this.run(
@@ -465,6 +502,30 @@ export class DockerManager {
 		} catch {
 			return [];
 		}
+	}
+
+	/** List sessions with no attached clients — candidates for cleanup. */
+	async listEmptySessions(): Promise<string[]> {
+		try {
+			const output = await this.run(
+				`docker compose exec --user claude ${SERVICE_NAME} tmux list-sessions -F "#{session_name}:#{session_attached}"`,
+				PROBE_TIMEOUT,
+			);
+			return output
+				.split("\n")
+				.map((line) => line.trim())
+				.filter((line) => line.endsWith(":0"))
+				.map((line) => line.slice(0, -2));
+		} catch {
+			return [];
+		}
+	}
+
+	async killSession(name: string): Promise<void> {
+		await this.run(
+			`docker compose exec --user claude ${SERVICE_NAME} tmux kill-session -t "${name}"`,
+			PROBE_TIMEOUT,
+		);
 	}
 
 	async renameSession(oldName: string, newName: string): Promise<void> {

@@ -43,6 +43,7 @@ export default class AgentSandboxPlugin extends Plugin {
 	private firewallPollId: number | null = null;
 	private lastFirewallRefreshAt = 0;
 	private mcpServer: ObsidianMcpServer | null = null;
+	private lastKnownContainerId: string = "";
 
 	private debouncedSaveSettings = debounce(
 		async () => {
@@ -187,6 +188,12 @@ export default class AgentSandboxPlugin extends Plugin {
 			id: "sandbox-toggle-mcp",
 			name: "Sandbox: Toggle MCP Server",
 			callback: () => this.toggleMcpServer(),
+		});
+
+		this.addCommand({
+			id: "sandbox-cleanup-sessions",
+			name: "Sandbox: Clean up empty sessions",
+			callback: () => void this.cleanupEmptySessions(),
 		});
 
 		// obsidian://agent-sandbox/open-terminal — activate or open a terminal tab
@@ -472,6 +479,14 @@ export default class AgentSandboxPlugin extends Plugin {
 			new Notice("Another container operation is in progress.");
 			return;
 		}
+		const conflicts = await this.checkStartupPortConflicts();
+		if (conflicts.length > 0) {
+			new Notice(
+				`Port conflict: ${conflicts.join(", ")} already in use on 127.0.0.1. Stop the other process or change the port in settings.`,
+				10000,
+			);
+			return;
+		}
 		const ok = await this.runDockerCommand({
 			preState: "starting",
 			action: async () => {
@@ -483,6 +498,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			failurePrefix: "Failed to start container",
 		});
 		if (ok) {
+			this.lastKnownContainerId = await this.docker.getContainerId();
 			await this.applyFirewallAfterStart();
 			this.startHealthPoll();
 		}
@@ -502,6 +518,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.firewallBar.setState("hidden");
 		this.statusBar.setDetails(TOOLTIP_STOPPED);
 		this.stopHealthPoll();
+		this.lastKnownContainerId = "";
 	}
 
 	async restartContainer(): Promise<void> {
@@ -517,6 +534,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			failurePrefix: "Failed to restart container",
 		});
 		if (ok) {
+			this.lastKnownContainerId = await this.docker.getContainerId();
 			await this.applyFirewallAfterStart();
 			this.startHealthPoll();
 		}
@@ -879,11 +897,34 @@ export default class AgentSandboxPlugin extends Plugin {
 			const output = await this.docker.probeStatus();
 			const isRunning = DockerManager.parseIsRunning(output);
 			await this.syncStatusBar(isRunning);
+			if (isRunning) await this.checkContainerIdDrift();
 		} catch (error: unknown) {
 			this.statusBar.setState("error");
 			const msg = toErrorMessage(error);
 			this.statusBar.setDetails(`Docker error: ${msg}\nClick for options`);
 			this.stopHealthPoll();
+		}
+	}
+
+	private async checkStartupPortConflicts(): Promise<number[]> {
+		const ports = [this.settings.ttydPort];
+		if (this.settings.mcpEnabled) ports.push(this.settings.mcpPort);
+		return this.docker.checkPortConflicts(ports, this.settings.ttydBindAddress || "127.0.0.1");
+	}
+
+	private async checkContainerIdDrift(): Promise<void> {
+		const current = await this.docker.getContainerId();
+		if (!current) return;
+		if (!this.lastKnownContainerId) {
+			this.lastKnownContainerId = current;
+			return;
+		}
+		if (current !== this.lastKnownContainerId) {
+			new Notice(
+				"Sandbox container was recreated outside the plugin. Terminal sessions may be disconnected; reopen to reconnect.",
+			);
+			this.lastKnownContainerId = current;
+			this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
 		}
 	}
 
@@ -960,6 +1001,62 @@ export default class AgentSandboxPlugin extends Plugin {
 			new Notice(`${opts.failurePrefix}: ${msg}`);
 			return false;
 		}
+	}
+
+	private async cleanupEmptySessions(): Promise<void> {
+		if (!this.isContainerRunning()) {
+			new Notice("Sandbox container is not running.");
+			return;
+		}
+		const candidates = await this.docker.listEmptySessions();
+		if (candidates.length === 0) {
+			new Notice("No empty tmux sessions to clean up.");
+			return;
+		}
+		const modal = new Modal(this.app);
+		modal.titleEl.setText("Clean up empty sessions");
+		modal.contentEl.createEl("p", {
+			text: `${candidates.length} session(s) have no attached clients. Kill the selected ones?`,
+		});
+		const selected = new Set(candidates);
+		const list = modal.contentEl.createEl("ul");
+		list.style.listStyle = "none";
+		list.style.padding = "0";
+		for (const name of candidates) {
+			const row = list.createEl("li");
+			row.style.display = "flex";
+			row.style.gap = "8px";
+			row.style.padding = "4px 0";
+			const cb = row.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+			cb.checked = true;
+			cb.addEventListener("change", () => {
+				if (cb.checked) selected.add(name);
+				else selected.delete(name);
+			});
+			row.createEl("span", { text: name });
+		}
+		modal.contentEl.createDiv({ cls: "modal-button-container" }, (div) => {
+			div.createEl("button", { text: "Cancel", cls: "mod-muted" }, (btn) => {
+				btn.addEventListener("click", () => modal.close());
+			});
+			div.createEl("button", { text: "Kill selected", cls: "mod-cta" }, (btn) => {
+				btn.addEventListener("click", async () => {
+					modal.close();
+					const toKill = [...selected];
+					let killed = 0;
+					for (const name of toKill) {
+						try {
+							await this.docker.killSession(name);
+							killed++;
+						} catch {
+							// swallow; report aggregate
+						}
+					}
+					new Notice(`Killed ${killed}/${toKill.length} session(s).`);
+				});
+			});
+		});
+		modal.open();
 	}
 
 	private async containerStatus(): Promise<void> {

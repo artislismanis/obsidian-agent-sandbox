@@ -153,10 +153,10 @@ Deeper Obsidian integration and workflow improvements.
 - [ ] Quick Switcher integration for terminal tabs
 
 ### Container Improvements
-- [ ] Container ID verification (prevent connecting to wrong container)
-- [ ] Port conflict pre-flight check
+- [x] Container ID verification — captures `docker compose ps -q sandbox` on start/restart; drift detected on health poll triggers a Notice and detaches terminal leaves so they reopen against the new container.
+- [x] Port conflict pre-flight — `docker.checkPortConflicts` test-binds ttyd + MCP ports on the ttyd bind address before `docker compose up -d`; aborts with an actionable Notice listing the offending ports.
 - [x] Firewall state refresh (detect out-of-band changes) — event-driven on focus / status-bar hover / container-state transitions, plus 5-min safety-net poll; replaced the prior unconditional 30s exec
-- [ ] Session cleanup / garbage collection for stale tmux sessions
+- [x] Stale tmux session cleanup — `Sandbox: Clean up empty sessions` command lists unattached sessions with per-row checkboxes and kills only the selected ones. No auto-cleanup by design.
 
 ### Firewall allowlist expansion
 The container's `init-firewall.sh` allowlist stays minimal by default (Anthropic, GitHub, npm, PyPI, CDNs, apt mirrors). Per-user expansion via two additive routes: a plugin setting and a host-managed config file.
