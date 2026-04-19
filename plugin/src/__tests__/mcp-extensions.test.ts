@@ -332,3 +332,109 @@ describe("Tasks integration", () => {
 		expect(toggle).not.toHaveBeenCalled();
 	});
 });
+
+describe("Templater integration", () => {
+	it("is absent when Templater is not installed", () => {
+		const { app } = mockApp("{}");
+		const tools = buildTools(app as never, () => "agent-workspace");
+		expect(tools.find((t) => t.name === "vault_templater_create")).toBeUndefined();
+	});
+
+	it("delegates to create_new_note_from_template", async () => {
+		const { app } = mockApp("{}");
+		const create = vi.fn(async () => ({ path: "notes/new.md" }) as TFile);
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) =>
+				id === "templater-obsidian"
+					? { templater: { create_new_note_from_template: create } }
+					: null,
+			enabledPlugins: new Set(["templater-obsidian"]),
+		};
+		const tools = buildTools(app as never, () => "agent-workspace");
+		const r = await getTool(tools, "vault_templater_create").handler({
+			template: "Templates/daily.md",
+			folder: "Notes",
+			filename: "2026-04-19",
+		});
+		expect(r.isError ?? false).toBe(false);
+		expect(create).toHaveBeenCalledWith("Templates/daily.md", "Notes", "2026-04-19", false);
+	});
+});
+
+describe("Periodic Notes integration", () => {
+	it("is absent when plugin isn't installed", () => {
+		const { app } = mockApp("{}");
+		const tools = buildTools(app as never, () => "agent-workspace");
+		expect(tools.find((t) => t.name === "vault_periodic_note")).toBeUndefined();
+	});
+
+	it("formats the daily-note path and reports existence", async () => {
+		const { app } = mockApp("{}");
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) =>
+				id === "periodic-notes"
+					? {
+							instance: {
+								settings: {
+									daily: { enabled: true, folder: "Daily", format: "YYYY-MM-DD" },
+								},
+							},
+						}
+					: null,
+			enabledPlugins: new Set(["periodic-notes"]),
+		};
+		app.vault.getFileByPath = vi.fn((p: string) =>
+			p === "Daily/2026-04-19.md" ? ({ path: p } as TFile) : null,
+		);
+		const tools = buildTools(app as never, () => "agent-workspace");
+		const r = await getTool(tools, "vault_periodic_note").handler({
+			periodicity: "daily",
+			date: "2026-04-19",
+		});
+		expect(r.isError ?? false).toBe(false);
+		expect((r.content[0] as { text: string }).text).toContain("Daily/2026-04-19.md");
+	});
+
+	it("returns not-found when create:false and file absent", async () => {
+		const { app } = mockApp("{}");
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) =>
+				id === "periodic-notes"
+					? {
+							instance: {
+								settings: {
+									monthly: { enabled: true, folder: "M", format: "YYYY-MM" },
+								},
+							},
+						}
+					: null,
+			enabledPlugins: new Set(["periodic-notes"]),
+		};
+		app.vault.getFileByPath = vi.fn((_p: string) => null);
+		const tools = buildTools(app as never, () => "agent-workspace");
+		const r = await getTool(tools, "vault_periodic_note").handler({
+			periodicity: "monthly",
+			date: "2026-04-19",
+		});
+		expect(r.isError).toBe(true);
+		expect((r.content[0] as { text: string }).text).toContain("M/2026-04.md");
+	});
+});
+
+describe("plugin_extensions_list", () => {
+	it("reports native-canvas always + per-plugin detection", async () => {
+		const { app } = mockApp("{}");
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) =>
+				id === "dataview" ? { api: { query: () => ({ successful: true }) } } : null,
+			enabledPlugins: new Set(["dataview"]),
+		};
+		const tools = buildTools(app as never, () => "agent-workspace");
+		const tool = getTool(tools, "plugin_extensions_list");
+		const r = await tool.handler({});
+		const body = (r.content[0] as { text: string }).text;
+		expect(body).toContain("canvas: always");
+		expect(body).toContain("dataview: enabled");
+		expect(body).toContain("tasks: not available");
+	});
+});

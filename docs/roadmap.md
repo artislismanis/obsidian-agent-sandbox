@@ -84,16 +84,16 @@ Extend the MCP server with deeper Obsidian integration. Patterns informed by exi
 - [x] `vault_recent` — recently modified files (sorted by mtime)
 
 ### Plugin API Integrations (inspired by aaronsb + enhanced server)
-Access capabilities of other installed Obsidian plugins via `app.plugins.getPlugin()`:
-- [ ] `vault_dataview_query` — execute DQL queries (requires Dataview)
-- [ ] `vault_templater_create` — create note from template (requires Templater)
-- [ ] `vault_tasks_query` — list/filter tasks with date and priority parsing (requires Tasks)
-- [ ] `vault_tasks_toggle` — toggle task status by file + line reference
-- [ ] `vault_periodic_note` — access daily/weekly/monthly notes (requires Periodic Notes)
-- [ ] `vault_canvas_read` — read canvas structure as JSON
-- [ ] `vault_canvas_modify` — add/remove nodes and edges
+Access capabilities of other installed Obsidian plugins via `app.plugins.getPlugin()`. All tools land in `plugin/src/mcp-extensions.ts` under a single `registerExtensionTools()` entry point.
+- [x] `vault_dataview_query` — execute DQL queries (requires Dataview)
+- [x] `vault_templater_create` — create note from template (requires Templater; delegates to `create_new_note_from_template`)
+- [x] `vault_tasks_query` — list/filter tasks with date and priority parsing (installed-Tasks-gated; parses Tasks-format shorthand ourselves)
+- [x] `vault_tasks_toggle` — toggle task status by file + line reference (delegates to `apiV1.executeToggleTaskDoneCommand`)
+- [x] `vault_periodic_note` — access daily/weekly/monthly notes (requires Periodic Notes; computes path from plugin settings)
+- [x] `vault_canvas_read` — read canvas structure as JSON
+- [x] `vault_canvas_modify` — add/remove nodes and edges (cascades edges on node removal)
 - [x] New **Extensions** permission tier for plugin-dependent tools (wiring + settings only)
-- [ ] Graceful handling when target plugin is not installed
+- [x] Graceful handling when target plugin is not installed — structural (tool absent from `tools/list`) rather than runtime error. `plugin_extensions_list` tool surfaces which integrations are live.
 
 ### Workflow & Context (inspired by aaronsb)
 - [x] `vault_context` — return current note + backlinks + outgoing links + frontmatter in one call

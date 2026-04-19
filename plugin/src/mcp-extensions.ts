@@ -406,9 +406,261 @@ export function registerTasksTools(app: App, push: ToolPusher): void {
 	});
 }
 
+// ── Templater ───────────────────────────────────────
+
+interface TemplaterApi {
+	templater?: {
+		create_new_note_from_template?: (
+			template: string | { path: string },
+			folder?: string | { path: string },
+			filename?: string,
+			openNewNote?: boolean,
+		) => Promise<TFile | undefined>;
+	};
+}
+
+function getTemplater(app: App): TemplaterApi | null {
+	type PluginsHost = {
+		plugins: {
+			getPlugin?: (id: string) => unknown;
+			plugins?: Record<string, unknown>;
+			enabledPlugins?: Set<string>;
+		};
+	};
+	const host = (app as unknown as PluginsHost).plugins;
+	if (!host) return null;
+	if (host.enabledPlugins && !host.enabledPlugins.has("templater-obsidian")) return null;
+	const plugin =
+		host.getPlugin?.("templater-obsidian") ??
+		(host.plugins && host.plugins["templater-obsidian"]) ??
+		null;
+	if (!plugin) return null;
+	const templater = (plugin as TemplaterApi).templater;
+	if (!templater || typeof templater.create_new_note_from_template !== "function") return null;
+	return plugin as TemplaterApi;
+}
+
+export function registerTemplaterTools(app: App, push: ToolPusher): void {
+	if (!getTemplater(app)) return;
+	push({
+		name: "vault_templater_create",
+		tier: "extensions",
+		config: {
+			title: "Create from Templater template",
+			description:
+				"Create a new note from a Templater template. Requires the Templater plugin. The template path is resolved by Templater itself (it respects the plugin's configured templates folder).",
+			inputSchema: {
+				template: z.string().describe("Template path (e.g. 'Templates/daily.md')"),
+				folder: z.string().optional().describe("Destination folder (default: vault root)"),
+				filename: z.string().optional().describe("Output filename without extension"),
+			},
+		},
+		handler: async (args) => {
+			const plugin = getTemplater(app);
+			if (!plugin?.templater?.create_new_note_from_template)
+				return error("Templater plugin is not available.");
+			const template = args.template as string;
+			const folder = args.folder as string | undefined;
+			const filename = args.filename as string | undefined;
+			try {
+				const created = await plugin.templater.create_new_note_from_template(
+					template,
+					folder,
+					filename,
+					false,
+				);
+				if (!created) return error("Templater returned no file (template not found?).");
+				return text(`Created ${created.path}`);
+			} catch (e: unknown) {
+				const msg = e instanceof Error ? e.message : String(e);
+				return error(`Templater threw: ${msg}`);
+			}
+		},
+	});
+}
+
+// ── Periodic Notes ──────────────────────────────────
+
+type Periodicity = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
+
+interface PeriodicNotesPlugin {
+	instance?: {
+		settings?: Record<Periodicity, unknown>;
+	};
+}
+
+function getPeriodicNotes(app: App): PeriodicNotesPlugin | null {
+	type PluginsHost = {
+		plugins: {
+			getPlugin?: (id: string) => unknown;
+			plugins?: Record<string, unknown>;
+			enabledPlugins?: Set<string>;
+		};
+	};
+	const host = (app as unknown as PluginsHost).plugins;
+	if (!host) return null;
+	if (host.enabledPlugins && !host.enabledPlugins.has("periodic-notes")) return null;
+	const plugin =
+		host.getPlugin?.("periodic-notes") ??
+		(host.plugins && host.plugins["periodic-notes"]) ??
+		null;
+	if (!plugin) return null;
+	return plugin as PeriodicNotesPlugin;
+}
+
+/**
+ * Access Periodic Notes. The plugin's public API historically lives as a
+ * global `window.app.plugins.plugins["periodic-notes"]` but its helper
+ * functions are re-exported from `obsidian-daily-notes-interface` via the
+ * plugin. Rather than hard-binding to an internal API, we compute the note
+ * path from the plugin's stored settings (folder + format) and either open
+ * the file or create it via the vault API.
+ */
+export function registerPeriodicNotesTools(app: App, push: ToolPusher): void {
+	if (!getPeriodicNotes(app)) return;
+
+	push({
+		name: "vault_periodic_note",
+		tier: "extensions",
+		config: {
+			title: "Periodic note access",
+			description:
+				"Locate (and optionally create) a periodic note — daily/weekly/monthly/quarterly/yearly. Requires the Periodic Notes plugin. Returns the file path; if `create` is true and the note doesn't exist, an empty file is created in the plugin-configured folder.",
+			inputSchema: {
+				periodicity: z
+					.enum(["daily", "weekly", "monthly", "quarterly", "yearly"])
+					.describe("Which periodic note to resolve"),
+				date: z.string().optional().describe("ISO date (YYYY-MM-DD). Defaults to today."),
+				create: z.boolean().optional().describe("Create if missing (default false)"),
+			},
+		},
+		handler: async (args) => {
+			const plugin = getPeriodicNotes(app);
+			if (!plugin?.instance?.settings)
+				return error("Periodic Notes plugin is not available.");
+			const periodicity = args.periodicity as Periodicity;
+			const dateArg = args.date as string | undefined;
+			const create = (args.create as boolean | undefined) ?? false;
+
+			const settings = plugin.instance.settings[periodicity] as
+				| { enabled?: boolean; folder?: string; format?: string; template?: string }
+				| undefined;
+			if (!settings || settings.enabled === false)
+				return error(`Periodic Notes: ${periodicity} is not enabled.`);
+
+			const date = dateArg ? new Date(dateArg + "T00:00:00") : new Date();
+			if (isNaN(date.getTime())) return error(`Invalid date: ${dateArg}`);
+
+			const filename = formatDateByPattern(
+				date,
+				settings.format || defaultFormat(periodicity),
+			);
+			const folder = (settings.folder || "").replace(/^\/+|\/+$/g, "");
+			const path = folder ? `${folder}/${filename}.md` : `${filename}.md`;
+
+			const existing = app.vault.getFileByPath(path);
+			if (existing) return text(`Exists: ${path}`);
+			if (!create) return error(`Not found: ${path}`);
+
+			// Seed with template if Periodic Notes has one configured.
+			let seed = "";
+			if (settings.template) {
+				const tmplFile = app.vault.getFileByPath(settings.template);
+				if (tmplFile) {
+					seed = await app.vault.read(tmplFile);
+				}
+			}
+			await app.vault.create(path, seed);
+			return text(`Created ${path}`);
+		},
+	});
+}
+
+function pad(n: number): string {
+	return n.toString().padStart(2, "0");
+}
+
+function defaultFormat(p: Periodicity): string {
+	switch (p) {
+		case "daily":
+			return "YYYY-MM-DD";
+		case "weekly":
+			return "gggg-[W]ww";
+		case "monthly":
+			return "YYYY-MM";
+		case "quarterly":
+			return "YYYY-[Q]Q";
+		case "yearly":
+			return "YYYY";
+	}
+}
+
+/** Minimal moment.js-like date formatter — supports the tokens Periodic Notes uses. */
+function formatDateByPattern(date: Date, pattern: string): string {
+	const y = date.getFullYear();
+	const m = date.getMonth() + 1;
+	const d = date.getDate();
+	const w = getIsoWeek(date);
+	const q = Math.floor((m - 1) / 3) + 1;
+	return pattern.replace(/\[([^\]]+)\]|YYYY|gggg|MM|DD|ww|Q/g, (match, literal) => {
+		if (literal) return literal;
+		switch (match) {
+			case "YYYY":
+			case "gggg":
+				return String(y);
+			case "MM":
+				return pad(m);
+			case "DD":
+				return pad(d);
+			case "ww":
+				return pad(w);
+			case "Q":
+				return String(q);
+			default:
+				return match;
+		}
+	});
+}
+
+function getIsoWeek(date: Date): number {
+	const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+	const dayNr = (target.getUTCDay() + 6) % 7;
+	target.setUTCDate(target.getUTCDate() - dayNr + 3);
+	const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
+	const diff = (target.getTime() - firstThursday.getTime()) / 86400000;
+	return 1 + Math.round((diff - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
+}
+
+// ── Discovery / introspection ───────────────────────
+
+export function registerExtensionsIntrospection(app: App, push: ToolPusher): void {
+	push({
+		name: "plugin_extensions_list",
+		tier: "extensions",
+		config: {
+			title: "List enabled extensions",
+			description:
+				"Report which plugin integrations the MCP server has registered tools for (Canvas, Dataview, Tasks, Templater, Periodic Notes). Useful when an agent is unsure whether a target plugin is available.",
+			inputSchema: {},
+		},
+		handler: async () => {
+			const lines: string[] = [];
+			lines.push(`canvas: always (native format)`);
+			lines.push(`dataview: ${getDataview(app) ? "enabled" : "not available"}`);
+			lines.push(`tasks: ${getTasks(app) ? "enabled" : "not available"}`);
+			lines.push(`templater: ${getTemplater(app) ? "enabled" : "not available"}`);
+			lines.push(`periodic-notes: ${getPeriodicNotes(app) ? "enabled" : "not available"}`);
+			return text(lines.join("\n"));
+		},
+	});
+}
+
 /** Register every plugin-integration tool whose target plugin is loaded. */
 export function registerExtensionTools(app: App, push: ToolPusher): void {
 	registerCanvasTools(app, push);
 	registerDataviewTools(app, push);
 	registerTasksTools(app, push);
+	registerTemplaterTools(app, push);
+	registerPeriodicNotesTools(app, push);
+	registerExtensionsIntrospection(app, push);
 }
