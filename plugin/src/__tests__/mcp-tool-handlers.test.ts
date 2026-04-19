@@ -872,4 +872,20 @@ describe("MCP tool handlers", () => {
 			expect(r.text).toContain("not found");
 		});
 	});
+
+	describe("vault_search chunked early-exit", () => {
+		it("stops reading once limit is reached and never returns more than limit", async () => {
+			const manyFiles = Array.from({ length: 100 }, (_, i) => makeTFile(`notes/f${i}.md`));
+			const localApp = createMockApp(manyFiles, {});
+			const localTools = buildTools(localApp as never, () => "agent-workspace");
+			const r = getResult(
+				await getTool(localTools, "vault_search").handler({ query: "x", limit: 5 }),
+			);
+			expect(r.isError).toBe(false);
+			expect(r.text.split("\n")).toHaveLength(5);
+			// chunk size is 20 — with limit 5 every file matches (mocked), so
+			// one chunk is enough. We should not have read the full 100.
+			expect(localApp.vault.cachedRead.mock.calls.length).toBeLessThanOrEqual(20);
+		});
+	});
 });

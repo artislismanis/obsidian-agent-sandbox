@@ -67,6 +67,8 @@ function createMockApp() {
 			getFirstLinkpathDest: vi.fn(() => null),
 			resolvedLinks: {},
 			unresolvedLinks: {},
+			on: vi.fn(),
+			off: vi.fn(),
 		},
 		fileManager: {
 			renameFile: vi.fn(async () => {}),

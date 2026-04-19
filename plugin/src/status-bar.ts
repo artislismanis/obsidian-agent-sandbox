@@ -11,6 +11,7 @@ const STATE_DISPLAY: Record<ContainerState, string> = {
 export class StatusBarManager {
 	private el: HTMLElement;
 	private state: ContainerState;
+	private details: string | null = null;
 
 	constructor(statusBarItemEl: HTMLElement) {
 		this.el = statusBarItemEl;
@@ -30,6 +31,8 @@ export class StatusBarManager {
 	}
 
 	setDetails(details: string): void {
+		if (this.details === details) return;
+		this.details = details;
 		this.el.setAttribute("aria-label", details);
 	}
 

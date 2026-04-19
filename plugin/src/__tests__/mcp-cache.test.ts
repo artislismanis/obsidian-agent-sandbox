@@ -52,12 +52,12 @@ describe("VaultCache", () => {
 		expect(compute).toHaveBeenCalledTimes(1);
 	});
 
-	it("invalidates all on metadata 'changed' event", () => {
+	it("ignores 'changed' events (too noisy to invalidate graph)", () => {
 		const compute = vi.fn(() => "val");
 		cache.get("key", compute);
 		mockMeta.emit("changed");
 		cache.get("key", compute);
-		expect(compute).toHaveBeenCalledTimes(2);
+		expect(compute).toHaveBeenCalledTimes(1);
 	});
 
 	it("invalidates 'graph' key on 'resolved' event", () => {

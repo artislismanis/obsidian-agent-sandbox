@@ -6,6 +6,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { randomUUID, timingSafeEqual } from "crypto";
 import type { PermissionTier, McpToolDef, PathFilter, ReviewFn } from "./mcp-tools";
 import { buildTools } from "./mcp-tools";
+import { VaultCache } from "./mcp-cache";
 
 export interface McpServerConfig {
 	port: number;
@@ -105,6 +106,7 @@ export class ObsidianMcpServer {
 	private startTime = 0;
 	private rateLimiter = new RateLimiter(RATE_LIMIT_READ, RATE_LIMIT_WRITE);
 	private auditLog = new AuditLog(AUDIT_MAX_ENTRIES);
+	private cache: VaultCache | null = null;
 
 	constructor(app: App, config: McpServerConfig) {
 		this.app = app;
@@ -114,11 +116,13 @@ export class ObsidianMcpServer {
 	async start(): Promise<void> {
 		if (this.httpServer) return;
 
+		this.cache = new VaultCache(this.app.metadataCache);
 		this.tools = buildTools(
 			this.app,
 			this.config.getWriteDir,
 			this.config.pathFilter,
 			this.config.reviewFn,
+			this.cache,
 		).filter((t) => this.config.enabledTiers.has(t.tier));
 
 		this.startTime = Date.now();
@@ -148,6 +152,9 @@ export class ObsidianMcpServer {
 			});
 			this.httpServer = null;
 		}
+
+		this.cache?.destroy();
+		this.cache = null;
 	}
 
 	private resetSessionTimeout(sid: string): void {

@@ -1,6 +1,7 @@
 import type { App } from "obsidian";
 import { Modal, PluginSettingTab, Setting } from "obsidian";
 import type AgentSandboxPlugin from "./main";
+import type { PermissionTier } from "./mcp-tools";
 import { isValidBindAddress, isValidCpus, isValidMemory, isValidPrivateHosts } from "./validation";
 import { existsSync } from "fs";
 import { join } from "path";
@@ -30,8 +31,6 @@ export interface AgentSandboxSettings {
 	mcpEnabled: boolean;
 	mcpPort: number;
 	mcpToken: string;
-	mcpTierRead: boolean;
-	mcpTierWriteScoped: boolean;
 	mcpTierWriteReviewed: boolean;
 	mcpTierWriteVault: boolean;
 	mcpTierNavigate: boolean;
@@ -39,6 +38,63 @@ export interface AgentSandboxSettings {
 	mcpTierExtensions: boolean;
 	mcpPathAllowlist: string;
 	mcpPathBlocklist: string;
+}
+
+/**
+ * Gated MCP tiers — user must opt in because each escalates beyond the
+ * filesystem access Claude already has (RO vault, RW workspace). The "read"
+ * and "writeScoped" tiers are not listed: they're always enabled when MCP is
+ * on because disabling them wouldn't deny access, only remove convenience.
+ */
+export interface TierDef {
+	tier: PermissionTier;
+	settingKey: keyof AgentSandboxSettings;
+	name: string;
+	desc: string;
+}
+
+/** Capability tiers — always available when MCP is enabled. */
+export const ALWAYS_ON_TIERS: readonly PermissionTier[] = ["read", "writeScoped"];
+
+export const GATED_TIERS: readonly TierDef[] = [
+	{
+		tier: "writeReviewed",
+		settingKey: "mcpTierWriteReviewed",
+		name: "Write (reviewed)",
+		desc: "Vault-wide writes that require your approval. A diff dialog appears in Obsidian for each change.",
+	},
+	{
+		tier: "writeVault",
+		settingKey: "mcpTierWriteVault",
+		name: "Write (vault-wide)",
+		desc: "Create and modify files anywhere in the vault. Allows Claude to modify any file.",
+	},
+	{
+		tier: "navigate",
+		settingKey: "mcpTierNavigate",
+		name: "Navigate",
+		desc: "Open files and affect what you see in the Obsidian editor.",
+	},
+	{
+		tier: "manage",
+		settingKey: "mcpTierManage",
+		name: "Manage",
+		desc: "Rename, move, and delete files with automatic link updates. Allows structural changes to your vault.",
+	},
+	{
+		tier: "extensions",
+		settingKey: "mcpTierExtensions",
+		name: "Extensions",
+		desc: "Access third-party plugin APIs (Dataview, Templater, Tasks, Canvas). Requires target plugins to be installed.",
+	},
+];
+
+export function enabledTiersFromSettings(settings: AgentSandboxSettings): Set<PermissionTier> {
+	const tiers = new Set<PermissionTier>(ALWAYS_ON_TIERS);
+	for (const def of GATED_TIERS) {
+		if (settings[def.settingKey]) tiers.add(def.tier);
+	}
+	return tiers;
 }
 
 export type TerminalSettings = Pick<
@@ -68,8 +124,6 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	mcpEnabled: true,
 	mcpPort: 28080,
 	mcpToken: "",
-	mcpTierRead: true,
-	mcpTierWriteScoped: true,
 	mcpTierWriteReviewed: false,
 	mcpTierWriteVault: false,
 	mcpTierNavigate: false,
@@ -467,66 +521,40 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				}),
 			);
 
-		new Setting(el).setName("Permissions").setHeading();
+		new Setting(el).setName("Always enabled").setHeading();
 
-		const desc = el.createDiv({ cls: "setting-item-description" });
-		desc.style.marginBottom = "12px";
-		desc.setText("Control which vault capabilities Claude can access through MCP tools.");
+		const alwaysBox = el.createDiv({ cls: "setting-item-description" });
+		alwaysBox.style.marginBottom = "12px";
+		alwaysBox.createEl("p", {
+			text: "These MCP tools are always available when MCP is enabled. They don't grant access beyond what Claude already has via the filesystem (RO vault, RW workspace) — they just offer a more ergonomic interface via Obsidian's metadata.",
+		});
+		const writeDir = this.plugin.settings.vaultWriteDir || "agent-workspace";
+		const list = alwaysBox.createEl("ul");
+		list.style.margin = "4px 0 0 16px";
+		list.createEl("li", {
+			text: "Read — search, read files, query metadata, tags, links, backlinks, frontmatter.",
+		});
+		list.createEl("li", {
+			text: `Write (scoped) — create and modify files within the vault write directory only (${writeDir}/).`,
+		});
 
-		const tiers: {
-			key: keyof AgentSandboxSettings;
-			name: string;
-			desc: string;
-		}[] = [
-			{
-				key: "mcpTierRead",
-				name: "Read",
-				desc: "Search, read files, query metadata, tags, links, backlinks, frontmatter.",
-			},
-			{
-				key: "mcpTierWriteScoped",
-				name: "Write (scoped)",
-				desc:
-					"Create and modify files within the vault write directory only (" +
-					(this.plugin.settings.vaultWriteDir || "agent-workspace") +
-					"/).",
-			},
-			{
-				key: "mcpTierWriteReviewed",
-				name: "Write (reviewed)",
-				desc: "Vault-wide writes that require your approval. A diff dialog appears in Obsidian for each change.",
-			},
-			{
-				key: "mcpTierWriteVault",
-				name: "Write (vault-wide)",
-				desc: "Create and modify files anywhere in the vault. Allows Claude to modify any file.",
-			},
-			{
-				key: "mcpTierNavigate",
-				name: "Navigate",
-				desc: "Open files and affect what you see in the Obsidian editor.",
-			},
-			{
-				key: "mcpTierManage",
-				name: "Manage",
-				desc: "Rename, move, and delete files with automatic link updates. Allows structural changes to your vault.",
-			},
-			{
-				key: "mcpTierExtensions",
-				name: "Extensions",
-				desc: "Access third-party plugin APIs (Dataview, Templater, Tasks, Canvas). Requires target plugins to be installed.",
-			},
-		];
+		new Setting(el).setName("Escalations").setHeading();
 
-		for (const tier of tiers) {
+		const escDesc = el.createDiv({ cls: "setting-item-description" });
+		escDesc.style.marginBottom = "12px";
+		escDesc.setText(
+			"These tiers grant Claude capabilities beyond its filesystem access. Enable only what you need.",
+		);
+
+		for (const tier of GATED_TIERS) {
 			new Setting(el)
 				.setName(tier.name)
 				.setDesc(tier.desc)
 				.addToggle((toggle) =>
 					toggle
-						.setValue(this.plugin.settings[tier.key] as boolean)
+						.setValue(this.plugin.settings[tier.settingKey] as boolean)
 						.onChange(async (value) => {
-							(this.plugin.settings[tier.key] as boolean) = value;
+							(this.plugin.settings[tier.settingKey] as boolean) = value;
 							this.plugin.saveSettings();
 							void this.plugin.restartMcpIfRunning();
 						}),

@@ -1,8 +1,29 @@
 import { Modal } from "obsidian";
 import type { App } from "obsidian";
 
+export type WriteOperation =
+	| "create"
+	| "modify"
+	| "append"
+	| "prepend"
+	| "patch"
+	| "search_replace"
+	| "frontmatter_set"
+	| "frontmatter_delete";
+
+const OPERATION_LABELS: Record<WriteOperation, string> = {
+	create: "Create file",
+	modify: "Modify file",
+	append: "Append to file",
+	prepend: "Prepend to file",
+	patch: "Patch file",
+	search_replace: "Search and replace",
+	frontmatter_set: "Set frontmatter",
+	frontmatter_delete: "Delete frontmatter property",
+};
+
 export interface ReviewRequest {
-	operation: string;
+	operation: WriteOperation;
 	filePath: string;
 	oldContent?: string;
 	newContent?: string;
@@ -75,7 +96,7 @@ export class DiffReviewModal extends Modal {
 
 	onOpen(): void {
 		const { contentEl } = this;
-		this.titleEl.setText(`Review: ${this.request.operation}`);
+		this.titleEl.setText(`Review: ${OPERATION_LABELS[this.request.operation]}`);
 
 		contentEl.createEl("p", {
 			text: this.request.description,

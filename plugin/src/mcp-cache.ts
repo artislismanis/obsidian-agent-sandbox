@@ -8,16 +8,11 @@ export class VaultCache {
 	constructor(metadataCache: MetadataCache) {
 		this.metadataCache = metadataCache;
 
-		const onChanged = () => this.invalidateAll();
+		// Link graph is rebuilt from resolvedLinks — invalidate only when
+		// Obsidian finishes resolving links, not on every frontmatter edit.
 		const onResolved = () => this.invalidate("graph");
-
-		this.metadataCache.on("changed", onChanged);
 		this.metadataCache.on("resolved", onResolved);
-
-		this.unregister.push(
-			() => this.metadataCache.off("changed", onChanged),
-			() => this.metadataCache.off("resolved", onResolved),
-		);
+		this.unregister.push(() => this.metadataCache.off("resolved", onResolved));
 	}
 
 	get<T>(key: string, computeFn: () => T): T {

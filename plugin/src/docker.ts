@@ -12,15 +12,6 @@ const SERVICE_NAME = "sandbox";
 import type { DockerMode } from "./settings";
 import { isValidWriteDir, isValidPrivateHosts, isValidMemory, isValidCpus } from "./validation";
 
-// Re-export validators so existing imports from docker.ts keep working
-export {
-	isValidWriteDir,
-	isValidPrivateHosts,
-	isValidMemory,
-	isValidCpus,
-	isValidBindAddress,
-} from "./validation";
-
 export interface DockerManagerSettings {
 	dockerMode: DockerMode;
 	composePath: string;
@@ -244,11 +235,9 @@ export class DockerManager {
 			const detail = err.stderr || err.message || String(error);
 			const combined = (err.stderr || "") + (err.message || "");
 
-			// Log full technical detail for troubleshooting (Ctrl+Shift+I)
 			// eslint-disable-next-line no-console
 			console.error("[Agent Sandbox] Docker command failed:", detail);
 
-			// Map known error patterns to user-friendly messages
 			if (combined.includes("is not recognized")) {
 				throw new Error(
 					"WSL is not available. Please ensure WSL is installed and configured.",
@@ -301,16 +290,10 @@ export class DockerManager {
 	}
 
 	/**
-	 * Start or reuse the container.
-	 *
-	 * Runs `docker compose up -d`, which is idempotent: compose leaves
-	 * an existing container alone if its effective config (image, env
-	 * vars, mounts) matches the current spec, and recreates it if any
-	 * value differs. We deliberately do NOT `down` first — that was
-	 * the previous behaviour and it threw away the fast-reuse path,
-	 * making the "Auto-stop on exit = off" setting a trap (the
-	 * container survived exit but got destroyed on the next start).
-	 * For an explicit "force clean recreate" users have `restart()`.
+	 * `docker compose up -d` is idempotent: compose reuses an existing
+	 * container when its effective config matches, and recreates it when
+	 * anything differs. No `down` first — that would destroy a healthy
+	 * container on every start. For a forced clean recreate, use `restart()`.
 	 */
 	async start(): Promise<string> {
 		return this.withGuard(() => this.run("docker compose up -d"));

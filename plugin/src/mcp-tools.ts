@@ -2,6 +2,9 @@ import type { App, TFile, CachedMetadata } from "obsidian";
 import { prepareSimpleSearch } from "obsidian";
 import { z } from "zod/v4";
 import { isPathWithinDir, isPathAllowed } from "./validation";
+import type { WriteOperation } from "./diff-review-modal";
+
+export type { WriteOperation };
 
 export type PermissionTier =
 	| "read"
@@ -86,7 +89,7 @@ function resolveFile(
 }
 
 export type ReviewFn = (request: {
-	operation: string;
+	operation: WriteOperation;
 	filePath: string;
 	oldContent?: string;
 	newContent?: string;
@@ -98,6 +101,7 @@ export function buildTools(
 	getWriteDir: () => string,
 	pathFilter?: PathFilter,
 	reviewFn?: ReviewFn,
+	cache?: { get<T>(key: string, compute: () => T): T },
 ): McpToolDef[] {
 	const tools: McpToolDef[] = [];
 
@@ -162,17 +166,22 @@ export function buildTools(
 			const query = args.query as string;
 			const limit = (args.limit as number | undefined) ?? 20;
 			const search = prepareSimpleSearch(query);
+			const files = app.vault.getMarkdownFiles();
 			const results: string[] = [];
-			for (const file of app.vault.getMarkdownFiles()) {
-				if (results.length >= limit) break;
-				const content = await app.vault.cachedRead(file);
-				const match = search(content);
-				if (match) {
+			const CHUNK = 20;
+			for (let i = 0; i < files.length && results.length < limit; i += CHUNK) {
+				const chunk = files.slice(i, i + CHUNK);
+				const contents = await Promise.all(chunk.map((f) => app.vault.cachedRead(f)));
+				for (let j = 0; j < chunk.length; j++) {
+					const content = contents[j];
+					const match = search(content);
+					if (!match) continue;
 					const firstOffset = match.matches[0]?.[0] ?? 0;
 					const start = Math.max(0, firstOffset - 60);
 					const end = Math.min(content.length, firstOffset + 120);
 					const snippet = content.slice(start, end).replace(/\n/g, " ");
-					results.push(`${file.path}: ...${snippet}...`);
+					results.push(`${chunk[j].path}: ...${snippet}...`);
+					if (results.length >= limit) break;
 				}
 			}
 			return text(results.join("\n") || "No matches found.");
@@ -444,7 +453,7 @@ export function buildTools(
 		reverse: Map<string, Set<string>>;
 	}
 
-	function buildLinkGraph(): LinkGraph {
+	function computeLinkGraph(): LinkGraph {
 		const forward = new Map<string, Set<string>>();
 		const reverse = new Map<string, Set<string>>();
 		for (const [source, targets] of Object.entries(app.metadataCache.resolvedLinks)) {
@@ -456,6 +465,10 @@ export function buildTools(
 			}
 		}
 		return { forward, reverse };
+	}
+
+	function buildLinkGraph(): LinkGraph {
+		return cache ? cache.get("graph", computeLinkGraph) : computeLinkGraph();
 	}
 
 	tools.push({
@@ -686,21 +699,28 @@ export function buildTools(
 				.filter((w) => w.length > 3);
 			const wordSet = new Set(words);
 
+			const others = app.vault
+				.getMarkdownFiles()
+				.filter((other) => !alreadyLinked.has(other.path));
 			const candidates: { path: string; score: number }[] = [];
-			for (const other of app.vault.getMarkdownFiles()) {
-				if (alreadyLinked.has(other.path)) continue;
-				let score = 0;
-				if (wordSet.has(other.basename.toLowerCase())) score += 5;
-				const otherContent = await app.vault.cachedRead(other);
-				const otherWords = otherContent
-					.toLowerCase()
-					.replace(/[^\w\s]/g, " ")
-					.split(/\s+/)
-					.filter((w) => w.length > 3);
-				for (const w of otherWords) {
-					if (wordSet.has(w)) score++;
+			const CHUNK = 20;
+			for (let i = 0; i < others.length; i += CHUNK) {
+				const chunk = others.slice(i, i + CHUNK);
+				const contents = await Promise.all(chunk.map((o) => app.vault.cachedRead(o)));
+				for (let j = 0; j < chunk.length; j++) {
+					const other = chunk[j];
+					let score = 0;
+					if (wordSet.has(other.basename.toLowerCase())) score += 5;
+					const otherWords = contents[j]
+						.toLowerCase()
+						.replace(/[^\w\s]/g, " ")
+						.split(/\s+/)
+						.filter((w) => w.length > 3);
+					for (const w of otherWords) {
+						if (wordSet.has(w)) score++;
+					}
+					if (score > 0) candidates.push({ path: other.path, score });
 				}
-				if (score > 0) candidates.push({ path: other.path, score });
 			}
 
 			candidates.sort((a, b) => b.score - a.score);
@@ -713,7 +733,7 @@ export function buildTools(
 
 	async function requireReview(
 		review: ReviewFn | undefined,
-		operation: string,
+		operation: WriteOperation,
 		filePath: string,
 		oldContent: string | undefined,
 		newContent: string | undefined,
@@ -730,14 +750,26 @@ export function buildTools(
 		return result.approved ? null : error("Change rejected by user.");
 	}
 
-	function addWriteTools(
-		tier: PermissionTier,
-		suffix: string,
-		scopeLabel: string,
-		guardPath: (path: string) => McpToolResult | null,
-		resolveForWrite: (args: Record<string, unknown>) => TFile | McpToolResult,
-		review?: ReviewFn,
-	): void {
+	/** Snapshot a file's frontmatter for review preview. Excludes Obsidian's internal `position`. */
+	function frontmatterSnapshot(f: TFile): Record<string, unknown> {
+		const fm = app.metadataCache.getFileCache(f)?.frontmatter;
+		if (!fm) return {};
+		const { position: _p, ...rest } = fm as Record<string, unknown>;
+		void _p;
+		return rest;
+	}
+
+	interface WriteToolConfig {
+		tier: PermissionTier;
+		suffix: string;
+		scopeLabel: string;
+		guardPath: (path: string) => McpToolResult | null;
+		resolveForWrite: (args: Record<string, unknown>) => TFile | McpToolResult;
+		review?: ReviewFn;
+	}
+
+	function addWriteTools(cfg: WriteToolConfig): void {
+		const { tier, suffix, scopeLabel, guardPath, resolveForWrite, review } = cfg;
 		tools.push({
 			name: `vault_create${suffix}`,
 			tier,
@@ -817,7 +849,19 @@ export function buildTools(
 				const result = resolveForWrite(args);
 				if ("isError" in result) return result as McpToolResult;
 				const f = result as TFile;
-				await app.vault.append(f, "\n" + (args.content as string));
+				const addition = args.content as string;
+				const oldContent = await app.vault.read(f);
+				const newContent = oldContent + "\n" + addition;
+				const rejected = await requireReview(
+					review,
+					"append",
+					f.path,
+					oldContent,
+					newContent,
+					`Append to ${f.path}`,
+				);
+				if (rejected) return rejected;
+				await app.vault.append(f, "\n" + addition);
 				return text(`Appended to ${f.path}`);
 			},
 		});
@@ -847,6 +891,17 @@ export function buildTools(
 				} catch {
 					value = raw;
 				}
+				const oldFm = frontmatterSnapshot(f);
+				const newFm = { ...oldFm, [prop]: value };
+				const rejected = await requireReview(
+					review,
+					"frontmatter_set",
+					f.path,
+					JSON.stringify(oldFm, null, 2),
+					JSON.stringify(newFm, null, 2),
+					`Set frontmatter '${prop}' on ${f.path}`,
+				);
+				if (rejected) return rejected;
 				await app.fileManager.processFrontMatter(f, (fm) => {
 					fm[prop] = value;
 				});
@@ -874,6 +929,18 @@ export function buildTools(
 				const cache = app.metadataCache.getFileCache(f);
 				if (!cache?.frontmatter || !(prop in cache.frontmatter))
 					return error(`Property '${prop}' not found in frontmatter.`);
+				const oldFm = frontmatterSnapshot(f);
+				const { [prop]: _removed, ...newFm } = oldFm;
+				void _removed;
+				const rejected = await requireReview(
+					review,
+					"frontmatter_delete",
+					f.path,
+					JSON.stringify(oldFm, null, 2),
+					JSON.stringify(newFm, null, 2),
+					`Delete frontmatter '${prop}' from ${f.path}`,
+				);
+				if (rejected) return rejected;
 				await app.fileManager.processFrontMatter(f, (fm) => {
 					delete fm[prop];
 				});
@@ -930,6 +997,15 @@ export function buildTools(
 					});
 				});
 				if (count === 0) return error("No matches found.");
+				const rejected = await requireReview(
+					review,
+					"search_replace",
+					f.path,
+					content,
+					updated,
+					`Replace ${count} occurrence(s) in ${f.path}`,
+				);
+				if (rejected) return rejected;
 				await app.vault.modify(f, updated);
 				return text(`Replaced ${count} occurrence(s) in ${f.path}`);
 			},
@@ -967,6 +1043,15 @@ export function buildTools(
 				const after = existing.slice(insertPos);
 				const sep = insertPos > 0 && !before.endsWith("\n") ? "\n" : "";
 				const updated = before + sep + (args.content as string) + "\n" + after;
+				const rejected = await requireReview(
+					review,
+					"prepend",
+					f.path,
+					existing,
+					updated,
+					`Prepend to ${f.path}`,
+				);
+				if (rejected) return rejected;
 				await app.vault.modify(f, updated);
 				return text(`Prepended to ${f.path}`);
 			},
@@ -1031,6 +1116,15 @@ export function buildTools(
 							insertContent,
 							...lines.slice(endLine),
 						].join("\n");
+						const rejected = await requireReview(
+							review,
+							"patch",
+							f.path,
+							existing,
+							updated,
+							`Patch ${f.path} after heading '${headingArg}'`,
+						);
+						if (rejected) return rejected;
 						await app.vault.modify(f, updated);
 						return text(`Patched ${f.path} after heading '${headingArg}'`);
 					}
@@ -1047,24 +1141,36 @@ export function buildTools(
 				} else {
 					lines.splice(targetLine + 1, 0, insertContent);
 				}
-
-				await app.vault.modify(f, lines.join("\n"));
+				const updated = lines.join("\n");
+				const rejected = await requireReview(
+					review,
+					"patch",
+					f.path,
+					existing,
+					updated,
+					`Patch ${f.path} at line ${targetLine + 1}`,
+				);
+				if (rejected) return rejected;
+				await app.vault.modify(f, updated);
 				return text(`Patched ${f.path} at line ${targetLine + 1}`);
 			},
 		});
 	}
 
-	addWriteTools(
-		"writeScoped",
-		"",
-		" (within write directory)",
-		(path) => {
+	const resolveAnywhere = (args: Record<string, unknown>) =>
+		resolveFile(app, args, pathFilter) ?? error("File not found.");
+
+	addWriteTools({
+		tier: "writeScoped",
+		suffix: "",
+		scopeLabel: " (within write directory)",
+		guardPath: (path) => {
 			const writeDir = getWriteDir();
 			return isPathWithinDir(path, writeDir)
 				? null
 				: error(`Path must be within the write directory '${writeDir}'.`);
 		},
-		(args) => {
+		resolveForWrite: (args) => {
 			const path = args.path as string | undefined;
 			if (path) {
 				const writeDir = getWriteDir();
@@ -1074,26 +1180,26 @@ export function buildTools(
 			const f = resolveFile(app, args, pathFilter);
 			return f ?? error("File not found.");
 		},
-	);
+	});
 
 	if (reviewFn) {
-		addWriteTools(
-			"writeReviewed",
-			"_reviewed",
-			" (reviewed)",
-			() => null,
-			(args) => resolveFile(app, args, pathFilter) ?? error("File not found."),
-			reviewFn,
-		);
+		addWriteTools({
+			tier: "writeReviewed",
+			suffix: "_reviewed",
+			scopeLabel: " (reviewed)",
+			guardPath: () => null,
+			resolveForWrite: resolveAnywhere,
+			review: reviewFn,
+		});
 	}
 
-	addWriteTools(
-		"writeVault",
-		"_anywhere",
-		" (vault-wide)",
-		() => null,
-		(args) => resolveFile(app, args, pathFilter) ?? error("File not found."),
-	);
+	addWriteTools({
+		tier: "writeVault",
+		suffix: "_anywhere",
+		scopeLabel: " (vault-wide)",
+		guardPath: () => null,
+		resolveForWrite: resolveAnywhere,
+	});
 
 	// ── Navigate tier ─────────────────────────────────
 

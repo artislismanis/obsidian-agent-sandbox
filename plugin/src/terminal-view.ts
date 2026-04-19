@@ -10,12 +10,10 @@ export const VIEW_TYPE_TERMINAL = "agent-sandbox-terminal-view";
 const MAX_RETRIES = 30;
 const RETRY_DELAY_MS = 1000;
 
-// ttyd protocol command characters (ASCII, same value for server and client)
-const CMD_OUTPUT = "0";
-const CMD_SET_WINDOW_TITLE = "1";
-const CMD_SET_PREFERENCES = "2";
-const CMD_INPUT = "0";
-const CMD_RESIZE = "1";
+// ttyd protocol command characters. Server↔client share ASCII values by direction:
+// server-to-client and client-to-server use disjoint meanings for the same chars.
+const SERVER_MSG = { OUTPUT: "0", TITLE: "1", PREFERENCES: "2" } as const;
+const CLIENT_MSG = { INPUT: "0", RESIZE: "1" } as const;
 
 const textEncoder = new TextEncoder();
 
@@ -103,7 +101,7 @@ export class TerminalView extends ItemView {
 		this.scope.register([], "Escape", () => {
 			if (this.ws && this.ws.readyState === WebSocket.OPEN) {
 				const payload = new Uint8Array(2);
-				payload[0] = CMD_INPUT.charCodeAt(0);
+				payload[0] = CLIENT_MSG.INPUT.charCodeAt(0);
 				payload[1] = 0x1b;
 				this.ws.send(payload);
 			}
@@ -120,7 +118,6 @@ export class TerminalView extends ItemView {
 
 	onResize(): void {
 		this.scheduleFit();
-		// Auto-focus terminal when this tab becomes active (e.g. tab switch)
 		if (this.term && this.app.workspace.activeLeaf === this.leaf) {
 			this.term.focus();
 		}
@@ -244,7 +241,6 @@ export class TerminalView extends ItemView {
 			};
 		}
 
-		// "obsidian" — follow current Obsidian theme
 		return {
 			fontFamily,
 			theme: {
@@ -328,7 +324,7 @@ export class TerminalView extends ItemView {
 				setTimeout(() => {
 					if (ws.readyState === WebSocket.OPEN && gen === this.generation) {
 						const payload = new Uint8Array(cmd.length + 1);
-						payload[0] = CMD_INPUT.charCodeAt(0);
+						payload[0] = CLIENT_MSG.INPUT.charCodeAt(0);
 						textEncoder.encodeInto(cmd, payload.subarray(1));
 						ws.send(payload.subarray(0, cmd.length + 1));
 					}
@@ -341,13 +337,13 @@ export class TerminalView extends ItemView {
 			const cmd = String.fromCharCode(new Uint8Array(rawData)[0]);
 
 			switch (cmd) {
-				case CMD_OUTPUT:
+				case SERVER_MSG.OUTPUT:
 					term.write(new Uint8Array(rawData, 1));
 					break;
-				case CMD_SET_WINDOW_TITLE:
+				case SERVER_MSG.TITLE:
 					// Could set document title; ignored for Obsidian
 					break;
-				case CMD_SET_PREFERENCES:
+				case SERVER_MSG.PREFERENCES:
 					// Server preferences; ignored
 					break;
 			}
@@ -367,7 +363,7 @@ export class TerminalView extends ItemView {
 			term.onData((input) => {
 				if (ws.readyState === WebSocket.OPEN) {
 					const payload = new Uint8Array(input.length * 3 + 1);
-					payload[0] = CMD_INPUT.charCodeAt(0);
+					payload[0] = CLIENT_MSG.INPUT.charCodeAt(0);
 					const { written } = textEncoder.encodeInto(input, payload.subarray(1));
 					ws.send(payload.subarray(0, (written ?? 0) + 1));
 				}
@@ -377,7 +373,7 @@ export class TerminalView extends ItemView {
 		this.termDisposables.push(
 			term.onResize(({ cols, rows }) => {
 				if (ws.readyState === WebSocket.OPEN) {
-					const msg = CMD_RESIZE + JSON.stringify({ columns: cols, rows: rows });
+					const msg = CLIENT_MSG.RESIZE + JSON.stringify({ columns: cols, rows: rows });
 					ws.send(textEncoder.encode(msg));
 				}
 			}),

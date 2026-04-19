@@ -1,7 +1,12 @@
 import type { WorkspaceLeaf } from "obsidian";
 import { FileSystemAdapter, Menu, Modal, Notice, Plugin, debounce } from "obsidian";
 import { DiffReviewModal } from "./diff-review-modal";
-import { type AgentSandboxSettings, DEFAULT_SETTINGS, AgentSandboxSettingTab } from "./settings";
+import {
+	type AgentSandboxSettings,
+	DEFAULT_SETTINGS,
+	AgentSandboxSettingTab,
+	enabledTiersFromSettings,
+} from "./settings";
 import { DockerManager } from "./docker";
 import type { ContainerState } from "./status-bar";
 import { FirewallStatusBar, StatusBarManager } from "./status-bar";
@@ -16,6 +21,11 @@ function toErrorMessage(error: unknown): string {
 
 const TOOLTIP_STOPPED = "Container is not running\nClick for options";
 const HEALTH_POLL_INTERVAL = 30_000;
+// Firewall can be toggled out-of-band (user runs init-firewall.sh in the
+// container), so we refresh on user-visible events (hover, window focus) and
+// keep this long safety-net poll to heal any missed transition.
+const FIREWALL_REFRESH_INTERVAL = 5 * 60_000;
+const FIREWALL_EVENT_THROTTLE = 10_000;
 
 export default class AgentSandboxPlugin extends Plugin {
 	settings: AgentSandboxSettings = { ...DEFAULT_SETTINGS };
@@ -25,6 +35,8 @@ export default class AgentSandboxPlugin extends Plugin {
 	private statusBarEl: HTMLElement | null = null;
 	private statusBarClickHandler: ((evt: MouseEvent) => void) | null = null;
 	private healthPollId: number | null = null;
+	private firewallPollId: number | null = null;
+	private lastFirewallRefreshAt = 0;
 	private mcpServer: ObsidianMcpServer | null = null;
 
 	private debouncedSaveSettings = debounce(
@@ -68,6 +80,9 @@ export default class AgentSandboxPlugin extends Plugin {
 		const fwBarEl = this.addStatusBarItem();
 		this.firewallBar = new FirewallStatusBar(fwBarEl, () => this.toggleFirewall());
 
+		this.registerDomEvent(fwBarEl, "mouseenter", () => this.maybeRefreshFirewall());
+		this.registerDomEvent(window, "focus", () => this.maybeRefreshFirewall());
+
 		this.registerView(VIEW_TYPE_TERMINAL, (leaf: WorkspaceLeaf) => {
 			const view = new TerminalView(leaf, () => ({
 				ttydPort: this.settings.ttydPort,
@@ -96,12 +111,8 @@ export default class AgentSandboxPlugin extends Plugin {
 			return view;
 		});
 
-		// Hydrate the status bar from real container state without
-		// blocking vault load. If Docker/WSL is unavailable (e.g.
-		// WSL2 not started after a PC restart), the fast-fail probe
-		// (5s timeout) surfaces an error Notice instead of hanging
-		// for 30s. Auto-start is folded in so it only fires after
-		// the probe confirms Docker is reachable.
+		// Fast-fail (5s) probe keeps a missing WSL/Docker from blocking
+		// vault load for the default 30s exec timeout.
 		this.app.workspace.onLayoutReady(() => {
 			void this.backgroundStartup();
 		});
@@ -204,7 +215,6 @@ export default class AgentSandboxPlugin extends Plugin {
 			this.statusBarEl.removeEventListener("click", this.statusBarClickHandler);
 		}
 
-		// Always stop container when plugin is disabled
 		this.docker.stopDetached();
 	}
 
@@ -382,20 +392,20 @@ export default class AgentSandboxPlugin extends Plugin {
 		} catch {
 			this.firewallBar.setState("hidden");
 		}
+		this.lastFirewallRefreshAt = Date.now();
+	}
+
+	/** Event-driven refresh — rate-limited to avoid exec spam on rapid focus/hover. */
+	private maybeRefreshFirewall(): void {
+		if (this.firewallBar.getState() === "hidden") return;
+		if (Date.now() - this.lastFirewallRefreshAt < FIREWALL_EVENT_THROTTLE) return;
+		void this.refreshFirewallStatus();
 	}
 
 	// ── MCP server ────────────────────────────────────────
 
 	private getEnabledTiers(): Set<PermissionTier> {
-		const tiers = new Set<PermissionTier>();
-		if (this.settings.mcpTierRead) tiers.add("read");
-		if (this.settings.mcpTierWriteScoped) tiers.add("writeScoped");
-		if (this.settings.mcpTierWriteReviewed) tiers.add("writeReviewed");
-		if (this.settings.mcpTierWriteVault) tiers.add("writeVault");
-		if (this.settings.mcpTierNavigate) tiers.add("navigate");
-		if (this.settings.mcpTierManage) tiers.add("manage");
-		if (this.settings.mcpTierExtensions) tiers.add("extensions");
-		return tiers;
+		return enabledTiersFromSettings(this.settings);
 	}
 
 	async restartMcpIfRunning(): Promise<void> {
@@ -571,7 +581,6 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.statusBar.setState("checking");
 		this.statusBar.setDetails("Checking Docker availability...");
 
-		// Step 1: Wake WSL if needed (fast-fail 5s)
 		try {
 			await this.docker.ensureWslReady();
 		} catch (error: unknown) {
@@ -583,7 +592,6 @@ export default class AgentSandboxPlugin extends Plugin {
 			return;
 		}
 
-		// Step 2: Quick status probe (5s timeout instead of 30s)
 		try {
 			const output = await this.docker.probeStatus();
 			const isRunning = DockerManager.parseIsRunning(output);
@@ -592,7 +600,6 @@ export default class AgentSandboxPlugin extends Plugin {
 			}
 			await this.syncStatusBar(isRunning);
 
-			// Step 3: Auto-start if configured and not already running
 			if (this.settings.autoStartContainer && !isRunning) {
 				await this.startContainer();
 			}
@@ -614,6 +621,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.healthPollId = this.registerInterval(
 			window.setInterval(() => void this.healthCheck(), HEALTH_POLL_INTERVAL),
 		);
+		this.startFirewallPoll();
 	}
 
 	private stopHealthPoll(): void {
@@ -621,6 +629,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			window.clearInterval(this.healthPollId);
 			this.healthPollId = null;
 		}
+		this.stopFirewallPoll();
 	}
 
 	private async healthCheck(): Promise<void> {
@@ -680,11 +689,10 @@ export default class AgentSandboxPlugin extends Plugin {
 			throw new Error("Invalid vault write directory.");
 		}
 		try {
-			if (!(await this.app.vault.adapter.exists(dir))) {
-				await this.app.vault.createFolder(dir);
-			}
-		} catch {
-			/* folder may already exist from concurrent start */
+			await this.app.vault.createFolder(dir);
+		} catch (error: unknown) {
+			const msg = toErrorMessage(error).toLowerCase();
+			if (!msg.includes("exist")) throw error;
 		}
 	}
 
@@ -726,19 +734,32 @@ export default class AgentSandboxPlugin extends Plugin {
 		}
 	}
 
-	/**
-	 * Update the status bar + firewall indicator + tooltip from a known
-	 * container state. Shared by the onLayoutReady hydration path and
-	 * the explicit "Check Status" command so both produce identical UI.
-	 */
 	private async syncStatusBar(isRunning: boolean): Promise<void> {
+		const wasRunning = this.statusBar.getState() === "running";
 		this.statusBar.setState(isRunning ? "running" : "stopped");
 		if (isRunning) {
-			await this.refreshFirewallStatus();
+			if (!wasRunning) await this.refreshFirewallStatus();
 			this.updateTooltip();
 		} else {
 			this.firewallBar.setState("hidden");
 			this.statusBar.setDetails(TOOLTIP_STOPPED);
+			this.stopFirewallPoll();
+		}
+	}
+
+	private startFirewallPoll(): void {
+		this.stopFirewallPoll();
+		this.firewallPollId = this.registerInterval(
+			window.setInterval(() => {
+				if (this.firewallBar.getState() !== "hidden") void this.refreshFirewallStatus();
+			}, FIREWALL_REFRESH_INTERVAL),
+		);
+	}
+
+	private stopFirewallPoll(): void {
+		if (this.firewallPollId != null) {
+			window.clearInterval(this.firewallPollId);
+			this.firewallPollId = null;
 		}
 	}
 }
