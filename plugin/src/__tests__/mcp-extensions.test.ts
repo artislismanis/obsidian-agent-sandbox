@@ -200,3 +200,135 @@ describe("Dataview integration", () => {
 		expect((result.content[0] as { text: string }).text).toContain("boom");
 	});
 });
+
+describe("Tasks integration", () => {
+	function mdFile(path: string): TFile {
+		return {
+			path,
+			name: path.split("/").pop(),
+			basename: path.replace(/\.md$/, "").split("/").pop(),
+			extension: "md",
+			stat: { ctime: 1, mtime: 2, size: 100 },
+			vault: {} as never,
+			parent: null as never,
+		} as unknown as TFile;
+	}
+
+	function appWithTasks(opts: {
+		files: Record<string, string>;
+		toggle?: (line: string, path: string) => string;
+	}) {
+		const files = Object.keys(opts.files).map(mdFile);
+		const modify = vi.fn(async () => {});
+		const app = {
+			vault: {
+				getFiles: vi.fn(() => files),
+				getMarkdownFiles: vi.fn(() => files),
+				getFileByPath: vi.fn((p: string) => files.find((f) => f.path === p) ?? null),
+				read: vi.fn(async (f: TFile) => opts.files[f.path]),
+				cachedRead: vi.fn(async (f: TFile) => opts.files[f.path]),
+				modify,
+				create: vi.fn(async () => {}),
+				append: vi.fn(async () => {}),
+				trash: vi.fn(async () => {}),
+				createFolder: vi.fn(async () => {}),
+			},
+			metadataCache: {
+				getFileCache: vi.fn(() => null),
+				getFirstLinkpathDest: vi.fn(() => null),
+				resolvedLinks: {},
+				unresolvedLinks: {},
+			},
+			fileManager: {
+				renameFile: vi.fn(async () => {}),
+				processFrontMatter: vi.fn(async () => {}),
+			},
+			workspace: { getLeaf: vi.fn(() => ({ openFile: vi.fn(async () => {}) })) },
+			plugins: {
+				getPlugin: (id: string) =>
+					id === "obsidian-tasks-plugin"
+						? { apiV1: { executeToggleTaskDoneCommand: opts.toggle } }
+						: null,
+				enabledPlugins: new Set(["obsidian-tasks-plugin"]),
+			},
+		};
+		return { app, modify };
+	}
+
+	it("is absent when Tasks plugin is not installed", () => {
+		const { app } = mockApp("{}");
+		const tools = buildTools(app as never, () => "agent-workspace");
+		expect(tools.find((t) => t.name === "vault_tasks_query")).toBeUndefined();
+		expect(tools.find((t) => t.name === "vault_tasks_toggle")).toBeUndefined();
+	});
+
+	it("vault_tasks_query returns only open items by default", async () => {
+		const { app } = appWithTasks({
+			files: {
+				"notes.md": "- [ ] open task\n- [x] done task\n- plain bullet",
+			},
+		});
+		const tools = buildTools(app as never, () => "agent-workspace");
+		const r = await getTool(tools, "vault_tasks_query").handler({});
+		const body = (r.content[0] as { text: string }).text;
+		expect(body).toContain("open task");
+		expect(body).not.toContain("done task");
+	});
+
+	it("vault_tasks_query filters by tag, due date, and priority", async () => {
+		const { app } = appWithTasks({
+			files: {
+				"x.md":
+					"- [ ] A 📅 2026-04-15 #work\n" +
+					"- [ ] B 📅 2026-04-20 #home\n" +
+					"- [ ] C ⏫ #work\n",
+			},
+		});
+		const tools = buildTools(app as never, () => "agent-workspace");
+		const byTag = await getTool(tools, "vault_tasks_query").handler({ tag: "#work" });
+		expect((byTag.content[0] as { text: string }).text).toMatch(/A/);
+		expect((byTag.content[0] as { text: string }).text).not.toMatch(/ B /);
+		const byDue = await getTool(tools, "vault_tasks_query").handler({
+			dueOnOrBefore: "2026-04-16",
+		});
+		expect((byDue.content[0] as { text: string }).text).toMatch(/A/);
+		expect((byDue.content[0] as { text: string }).text).not.toMatch(/ B /);
+		const byPri = await getTool(tools, "vault_tasks_query").handler({
+			priorityAtLeast: "high",
+		});
+		expect((byPri.content[0] as { text: string }).text).toMatch(/C/);
+		expect((byPri.content[0] as { text: string }).text).not.toMatch(/A/);
+	});
+
+	it("vault_tasks_toggle delegates to apiV1 and writes updated content", async () => {
+		const toggle = vi.fn((line: string) => line.replace("[ ]", "[x]"));
+		const { app, modify } = appWithTasks({
+			files: { "t.md": "header\n- [ ] thing\n" },
+			toggle,
+		});
+		const tools = buildTools(app as never, () => "agent-workspace");
+		const r = await getTool(tools, "vault_tasks_toggle").handler({
+			path: "t.md",
+			line: 2,
+		});
+		expect(r.isError ?? false).toBe(false);
+		expect(toggle).toHaveBeenCalledTimes(1);
+		const written = (modify.mock.calls[0] as unknown as [TFile, string])[1];
+		expect(written).toContain("- [x] thing");
+	});
+
+	it("vault_tasks_toggle rejects a non-task line", async () => {
+		const toggle = vi.fn((line: string) => line);
+		const { app } = appWithTasks({
+			files: { "t.md": "just a header\n" },
+			toggle,
+		});
+		const tools = buildTools(app as never, () => "agent-workspace");
+		const r = await getTool(tools, "vault_tasks_toggle").handler({
+			path: "t.md",
+			line: 1,
+		});
+		expect(r.isError).toBe(true);
+		expect(toggle).not.toHaveBeenCalled();
+	});
+});
