@@ -5,7 +5,7 @@ First-time setup through running Claude Code inside the sandbox. You'll install 
 ## Prerequisites
 
 - **Obsidian** ≥ 1.5.
-- **Docker** installed and running. On Windows we assume WSL2 + Docker Desktop (or Rancher Desktop in Docker-compat mode). On macOS / Linux, Docker Desktop or native.
+- **Docker** installed and running. On Windows we assume WSL2 + Docker Desktop (or Rancher Desktop in Docker-compat mode). On macOS / Linux, Docker Desktop or native. If you're using **rootless Docker inside WSL**, see the troubleshooting note at the bottom of this page — the daemon needs user-linger enabled to survive logout.
 - **This repository cloned somewhere** outside your vault (e.g. `~/code/obsidian-agent-sandbox`). The container build happens from there.
 - A test vault. If you're nervous about this, create a fresh empty vault for your first run.
 
@@ -81,6 +81,37 @@ The plugin ships an MCP server at `localhost:28080` that Claude Code can call. A
 > Search my vault for notes about "project planning".
 
 You should see it use `vault_search` (via the MCP server) and return structured results with metadata, not just raw greps.
+
+## Troubleshooting
+
+### Rootless Docker in WSL: socket missing after reboot
+
+If `docker info` fails with `dial unix /run/user/1000/docker.sock: connect: no such file or directory`, the rootless `dockerd` user service isn't running. WSL doesn't start user services on login by default, and without linger enabled they die when the shell exits.
+
+One-time fix (as the Linux user, not root):
+
+```bash
+sudo loginctl enable-linger $USER       # keep user services alive after logout
+systemctl --user enable --now docker    # auto-start rootless dockerd
+```
+
+Verify: `systemctl --user status docker` shows `active (running)` and `/run/user/$(id -u)/docker.sock` exists.
+
+### Rootless Docker in WSL: `unable to apply cgroup configuration … Interactive authentication required`
+
+If containers fail to start with that error, the rootless daemon is defaulting to the `systemd` cgroup driver but there's no per-user D-Bus session to talk to. Switch it to `cgroupfs`:
+
+```bash
+mkdir -p ~/.config/docker
+cat > ~/.config/docker/daemon.json <<'EOF'
+{
+  "exec-opts": ["native.cgroupdriver=cgroupfs"]
+}
+EOF
+systemctl --user restart docker
+```
+
+Apply before first `dockerd-rootless.sh` start, or restart the daemon afterwards.
 
 ## What's next?
 

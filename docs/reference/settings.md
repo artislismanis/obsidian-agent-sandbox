@@ -48,6 +48,10 @@ All plugin settings live in **Obsidian → Settings → Agent Sandbox**. Setting
 | Escalation tiers | all off | Toggles for `writeReviewed`, `writeVault`, `navigate`, `manage`, `extensions`. See `explanation/security-model.md`. |
 | Allowed paths / Blocked paths | `""` | Per-path allowlist/blocklist applied inside MCP tools (not the firewall). |
 
+Claude can call the always-on `mcp_capabilities` tool to introspect which tiers are enabled and the current write directory — use this when debugging unexpected "write rejected" errors rather than guessing.
+
+All write tools run under a 10 s server-side handler timeout (`TOOL_TIMEOUT_MS` in `plugin/src/mcp-server.ts`). A hung handler returns a structured error rather than stalling the proxy's request queue.
+
 ## Storage
 
 Settings persist to `<vault>/.obsidian/plugins/obsidian-agent-sandbox/data.json` via Obsidian's standard plugin-data API.

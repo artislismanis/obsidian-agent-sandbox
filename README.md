@@ -76,7 +76,7 @@ Organized per [Diátaxis](https://diataxis.fr/): four quadrants by purpose.
 
 - Obsidian ≥ 1.5
 - Docker (Docker Desktop / Rancher Desktop / native)
-- Windows: WSL2
+- Windows: WSL2 (if using rootless Docker inside WSL, enable `loginctl enable-linger` and `systemctl --user enable --now docker` — see [getting-started](docs/tutorials/getting-started.md#troubleshooting))
 
 ## Releases
 

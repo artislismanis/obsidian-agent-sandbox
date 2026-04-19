@@ -1,11 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
 import type { TFile } from "obsidian";
 
-vi.mock("obsidian", () => ({
-	prepareSimpleSearch: vi.fn(() => () => null),
-	prepareFuzzySearch: vi.fn(() => () => null),
-	FileSystemAdapter: class {},
-}));
+vi.mock("obsidian", () => {
+	class TFile {}
+	return {
+		prepareSimpleSearch: vi.fn(() => () => null),
+		prepareFuzzySearch: vi.fn(() => () => null),
+		FileSystemAdapter: class {},
+		TFile,
+	};
+});
 
 import { buildTools } from "../mcp-tools";
 import type { McpToolDef } from "../mcp-tools";
@@ -340,8 +344,20 @@ describe("Templater integration", () => {
 		expect(tools.find((t) => t.name === "vault_templater_create")).toBeUndefined();
 	});
 
-	it("delegates to create_new_note_from_template", async () => {
+	it("resolves the template path to a TFile and delegates to create_new_note_from_template", async () => {
 		const { app } = mockApp("{}");
+		const { TFile: TFileClass } = await import("obsidian");
+		const templateFile = Object.assign(new (TFileClass as new () => object)(), {
+			path: "Templates/daily.md",
+			name: "daily.md",
+			basename: "daily",
+			extension: "md",
+		}) as unknown as TFile;
+		(
+			app.vault as unknown as { getAbstractFileByPath: (p: string) => unknown }
+		).getAbstractFileByPath = vi.fn((p: string) =>
+			p === "Templates/daily.md" ? templateFile : null,
+		);
 		const create = vi.fn(async () => ({ path: "notes/new.md" }) as TFile);
 		(app as unknown as { plugins: unknown }).plugins = {
 			getPlugin: (id: string) =>
@@ -357,7 +373,28 @@ describe("Templater integration", () => {
 			filename: "2026-04-19",
 		});
 		expect(r.isError ?? false).toBe(false);
-		expect(create).toHaveBeenCalledWith("Templates/daily.md", "Notes", "2026-04-19", false);
+		expect(create).toHaveBeenCalledWith(templateFile, "Notes", "2026-04-19", false);
+	});
+
+	it("returns an error when the template path does not exist", async () => {
+		const { app } = mockApp("{}");
+		(
+			app.vault as unknown as { getAbstractFileByPath: (p: string) => unknown }
+		).getAbstractFileByPath = vi.fn(() => null);
+		const create = vi.fn();
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) =>
+				id === "templater-obsidian"
+					? { templater: { create_new_note_from_template: create } }
+					: null,
+			enabledPlugins: new Set(["templater-obsidian"]),
+		};
+		const tools = buildTools(app as never, () => "agent-workspace");
+		const r = await getTool(tools, "vault_templater_create").handler({
+			template: "Templates/missing.md",
+		});
+		expect(r.isError).toBe(true);
+		expect(create).not.toHaveBeenCalled();
 	});
 });
 

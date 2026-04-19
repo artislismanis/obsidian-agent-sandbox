@@ -19,6 +19,8 @@ const readline = require("readline");
 const PORT = parseInt(process.env.OAS_MCP_PORT || "28080", 10);
 const TOKEN = process.env.OAS_MCP_TOKEN || "";
 const HOST = "host.docker.internal";
+const HTTP_TIMEOUT_MS = parseInt(process.env.OAS_MCP_TIMEOUT_MS || "15000", 10);
+const DEBUG = process.env.OAS_MCP_DEBUG === "1";
 
 // Cache: re-probe at most once every PROBE_TTL_MS when available,
 // immediately when unavailable (so recovery is fast).
@@ -67,7 +69,7 @@ function httpPost(message) {
 		if (sessionId) headers["Mcp-Session-Id"] = sessionId;
 
 		const req = http.request(
-			{ hostname: HOST, port: PORT, path: "/mcp", method: "POST", headers, timeout: 30000 },
+			{ hostname: HOST, port: PORT, path: "/mcp", method: "POST", headers, timeout: HTTP_TIMEOUT_MS },
 			(res) => {
 				const sid = res.headers["mcp-session-id"];
 				if (sid) sessionId = sid;
@@ -112,7 +114,11 @@ function httpPost(message) {
 		req.on("timeout", () => {
 			req.destroy();
 			lastProbeResult = false;
-			reject(new Error("timeout"));
+			reject(
+				new Error(
+					`Obsidian MCP handler did not respond within ${HTTP_TIMEOUT_MS}ms — check Obsidian's developer console for plugin errors.`,
+				),
+			);
 		});
 		req.write(payload);
 		req.end();
@@ -159,18 +165,28 @@ async function main() {
 			continue;
 		}
 
+		const t0 = Date.now();
 		try {
 			const responses = await httpPost(msg);
+			if (DEBUG) {
+				const label =
+					msg.method === "tools/call" ? `tools/call ${msg.params?.name ?? "?"}` : msg.method;
+				process.stderr.write(
+					`obsidian-mcp-proxy: id=${msg.id} ${label} ${Date.now() - t0}ms\n`,
+				);
+			}
 			for (const r of responses) {
 				process.stdout.write(JSON.stringify(r) + "\n");
 			}
 		} catch (err) {
-			process.stderr.write(`obsidian-mcp-proxy: ${err.message}\n`);
+			process.stderr.write(
+				`obsidian-mcp-proxy: id=${msg.id} ${msg.method} failed after ${Date.now() - t0}ms: ${err.message}\n`,
+			);
 			process.stdout.write(
 				JSON.stringify({
 					jsonrpc: "2.0",
 					id: msg.id,
-					error: { code: -32603, message: "Obsidian MCP server unavailable" },
+					error: { code: -32603, message: err.message || "Obsidian MCP server unavailable" },
 				}) + "\n",
 			);
 		}

@@ -918,19 +918,23 @@ export function buildTools(
 		tier: PermissionTier;
 		suffix: string;
 		scopeLabel: string;
+		/** Sentence appended to every write-tool description. Gives the model an upfront signal
+		 * about where the tool can operate, so it does not discover scope failures only by trial. */
+		scopeNote: string;
 		guardPath: (path: string) => McpToolResult | null;
 		resolveForWrite: (args: Record<string, unknown>) => TFile | McpToolResult;
 		review?: ReviewFn;
 	}
 
 	function addWriteTools(cfg: WriteToolConfig): void {
-		const { tier, suffix, scopeLabel, guardPath, resolveForWrite, review } = cfg;
+		const { tier, suffix, scopeLabel, scopeNote, guardPath, resolveForWrite, review } = cfg;
+		const note = scopeNote ? ` ${scopeNote}` : "";
 		tools.push(
 			defineTool({
 				name: `vault_create${suffix}`,
 				tier,
 				title: `Create file${scopeLabel}`,
-				description: `Create a new file${scopeLabel}.`,
+				description: `Create a new file${scopeLabel}.${note}`,
 				inputSchema: {
 					path: z.string().describe("Path from vault root"),
 					content: z.string().optional().describe("Initial content (default empty)"),
@@ -963,7 +967,7 @@ export function buildTools(
 				name: `vault_modify${suffix}`,
 				tier,
 				title: `Modify file${scopeLabel}`,
-				description: `Replace the full contents of a file${scopeLabel}.`,
+				description: `Replace the full contents of a file${scopeLabel}.${note}`,
 				inputSchema: {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),
@@ -994,7 +998,7 @@ export function buildTools(
 				name: `vault_append${suffix}`,
 				tier,
 				title: `Append to file${scopeLabel}`,
-				description: `Append content to the end of a file${scopeLabel}.`,
+				description: `Append content to the end of a file${scopeLabel}.${note}`,
 				inputSchema: {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),
@@ -1027,7 +1031,7 @@ export function buildTools(
 				name: `vault_frontmatter_set${suffix}`,
 				tier,
 				title: `Set frontmatter${scopeLabel}`,
-				description: `Set a YAML frontmatter property on a file${scopeLabel}.`,
+				description: `Set a YAML frontmatter property on a file${scopeLabel}.${note}`,
 				inputSchema: {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),
@@ -1070,7 +1074,7 @@ export function buildTools(
 				name: `vault_frontmatter_delete${suffix}`,
 				tier,
 				title: `Delete frontmatter property${scopeLabel}`,
-				description: `Remove a YAML frontmatter property from a file${scopeLabel}.`,
+				description: `Remove a YAML frontmatter property from a file${scopeLabel}.${note}`,
 				inputSchema: {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),
@@ -1110,7 +1114,7 @@ export function buildTools(
 				name: `vault_search_replace${suffix}`,
 				tier,
 				title: `Search and replace${scopeLabel}`,
-				description: `Find and replace text within a file${scopeLabel}.`,
+				description: `Find and replace text within a file${scopeLabel}.${note}`,
 				inputSchema: {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),
@@ -1173,7 +1177,7 @@ export function buildTools(
 				name: `vault_prepend${suffix}`,
 				tier,
 				title: `Prepend to file${scopeLabel}`,
-				description: `Insert content at the top of a file${scopeLabel}, after frontmatter if present.`,
+				description: `Insert content at the top of a file${scopeLabel}, after frontmatter if present.${note}`,
 				inputSchema: {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),
@@ -1219,7 +1223,7 @@ export function buildTools(
 				name: `vault_patch${suffix}`,
 				tier,
 				title: `Patch file${scopeLabel}`,
-				description: `Insert or replace content at a specific location in a file${scopeLabel}.`,
+				description: `Insert or replace content at a specific location in a file${scopeLabel}.${note}`,
 				inputSchema: {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),
@@ -1316,10 +1320,12 @@ export function buildTools(
 	const resolveAnywhere = (args: Record<string, unknown>) =>
 		resolveFile(app, args, pathFilter) ?? error("File not found.");
 
+	const writeDirForNote = getWriteDir();
 	addWriteTools({
 		tier: "writeScoped",
 		suffix: "",
 		scopeLabel: " (within write directory)",
+		scopeNote: `Restricted to the write directory '${writeDirForNote}/' — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier.`,
 		guardPath: (path) => {
 			const writeDir = getWriteDir();
 			return isPathWithinDir(path, writeDir)
@@ -1343,6 +1349,7 @@ export function buildTools(
 			tier: "writeReviewed",
 			suffix: "_reviewed",
 			scopeLabel: " (reviewed)",
+			scopeNote: "Each write prompts the user for approval via a diff modal before applying.",
 			guardPath: () => null,
 			resolveForWrite: resolveAnywhere,
 			review: reviewFn,
@@ -1353,6 +1360,7 @@ export function buildTools(
 		tier: "writeVault",
 		suffix: "_anywhere",
 		scopeLabel: " (vault-wide)",
+		scopeNote: "Unrestricted — writes anywhere in the vault without review.",
 		guardPath: () => null,
 		resolveForWrite: resolveAnywhere,
 	});

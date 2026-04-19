@@ -2,6 +2,8 @@ import type { App } from "obsidian";
 import { Modal, PluginSettingTab, Setting } from "obsidian";
 import type AgentSandboxPlugin from "./main";
 import type { PermissionTier } from "./mcp-tools";
+import { ALWAYS_ON_TIERS, GATED_TIERS as PERMISSION_GATED_TIERS } from "./permission-tiers";
+export { ALWAYS_ON_TIERS };
 import {
 	isValidBindAddress,
 	isValidCpus,
@@ -62,41 +64,14 @@ export interface TierDef {
 	desc: string;
 }
 
-/** Capability tiers — always available when MCP is enabled. */
-export const ALWAYS_ON_TIERS: readonly PermissionTier[] = ["read", "writeScoped", "agent"];
-
-export const GATED_TIERS: readonly TierDef[] = [
-	{
-		tier: "writeReviewed",
-		settingKey: "mcpTierWriteReviewed",
-		name: "Write (reviewed)",
-		desc: "Vault-wide writes that require your approval. A diff dialog appears in Obsidian for each change.",
-	},
-	{
-		tier: "writeVault",
-		settingKey: "mcpTierWriteVault",
-		name: "Write (vault-wide)",
-		desc: "Create and modify files anywhere in the vault. Allows Claude to modify any file.",
-	},
-	{
-		tier: "navigate",
-		settingKey: "mcpTierNavigate",
-		name: "Navigate",
-		desc: "Open files and affect what you see in the Obsidian editor.",
-	},
-	{
-		tier: "manage",
-		settingKey: "mcpTierManage",
-		name: "Manage",
-		desc: "Rename, move, and delete files with automatic link updates. Allows structural changes to your vault.",
-	},
-	{
-		tier: "extensions",
-		settingKey: "mcpTierExtensions",
-		name: "Extensions",
-		desc: "Access third-party plugin APIs (Dataview, Templater, Tasks, Canvas). Requires target plugins to be installed.",
-	},
-];
+/** Capability tiers — sourced from permission-tiers.ts (no Obsidian deps), with
+ * settingKey widened to the AgentSandboxSettings keyspace for the settings UI. */
+export const GATED_TIERS: readonly TierDef[] = PERMISSION_GATED_TIERS.map((g) => ({
+	tier: g.tier,
+	settingKey: g.settingKey as keyof AgentSandboxSettings,
+	name: g.name,
+	desc: g.desc,
+}));
 
 export function enabledTiersFromSettings(settings: AgentSandboxSettings): Set<PermissionTier> {
 	const tiers = new Set<PermissionTier>(ALWAYS_ON_TIERS);

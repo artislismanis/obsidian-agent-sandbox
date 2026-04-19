@@ -890,4 +890,79 @@ describe("MCP tool handlers", () => {
 			expect(localApp.vault.cachedRead.mock.calls.length).toBeLessThanOrEqual(20);
 		});
 	});
+
+	describe("writeScoped out-of-scope fast-fail", () => {
+		const outOfScopePath = "notes/hello.md";
+		const inScopePath = "agent-workspace/draft.md";
+		const writeDir = "agent-workspace";
+
+		it("vault_create rejects a path outside the write directory synchronously", async () => {
+			const t0 = Date.now();
+			const r = getResult(
+				await getTool(tools, "vault_create").handler({
+					path: outOfScopePath,
+					content: "x",
+				}),
+			);
+			expect(Date.now() - t0).toBeLessThan(50);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain(writeDir);
+			expect(app.vault.create).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			["vault_modify", { content: "x" }],
+			["vault_append", { content: "x" }],
+			["vault_prepend", { content: "x" }],
+			["vault_search_replace", { search: "a", replace: "b" }],
+			["vault_frontmatter_set", { property: "k", value: '"v"' }],
+			["vault_frontmatter_delete", { property: "k" }],
+			["vault_patch", { content: "x", heading: "Introduction" }],
+		])("%s rejects a path outside the write directory", async (name, extra) => {
+			const t0 = Date.now();
+			const r = getResult(
+				await getTool(tools, name).handler({ path: outOfScopePath, ...extra }),
+			);
+			expect(Date.now() - t0).toBeLessThan(50);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain(writeDir);
+		});
+
+		it("vault_create accepts a path within the write directory", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_create").handler({
+					path: `${inScopePath}.new`,
+					content: "x",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			expect(app.vault.create).toHaveBeenCalled();
+		});
+
+		it("writeScoped tool descriptions name the active write directory", () => {
+			const createTool = getTool(tools, "vault_create");
+			expect(createTool.config.description).toContain(writeDir);
+		});
+	});
+
+	describe("tier filtering contract", () => {
+		it("only builds tools registered across tiers; filtering is the server's job", () => {
+			// buildTools does not filter — verify writeVault/manage/reviewed variants exist
+			// in the raw list. The server filter at mcp-server.ts:210 is what gates them.
+			const names = tools.map((t) => t.name);
+			expect(names).toContain("vault_create");
+			expect(names).toContain("vault_create_anywhere");
+			expect(names).toContain("vault_create_reviewed");
+			expect(names).toContain("vault_rename");
+			expect(names).toContain("vault_delete");
+		});
+
+		it("reviewed variants are absent when no reviewFn is provided", () => {
+			const localApp = createMockApp(testFiles, caches);
+			const localTools = buildTools(localApp as never, () => "agent-workspace");
+			const names = localTools.map((t) => t.name);
+			expect(names).not.toContain("vault_create_reviewed");
+			expect(names).not.toContain("vault_modify_reviewed");
+		});
+	});
 });
