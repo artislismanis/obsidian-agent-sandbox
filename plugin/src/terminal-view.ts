@@ -5,7 +5,8 @@ import { FitAddon } from "@xterm/addon-fit";
 import type { TerminalSettings, TerminalThemeMode } from "./settings";
 import { pollUntilReady, buildWsUrl, exponentialBackoff } from "./ttyd-client";
 
-export const VIEW_TYPE_TERMINAL = "agent-sandbox-terminal-view";
+import { VIEW_TYPE_TERMINAL } from "./view-types";
+export { VIEW_TYPE_TERMINAL };
 
 const MAX_RETRIES = 15;
 

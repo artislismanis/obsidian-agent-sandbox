@@ -7,7 +7,7 @@
 import type { App } from "obsidian";
 import { Modal, Notice } from "obsidian";
 import type { TerminalView } from "./terminal-view";
-import { VIEW_TYPE_TERMINAL } from "./terminal-view";
+import { VIEW_TYPE_TERMINAL } from "./view-types";
 
 /** Opens a modal listing currently-open sandbox terminal tabs with a filter. */
 export function showSessionPicker(app: App): void {

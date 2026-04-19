@@ -15,7 +15,7 @@ import { Notice } from "obsidian";
 import type { ActivityEntry } from "./mcp-server";
 import type { StatusBarManager } from "./status-bar";
 import type { ActivityPrefix, TerminalView } from "./terminal-view";
-import { VIEW_TYPE_TERMINAL } from "./terminal-view";
+import { VIEW_TYPE_TERMINAL } from "./view-types";
 import type { AgentStatus } from "./mcp-tools";
 
 const DEFAULT_SESSION_KEY = "__default__";
@@ -111,7 +111,7 @@ const RATE_LIMIT_MS = 5000;
 
 export class AgentOutputNotifier {
 	private buffer: BufferedEntry[] = [];
-	private debounceId: number | null = null;
+	private debounceId: ReturnType<typeof setTimeout> | null = null;
 	private lastNoticeAt = 0;
 
 	constructor(
@@ -136,7 +136,7 @@ export class AgentOutputNotifier {
 	/** Cancel any pending debounce; call from plugin onunload. */
 	dispose(): void {
 		if (this.debounceId != null) {
-			window.clearTimeout(this.debounceId);
+			clearTimeout(this.debounceId);
 			this.debounceId = null;
 		}
 		this.buffer = [];
@@ -150,7 +150,7 @@ export class AgentOutputNotifier {
 	private enqueue(entry: BufferedEntry): void {
 		this.buffer.push(entry);
 		if (this.debounceId != null) return;
-		this.debounceId = window.setTimeout(() => {
+		this.debounceId = setTimeout(() => {
 			this.debounceId = null;
 			this.flush();
 		}, DEBOUNCE_MS);
@@ -164,7 +164,7 @@ export class AgentOutputNotifier {
 			// Inside the rate-limit window — hold the buffer and re-arm so the
 			// accumulated events land in the next available slot instead of
 			// being silently dropped.
-			this.debounceId = window.setTimeout(() => {
+			this.debounceId = setTimeout(() => {
 				this.debounceId = null;
 				this.flush();
 			}, RATE_LIMIT_MS - sinceLast);
