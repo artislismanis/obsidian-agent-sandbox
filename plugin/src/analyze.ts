@@ -1,0 +1,154 @@
+/**
+ * "Analyze in Sandbox" plumbing — URI handlers, file-menu submenu, prompt
+ * template loading, and the custom-prompt modal. Kept out of main.ts so the
+ * plugin entry doesn't carry filesystem / file-menu wiring inline.
+ */
+
+import type { App, Menu, TFile } from "obsidian";
+import { FileSystemAdapter, Modal, Notice } from "obsidian";
+import { existsSync as fsExistsSync } from "fs";
+import { join as pathJoin } from "path";
+import { parsePromptTemplate, substituteFilePlaceholder } from "./prompt-template";
+
+export interface PromptTemplate {
+	name: string;
+	label: string;
+	body: string;
+}
+
+/** What the plugin needs to give us to drive the Analyze flow. */
+export interface AnalyzeHost {
+	app: App;
+	isContainerRunning: () => boolean;
+	activateTerminalView: (sessionName?: string, initialPrompt?: string) => Promise<unknown>;
+}
+
+export class AnalyzeManager {
+	constructor(private host: AnalyzeHost) {}
+
+	/**
+	 * Load prompt templates from `.claude/prompts/*.md` (vault root) or the
+	 * repo sibling `workspace/.claude/prompts/`. First non-empty line before
+	 * `---` is the label; body can contain `{{file}}` placeholders.
+	 */
+	async loadTemplates(): Promise<PromptTemplate[]> {
+		const dir = this.resolvePromptsDir();
+		if (!dir) return [];
+		try {
+			const fs = await import("fs/promises");
+			const entries = await fs.readdir(dir).catch(() => [] as string[]);
+			const out: PromptTemplate[] = [];
+			for (const entry of entries) {
+				if (!entry.endsWith(".md")) continue;
+				const content = await fs.readFile(pathJoin(dir, entry), "utf-8");
+				const [label, body] = parsePromptTemplate(content, entry);
+				out.push({ name: entry.replace(/\.md$/, ""), label, body });
+			}
+			return out.sort((a, b) => a.label.localeCompare(b.label));
+		} catch {
+			return [];
+		}
+	}
+
+	private resolvePromptsDir(): string | null {
+		const adapter = this.host.app.vault.adapter;
+		if (!(adapter instanceof FileSystemAdapter)) return null;
+		const base = adapter.getBasePath();
+		const candidates = [
+			pathJoin(base, ".claude", "prompts"),
+			pathJoin(base, "..", "workspace", ".claude", "prompts"),
+		];
+		for (const c of candidates) {
+			if (fsExistsSync(c)) return c;
+		}
+		return null;
+	}
+
+	/** Open a terminal + start Claude with a templated (or default) prompt. */
+	async runAnalyze(vaultPath: string, templateName?: string): Promise<void> {
+		if (!this.host.isContainerRunning()) {
+			new Notice("Sandbox container is not running.");
+			return;
+		}
+		const prompt = await this.buildPrompt(vaultPath, templateName);
+		if (!prompt) return;
+		await this.host.activateTerminalView(undefined, prompt);
+	}
+
+	/** Modal-input fallback for when no templates are configured. */
+	runAnalyzeCustom(vaultPath: string): void {
+		if (!this.host.isContainerRunning()) {
+			new Notice("Sandbox container is not running.");
+			return;
+		}
+		const modal = new Modal(this.host.app);
+		modal.titleEl.setText("Analyze in Sandbox");
+		modal.contentEl.createEl("p", {
+			text: `Prompt for ${vaultPath} — @${vaultPath} will be appended automatically.`,
+		});
+		const input = modal.contentEl.createEl("textarea", {
+			cls: "sandbox-modal-input-multiline",
+		});
+		input.placeholder = "e.g. Summarize this note in 3 bullet points";
+		modal.contentEl.createDiv({ cls: "modal-button-container" }, (div) => {
+			div.createEl("button", { text: "Cancel", cls: "mod-muted" }, (btn) => {
+				btn.addEventListener("click", () => modal.close());
+			});
+			div.createEl("button", { text: "Run", cls: "mod-cta" }, (btn) => {
+				btn.addEventListener("click", async () => {
+					const body = input.value.trim();
+					modal.close();
+					if (!body) return;
+					const prompt = `${body}\n\n(Context: @${vaultPath})`;
+					await this.host.activateTerminalView(undefined, prompt);
+				});
+			});
+		});
+		modal.open();
+		input.focus();
+	}
+
+	/** Append an "Analyze in Sandbox" submenu to an Obsidian file menu. */
+	attachFileMenu(menu: Menu, file: TFile): void {
+		menu.addItem((item) => {
+			item.setTitle("Analyze in Sandbox").setIcon("bot");
+			const submenu = (
+				item as unknown as { setSubmenu?: () => { addItem: Menu["addItem"] } }
+			).setSubmenu?.();
+			const container = submenu ?? menu;
+			void this.loadTemplates().then((templates) => {
+				if (templates.length === 0) {
+					container.addItem((sub) =>
+						sub
+							.setTitle("Custom prompt…")
+							.onClick(() => this.runAnalyzeCustom(file.path)),
+					);
+					return;
+				}
+				for (const t of templates) {
+					container.addItem((sub) =>
+						sub
+							.setTitle(t.label)
+							.onClick(() => void this.runAnalyze(file.path, t.name)),
+					);
+				}
+				container.addItem((sub) =>
+					sub.setTitle("Custom prompt…").onClick(() => this.runAnalyzeCustom(file.path)),
+				);
+			});
+		});
+	}
+
+	private async buildPrompt(vaultPath: string, templateName?: string): Promise<string | null> {
+		if (!templateName) {
+			return `Please analyze @${vaultPath}.`;
+		}
+		const templates = await this.loadTemplates();
+		const tmpl = templates.find((t) => t.name === templateName);
+		if (!tmpl) {
+			new Notice(`Unknown prompt template: ${templateName}`);
+			return null;
+		}
+		return substituteFilePlaceholder(tmpl.body, vaultPath);
+	}
+}
