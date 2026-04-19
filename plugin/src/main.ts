@@ -12,11 +12,11 @@ import {
 import { DockerManager } from "./docker";
 import type { ContainerState } from "./status-bar";
 import { FirewallStatusBar, StatusBarManager } from "./status-bar";
-import type { ActivityPrefix } from "./terminal-view";
 import { TerminalView, VIEW_TYPE_TERMINAL } from "./terminal-view";
 import { isValidWriteDir } from "./validation";
 import { ObsidianMcpServer, generateToken } from "./mcp-server";
-import type { AgentStatus, PermissionTier } from "./mcp-tools";
+import type { PermissionTier } from "./mcp-tools";
+import { ActivityUi, AgentOutputNotifier } from "./activity";
 
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -44,6 +44,8 @@ export default class AgentSandboxPlugin extends Plugin {
 	private lastFirewallRefreshAt = 0;
 	private mcpServer: ObsidianMcpServer | null = null;
 	private lastKnownContainerId: string = "";
+	private activityUi!: ActivityUi;
+	private agentOutput!: AgentOutputNotifier;
 
 	private debouncedSaveSettings = debounce(
 		async () => {
@@ -83,6 +85,14 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.statusBar.setDetails(TOOLTIP_STOPPED);
 		this.statusBarClickHandler = (evt) => void this.showStatusMenu(evt);
 		this.statusBarEl.addEventListener("click", this.statusBarClickHandler);
+
+		this.activityUi = new ActivityUi(this.app, this.statusBar, () =>
+			this.mcpServer?.getActivity(),
+		);
+		this.agentOutput = new AgentOutputNotifier(
+			() => this.settings.agentOutputNotify,
+			() => this.settings.vaultWriteDir,
+		);
 
 		const fwBarEl = this.addStatusBarItem();
 		this.firewallBar = new FirewallStatusBar(fwBarEl, () => this.toggleFirewall());
@@ -270,17 +280,11 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.registerEvent(
 			this.app.vault.on("create", (file) => {
 				if (!("extension" in file)) return;
-				if (this.settings.agentOutputNotify === "off") return;
-				if (!this.isInsideWriteDir(file.path)) return;
-				this.queueAgentOutputNotice("created", file.path);
+				this.agentOutput.onCreate(file.path);
 			}),
 		);
 		this.registerEvent(
-			this.app.vault.on("modify", (file) => {
-				if (this.settings.agentOutputNotify !== "new_or_modified") return;
-				if (!this.isInsideWriteDir(file.path)) return;
-				this.queueAgentOutputNotice("modified", file.path);
-			}),
+			this.app.vault.on("modify", (file) => this.agentOutput.onModify(file.path)),
 		);
 
 		// Quick-Switcher-style picker for open sandbox sessions
@@ -311,10 +315,7 @@ export default class AgentSandboxPlugin extends Plugin {
 
 	onunload() {
 		this.stopHealthPoll();
-		if (this.agentOutputDebounceId != null) {
-			window.clearTimeout(this.agentOutputDebounceId);
-			this.agentOutputDebounceId = null;
-		}
+		this.agentOutput?.dispose();
 		void this.mcpServer?.stop();
 		void this.saveData(this.settings);
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
@@ -670,7 +671,7 @@ export default class AgentSandboxPlugin extends Plugin {
 					reviewBatch: this.settings.mcpTierWriteReviewed
 						? async (req) => new BatchReviewModal(this.app, req).review()
 						: undefined,
-					onActivity: (update) => this.onAgentActivity(update),
+					onActivity: (update) => this.activityUi.route(update),
 				},
 			});
 			await this.mcpServer.start();
@@ -683,59 +684,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		if (!this.mcpServer) return;
 		await this.mcpServer.stop();
 		this.mcpServer = null;
-		this.clearAgentActivity();
-	}
-
-	private onAgentActivity(update: {
-		sessionName: string;
-		status: AgentStatus;
-		detail?: string;
-	}): void {
-		const prefix: ActivityPrefix =
-			update.status === "working"
-				? "working"
-				: update.status === "awaiting_input"
-					? "awaiting_input"
-					: null;
-
-		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
-			const view = leaf.view as TerminalView;
-			const sessionKey = view.getSessionName() ?? "__default__";
-			if (sessionKey === update.sessionName) {
-				view.setActivityPrefix(prefix);
-			}
-		}
-
-		this.updateAttentionBadge();
-	}
-
-	private updateAttentionBadge(): void {
-		const activity = this.mcpServer?.getActivity();
-		if (!activity) {
-			this.statusBar.setAttentionCount(0);
-			return;
-		}
-		let count = 0;
-		const waitingNames: string[] = [];
-		for (const [name, entry] of activity) {
-			if (entry.status === "awaiting_input") {
-				count++;
-				waitingNames.push(name === "__default__" ? "(unnamed)" : name);
-			}
-		}
-		this.statusBar.setAttentionCount(count);
-		if (count > 0 && this.statusBar.getState() === "running") {
-			this.statusBar.setDetails(
-				`Sandbox running. ${count} session(s) awaiting input: ${waitingNames.join(", ")}\nClick for options`,
-			);
-		}
-	}
-
-	private clearAgentActivity(): void {
-		this.statusBar.setAttentionCount(0);
-		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
-			(leaf.view as TerminalView).setActivityPrefix(null);
-		}
+		this.activityUi.clear();
 	}
 
 	private async toggleMcpServer(): Promise<void> {
@@ -935,44 +884,6 @@ export default class AgentSandboxPlugin extends Plugin {
 			const msg = toErrorMessage(error);
 			this.statusBar.setDetails(`Docker error: ${msg}\nClick for options`);
 			this.stopHealthPoll();
-		}
-	}
-
-	private isInsideWriteDir(path: string): boolean {
-		const dir = this.settings.vaultWriteDir || "agent-workspace";
-		return path === dir || path.startsWith(dir + "/");
-	}
-
-	private agentOutputBuffer: { kind: "created" | "modified"; path: string }[] = [];
-	private agentOutputDebounceId: number | null = null;
-	private lastAgentOutputNoticeAt = 0;
-
-	private queueAgentOutputNotice(kind: "created" | "modified", path: string): void {
-		this.agentOutputBuffer.push({ kind, path });
-		if (this.agentOutputDebounceId != null) return;
-		this.agentOutputDebounceId = window.setTimeout(() => {
-			this.agentOutputDebounceId = null;
-			this.flushAgentOutputNotices();
-		}, 2000);
-	}
-
-	private flushAgentOutputNotices(): void {
-		const buf = this.agentOutputBuffer;
-		this.agentOutputBuffer = [];
-		if (buf.length === 0) return;
-		const now = Date.now();
-		if (now - this.lastAgentOutputNoticeAt < 5000) return;
-		this.lastAgentOutputNoticeAt = now;
-		if (buf.length === 1) {
-			const { kind, path } = buf[0];
-			new Notice(`Agent ${kind} ${path}`, 5000);
-		} else {
-			const createdCount = buf.filter((e) => e.kind === "created").length;
-			const modifiedCount = buf.length - createdCount;
-			const parts: string[] = [];
-			if (createdCount > 0) parts.push(`${createdCount} created`);
-			if (modifiedCount > 0) parts.push(`${modifiedCount} modified`);
-			new Notice(`Agent output: ${parts.join(", ")}`, 5000);
 		}
 	}
 
