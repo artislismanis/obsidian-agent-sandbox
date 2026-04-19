@@ -24,14 +24,35 @@ export interface AnalyzeHost {
 }
 
 export class AnalyzeManager {
+	private cachedTemplates: PromptTemplate[] | null = null;
+
 	constructor(private host: AnalyzeHost) {}
 
 	/**
 	 * Load prompt templates from `.claude/prompts/*.md` (vault root) or the
 	 * repo sibling `workspace/.claude/prompts/`. First non-empty line before
 	 * `---` is the label; body can contain `{{file}}` placeholders.
+	 * Result cached after first call — call {@link refreshTemplates} to
+	 * invalidate.
 	 */
 	async loadTemplates(): Promise<PromptTemplate[]> {
+		if (this.cachedTemplates) return this.cachedTemplates;
+		const loaded = await this.readTemplatesFromDisk();
+		this.cachedTemplates = loaded;
+		return loaded;
+	}
+
+	/** Invalidate the template cache — picked up on next loadTemplates call. */
+	refreshTemplates(): void {
+		this.cachedTemplates = null;
+	}
+
+	/** Preload and cache templates — call at plugin init to remove the menu race. */
+	async prewarm(): Promise<void> {
+		this.cachedTemplates = await this.readTemplatesFromDisk();
+	}
+
+	private async readTemplatesFromDisk(): Promise<PromptTemplate[]> {
 		const dir = this.resolvePromptsDir();
 		if (!dir) return [];
 		try {
@@ -108,34 +129,38 @@ export class AnalyzeManager {
 		input.focus();
 	}
 
-	/** Append an "Analyze in Sandbox" submenu to an Obsidian file menu. */
+	/**
+	 * Append an "Analyze in Sandbox" submenu to an Obsidian file menu.
+	 * Uses the cached template list (pre-populated by {@link prewarm}) to
+	 * build submenu items synchronously — no async race against menu render.
+	 * Kicks off a refresh in the background so subsequent menu opens reflect
+	 * new / removed templates.
+	 */
 	attachFileMenu(menu: Menu, file: TFile): void {
+		const templates = this.cachedTemplates ?? [];
+		// Refresh in the background for the next open; don't block this render.
+		void this.readTemplatesFromDisk().then((fresh) => (this.cachedTemplates = fresh));
+
 		menu.addItem((item) => {
 			item.setTitle("Analyze in Sandbox").setIcon("bot");
 			const submenu = (
 				item as unknown as { setSubmenu?: () => { addItem: Menu["addItem"] } }
 			).setSubmenu?.();
 			const container = submenu ?? menu;
-			void this.loadTemplates().then((templates) => {
-				if (templates.length === 0) {
-					container.addItem((sub) =>
-						sub
-							.setTitle("Custom prompt…")
-							.onClick(() => this.runAnalyzeCustom(file.path)),
-					);
-					return;
-				}
-				for (const t of templates) {
-					container.addItem((sub) =>
-						sub
-							.setTitle(t.label)
-							.onClick(() => void this.runAnalyze(file.path, t.name)),
-					);
-				}
+			if (templates.length === 0) {
 				container.addItem((sub) =>
 					sub.setTitle("Custom prompt…").onClick(() => this.runAnalyzeCustom(file.path)),
 				);
-			});
+				return;
+			}
+			for (const t of templates) {
+				container.addItem((sub) =>
+					sub.setTitle(t.label).onClick(() => void this.runAnalyze(file.path, t.name)),
+				);
+			}
+			container.addItem((sub) =>
+				sub.setTitle("Custom prompt…").onClick(() => this.runAnalyzeCustom(file.path)),
+			);
 		});
 	}
 

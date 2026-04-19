@@ -11,8 +11,7 @@ import { VIEW_TYPE_TERMINAL } from "./terminal-view";
 
 /** Opens a modal listing currently-open sandbox terminal tabs with a filter. */
 export function showSessionPicker(app: App): void {
-	const leaves = app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL);
-	if (leaves.length === 0) {
+	if (app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL).length === 0) {
 		new Notice("No open sandbox terminals.");
 		return;
 	}
@@ -21,14 +20,15 @@ export function showSessionPicker(app: App): void {
 	const input = modal.contentEl.createEl("input", {
 		type: "text",
 		cls: "sandbox-modal-filter",
-	}) as HTMLInputElement;
+	});
 	input.placeholder = "Filter sessions…";
 	const list = modal.contentEl.createEl("div", { cls: "sandbox-modal-list" });
 
 	const render = (filter: string) => {
 		list.empty();
 		const needle = filter.toLowerCase().trim();
-		for (const leaf of leaves) {
+		// Re-query per render so tabs closed while the modal is open drop out.
+		for (const leaf of app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
 			const view = leaf.view as TerminalView;
 			const name = view.getSessionName() ?? "(unnamed)";
 			const label = `Session: ${name}`;
@@ -37,6 +37,11 @@ export function showSessionPicker(app: App): void {
 			row.setText(label);
 			row.addEventListener("click", () => {
 				modal.close();
+				// Revalidate — leaf may have closed between render and click.
+				if (!app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL).includes(leaf)) {
+					new Notice("That session has closed.");
+					return;
+				}
 				app.workspace.setActiveLeaf(leaf, { focus: true });
 				app.workspace.revealLeaf(leaf);
 			});
@@ -80,7 +85,7 @@ export async function showSessionCleanup(
 	const list = modal.contentEl.createEl("ul", { cls: "sandbox-modal-check-list" });
 	for (const name of candidates) {
 		const row = list.createEl("li", { cls: "sandbox-modal-check-row" });
-		const cb = row.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+		const cb = row.createEl("input", { type: "checkbox" });
 		cb.checked = true;
 		cb.addEventListener("change", () => {
 			if (cb.checked) selected.add(name);
@@ -101,8 +106,9 @@ export async function showSessionCleanup(
 					try {
 						await api.killSession(name);
 						killed++;
-					} catch {
-						// swallow; report aggregate
+					} catch (e: unknown) {
+						// eslint-disable-next-line no-console
+						console.warn(`[Agent Sandbox] failed to kill tmux session '${name}':`, e);
 					}
 				}
 				new Notice(`Killed ${killed}/${toKill.length} session(s).`);

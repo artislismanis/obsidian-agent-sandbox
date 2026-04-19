@@ -85,8 +85,14 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.statusBarClickHandler = (evt) => void this.showStatusMenu(evt);
 		this.statusBarEl.addEventListener("click", this.statusBarClickHandler);
 
-		this.activityUi = new ActivityUi(this.app, this.statusBar, () =>
-			this.mcpServer?.getActivity(),
+		this.activityUi = new ActivityUi(
+			this.app,
+			this.statusBar,
+			() => this.mcpServer?.getActivity(),
+			() => {
+				if (this.statusBar.getState() === "running") this.updateTooltip();
+				else this.statusBar.setDetails(TOOLTIP_STOPPED);
+			},
 		);
 		this.agentOutput = new AgentOutputNotifier(
 			() => this.settings.agentOutputNotify,
@@ -98,6 +104,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			activateTerminalView: (sessionName, initialPrompt) =>
 				this.activateTerminalView(sessionName, initialPrompt),
 		});
+		void this.analyze.prewarm();
 
 		const fwBarEl = this.addStatusBarItem();
 		this.firewallBar = new FirewallStatusBar(fwBarEl, () => this.toggleFirewall());

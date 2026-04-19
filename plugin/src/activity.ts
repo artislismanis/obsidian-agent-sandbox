@@ -27,10 +27,15 @@ export interface ActivityUpdate {
 }
 
 export class ActivityUi {
+	private lastWaitingCount = 0;
+
 	constructor(
 		private app: App,
 		private statusBar: StatusBarManager,
 		private getActivity: () => ReadonlyMap<string, ActivityEntry> | undefined,
+		/** Restores the default tooltip (container state, MCP, firewall). Called
+		 * when the attention-tooltip override is no longer applicable. */
+		private refreshDefaultTooltip: () => void,
 	) {}
 
 	route(update: ActivityUpdate): void {
@@ -57,12 +62,19 @@ export class ActivityUi {
 		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
 			(leaf.view as TerminalView).setActivityPrefix(null);
 		}
+		if (this.lastWaitingCount > 0) {
+			this.lastWaitingCount = 0;
+			this.refreshDefaultTooltip();
+		}
 	}
 
 	private refreshAttentionBadge(): void {
 		const activity = this.getActivity();
+		const prevCount = this.lastWaitingCount;
 		if (!activity) {
 			this.statusBar.setAttentionCount(0);
+			this.lastWaitingCount = 0;
+			if (prevCount > 0) this.refreshDefaultTooltip();
 			return;
 		}
 		let count = 0;
@@ -74,10 +86,15 @@ export class ActivityUi {
 			}
 		}
 		this.statusBar.setAttentionCount(count);
+		this.lastWaitingCount = count;
 		if (count > 0 && this.statusBar.getState() === "running") {
 			this.statusBar.setDetails(
 				`Sandbox running. ${count} session(s) awaiting input: ${waitingNames.join(", ")}\nClick for options`,
 			);
+		} else if (prevCount > 0) {
+			// Transition to zero — restore the default tooltip instead of leaving
+			// the stale "N awaiting input" string on the status bar.
+			this.refreshDefaultTooltip();
 		}
 	}
 }
@@ -140,11 +157,21 @@ export class AgentOutputNotifier {
 	}
 
 	private flush(): void {
+		if (this.buffer.length === 0) return;
+		const now = Date.now();
+		const sinceLast = now - this.lastNoticeAt;
+		if (sinceLast < RATE_LIMIT_MS) {
+			// Inside the rate-limit window — hold the buffer and re-arm so the
+			// accumulated events land in the next available slot instead of
+			// being silently dropped.
+			this.debounceId = window.setTimeout(() => {
+				this.debounceId = null;
+				this.flush();
+			}, RATE_LIMIT_MS - sinceLast);
+			return;
+		}
 		const buf = this.buffer;
 		this.buffer = [];
-		if (buf.length === 0) return;
-		const now = Date.now();
-		if (now - this.lastNoticeAt < RATE_LIMIT_MS) return;
 		this.lastNoticeAt = now;
 		if (buf.length === 1) {
 			new Notice(`Agent ${buf[0].kind} ${buf[0].path}`, 5000);
