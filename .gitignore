@@ -32,3 +32,4 @@ workspace/vault/
 # Claude Code local overrides
 .claude/settings.local.json
 workspace/.claude/settings.local.json
+tmux-*.log
