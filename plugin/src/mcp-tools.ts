@@ -336,6 +336,256 @@ export function buildTools(app: App, getWriteDir: () => string): McpToolDef[] {
 		},
 	});
 
+	// ── Graph & knowledge tools (read tier) ──────────
+
+	tools.push({
+		name: "vault_recent",
+		tier: "read",
+		config: {
+			title: "Recently modified files",
+			description: "List recently modified files sorted by modification time.",
+			inputSchema: {
+				limit: z.number().optional().describe("Max results (default 20)"),
+				folder: z.string().optional().describe("Filter by folder path"),
+				extension: z.string().optional().describe("Filter by extension"),
+			},
+		},
+		handler: async (args) => {
+			const limit = (args.limit as number | undefined) ?? 20;
+			let files = app.vault.getFiles();
+			const folder = args.folder as string | undefined;
+			const ext = args.extension as string | undefined;
+			if (folder) files = files.filter((f) => f.path.startsWith(folder + "/"));
+			if (ext) files = files.filter((f) => f.extension === ext);
+			files.sort((a, b) => b.stat.mtime - a.stat.mtime);
+			const results = files.slice(0, limit).map((f) => {
+				const date = new Date(f.stat.mtime).toISOString();
+				return `${date}  ${f.path}`;
+			});
+			return text(results.join("\n") || "(no files)");
+		},
+	});
+
+	tools.push({
+		name: "vault_properties",
+		tier: "read",
+		config: {
+			title: "Vault properties",
+			description:
+				"List all frontmatter property names across the vault with usage counts, or distinct values for a specific property.",
+			inputSchema: {
+				property: z
+					.string()
+					.optional()
+					.describe("Property name to get distinct values for"),
+			},
+		},
+		handler: async (args) => {
+			const prop = args.property as string | undefined;
+			if (prop) {
+				const values: Record<string, number> = {};
+				for (const file of app.vault.getMarkdownFiles()) {
+					const cache = app.metadataCache.getFileCache(file);
+					const fm = cache?.frontmatter;
+					if (fm && prop in fm) {
+						const val = JSON.stringify(fm[prop]);
+						values[val] = (values[val] ?? 0) + 1;
+					}
+				}
+				const sorted = Object.entries(values).sort((a, b) => b[1] - a[1]);
+				return text(
+					sorted.map(([val, count]) => `${val}: ${count}`).join("\n") ||
+						`(no files have property '${prop}')`,
+				);
+			}
+			const counts: Record<string, number> = {};
+			for (const file of app.vault.getMarkdownFiles()) {
+				const cache = app.metadataCache.getFileCache(file);
+				const fm = cache?.frontmatter;
+				if (!fm) continue;
+				for (const key of Object.keys(fm)) {
+					if (key === "position") continue;
+					counts[key] = (counts[key] ?? 0) + 1;
+				}
+			}
+			const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+			return text(
+				sorted.map(([key, count]) => `${key}: ${count}`).join("\n") || "(no properties)",
+			);
+		},
+	});
+
+	interface LinkGraph {
+		forward: Map<string, Set<string>>;
+		reverse: Map<string, Set<string>>;
+	}
+
+	function buildLinkGraph(): LinkGraph {
+		const forward = new Map<string, Set<string>>();
+		const reverse = new Map<string, Set<string>>();
+		for (const [source, targets] of Object.entries(app.metadataCache.resolvedLinks)) {
+			if (!forward.has(source)) forward.set(source, new Set());
+			for (const target of Object.keys(targets)) {
+				forward.get(source)!.add(target);
+				if (!reverse.has(target)) reverse.set(target, new Set());
+				reverse.get(target)!.add(source);
+			}
+		}
+		return { forward, reverse };
+	}
+
+	tools.push({
+		name: "vault_graph_neighborhood",
+		tier: "read",
+		config: {
+			title: "Graph neighborhood",
+			description: "Find all notes within N link-hops of a file.",
+			inputSchema: {
+				file: z.string().optional().describe("File name"),
+				path: z.string().optional().describe("Exact path from vault root"),
+				depth: z.number().optional().describe("Max hops (1-5, default 1)"),
+			},
+		},
+		handler: async (args) => {
+			const f = resolveFile(app, args);
+			if (!f) return error("File not found.");
+			const depth = Math.min(Math.max((args.depth as number | undefined) ?? 1, 1), 5);
+			const graph = buildLinkGraph();
+			const visited = new Set<string>([f.path]);
+			let frontier = new Set<string>([f.path]);
+			const levels: string[][] = [];
+			for (let d = 0; d < depth; d++) {
+				const nextFrontier = new Set<string>();
+				for (const node of frontier) {
+					for (const neighbor of graph.forward.get(node) ?? []) {
+						if (!visited.has(neighbor)) {
+							visited.add(neighbor);
+							nextFrontier.add(neighbor);
+						}
+					}
+					for (const neighbor of graph.reverse.get(node) ?? []) {
+						if (!visited.has(neighbor)) {
+							visited.add(neighbor);
+							nextFrontier.add(neighbor);
+						}
+					}
+				}
+				if (nextFrontier.size > 0) levels.push([...nextFrontier].sort());
+				frontier = nextFrontier;
+			}
+			if (levels.length === 0) return text("(no linked notes)");
+			const output = levels
+				.map((nodes, i) => `Depth ${i + 1}:\n  ${nodes.join("\n  ")}`)
+				.join("\n");
+			return text(output);
+		},
+	});
+
+	tools.push({
+		name: "vault_graph_path",
+		tier: "read",
+		config: {
+			title: "Graph path",
+			description: "Find the shortest link path between two notes.",
+			inputSchema: {
+				source: z.string().describe("Source file path"),
+				target: z.string().describe("Target file path"),
+			},
+		},
+		handler: async (args) => {
+			const sourcePath = args.source as string;
+			const targetPath = args.target as string;
+			if (!app.vault.getFileByPath(sourcePath)) return error("Source file not found.");
+			if (!app.vault.getFileByPath(targetPath)) return error("Target file not found.");
+			if (sourcePath === targetPath) return text(sourcePath);
+
+			const graph = buildLinkGraph();
+			const queue: string[][] = [[sourcePath]];
+			const visited = new Set<string>([sourcePath]);
+
+			while (queue.length > 0) {
+				const path = queue.shift()!;
+				const current = path[path.length - 1];
+				for (const neighbor of graph.forward.get(current) ?? []) {
+					if (neighbor === targetPath) return text([...path, neighbor].join(" → "));
+					if (!visited.has(neighbor)) {
+						visited.add(neighbor);
+						queue.push([...path, neighbor]);
+					}
+				}
+			}
+			return text("No path found.");
+		},
+	});
+
+	tools.push({
+		name: "vault_graph_clusters",
+		tier: "read",
+		config: {
+			title: "Graph clusters",
+			description: "Find groups of densely connected notes.",
+			inputSchema: {
+				minSize: z.number().optional().describe("Min cluster size (default 3)"),
+				maxClusters: z.number().optional().describe("Max clusters to return (default 10)"),
+			},
+		},
+		handler: async (args) => {
+			const minSize = (args.minSize as number | undefined) ?? 3;
+			const maxClusters = (args.maxClusters as number | undefined) ?? 10;
+			const graph = buildLinkGraph();
+
+			const allNodes = new Set<string>();
+			for (const [k, v] of graph.forward) {
+				allNodes.add(k);
+				for (const n of v) allNodes.add(n);
+			}
+
+			const parent = new Map<string, string>();
+			for (const n of allNodes) parent.set(n, n);
+
+			function find(x: string): string {
+				let root = x;
+				while (parent.get(root) !== root) root = parent.get(root)!;
+				let cur = x;
+				while (cur !== root) {
+					const next = parent.get(cur)!;
+					parent.set(cur, root);
+					cur = next;
+				}
+				return root;
+			}
+			function union(a: string, b: string): void {
+				parent.set(find(a), find(b));
+			}
+
+			for (const [source, targets] of graph.forward) {
+				for (const target of targets) union(source, target);
+			}
+
+			const groups = new Map<string, string[]>();
+			for (const node of allNodes) {
+				const root = find(node);
+				if (!groups.has(root)) groups.set(root, []);
+				groups.get(root)!.push(node);
+			}
+
+			const clusters = [...groups.values()]
+				.filter((g) => g.length >= minSize)
+				.sort((a, b) => b.length - a.length)
+				.slice(0, maxClusters);
+
+			if (clusters.length === 0) return text("(no clusters found)");
+			return text(
+				clusters
+					.map(
+						(c, i) =>
+							`Cluster ${i + 1} (${c.length} notes):\n  ${c.sort().join("\n  ")}`,
+					)
+					.join("\n\n"),
+			);
+		},
+	});
+
 	// ── Write tools (scoped + vault-wide via factory) ────
 
 	function addWriteTools(

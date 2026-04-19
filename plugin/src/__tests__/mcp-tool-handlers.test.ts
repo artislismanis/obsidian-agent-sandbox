@@ -137,6 +137,11 @@ describe("MCP tool handlers", () => {
 			expect(names).toContain("vault_search_replace_anywhere");
 			expect(names).toContain("vault_prepend_anywhere");
 			expect(names).toContain("vault_patch_anywhere");
+			expect(names).toContain("vault_recent");
+			expect(names).toContain("vault_properties");
+			expect(names).toContain("vault_graph_neighborhood");
+			expect(names).toContain("vault_graph_path");
+			expect(names).toContain("vault_graph_clusters");
 			expect(names).toContain("vault_open");
 			expect(names).toContain("vault_rename");
 			expect(names).toContain("vault_move");
@@ -480,6 +485,96 @@ describe("MCP tool handlers", () => {
 			);
 			expect(r.isError).toBe(false);
 			expect(app.vault.createFolder).toHaveBeenCalledWith("new-folder");
+		});
+	});
+
+	describe("vault_recent", () => {
+		it("returns files sorted by mtime", async () => {
+			const r = getResult(await getTool(tools, "vault_recent").handler({ limit: 2 }));
+			expect(r.isError).toBe(false);
+			expect(r.text).toContain("notes/hello.md");
+		});
+	});
+
+	describe("vault_properties", () => {
+		it("lists all property keys with counts", async () => {
+			const r = getResult(await getTool(tools, "vault_properties").handler({}));
+			expect(r.isError).toBe(false);
+			expect(r.text).toContain("title:");
+			expect(r.text).toContain("status:");
+		});
+
+		it("lists distinct values for a specific property", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_properties").handler({ property: "title" }),
+			);
+			expect(r.isError).toBe(false);
+			expect(r.text).toContain('"Hello"');
+		});
+	});
+
+	describe("vault_graph_neighborhood", () => {
+		it("returns 1-hop neighbors", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_graph_neighborhood").handler({
+					path: "notes/hello.md",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			expect(r.text).toContain("notes/world.md");
+		});
+
+		it("returns empty for disconnected node", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_graph_neighborhood").handler({
+					path: "config.json",
+				}),
+			);
+			expect(r.text).toContain("no linked notes");
+		});
+	});
+
+	describe("vault_graph_path", () => {
+		it("finds direct path", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_graph_path").handler({
+					source: "notes/hello.md",
+					target: "notes/world.md",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			expect(r.text).toContain("hello.md");
+			expect(r.text).toContain("world.md");
+			expect(r.text).toContain("→");
+		});
+
+		it("returns no path for disconnected nodes", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_graph_path").handler({
+					source: "notes/hello.md",
+					target: "config.json",
+				}),
+			);
+			expect(r.text).toContain("No path found");
+		});
+	});
+
+	describe("vault_graph_clusters", () => {
+		it("finds connected components", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_graph_clusters").handler({ minSize: 2 }),
+			);
+			expect(r.isError).toBe(false);
+			expect(r.text).toContain("Cluster 1");
+			expect(r.text).toContain("notes/hello.md");
+			expect(r.text).toContain("notes/world.md");
+		});
+
+		it("returns empty when no clusters meet minSize", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_graph_clusters").handler({ minSize: 100 }),
+			);
+			expect(r.text).toContain("no clusters");
 		});
 	});
 
