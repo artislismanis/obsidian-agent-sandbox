@@ -46,4 +46,22 @@ describe("enabledTiersFromSettings", () => {
 		const tiers = enabledTiersFromSettings(settings);
 		for (const def of GATED_TIERS) expect(tiers.has(def.tier)).toBe(true);
 	});
+
+	it("mcpVaultWrites='none' enables neither write tier", () => {
+		const tiers = enabledTiersFromSettings({ ...DEFAULT_SETTINGS, mcpVaultWrites: "none" });
+		expect(tiers.has("writeReviewed")).toBe(false);
+		expect(tiers.has("writeVault")).toBe(false);
+	});
+
+	it("mcpVaultWrites='reviewed' enables only writeReviewed", () => {
+		const tiers = enabledTiersFromSettings({ ...DEFAULT_SETTINGS, mcpVaultWrites: "reviewed" });
+		expect(tiers.has("writeReviewed")).toBe(true);
+		expect(tiers.has("writeVault")).toBe(false);
+	});
+
+	it("mcpVaultWrites='full' enables only writeVault", () => {
+		const tiers = enabledTiersFromSettings({ ...DEFAULT_SETTINGS, mcpVaultWrites: "full" });
+		expect(tiers.has("writeVault")).toBe(true);
+		expect(tiers.has("writeReviewed")).toBe(false);
+	});
 });

@@ -2,8 +2,14 @@ import type { App } from "obsidian";
 import { Modal, PluginSettingTab, Setting } from "obsidian";
 import type AgentSandboxPlugin from "./main";
 import type { PermissionTier } from "./mcp-tools";
-import { ALWAYS_ON_TIERS, GATED_TIERS as PERMISSION_GATED_TIERS } from "./permission-tiers";
+import {
+	ALWAYS_ON_TIERS,
+	GATED_TIERS as PERMISSION_GATED_TIERS,
+	vaultWriteTiers,
+} from "./permission-tiers";
+import type { VaultWriteMode } from "./permission-tiers";
 export { ALWAYS_ON_TIERS };
+export type { VaultWriteMode };
 import {
 	isValidBindAddress,
 	isValidCpus,
@@ -41,8 +47,7 @@ export interface AgentSandboxSettings {
 	mcpEnabled: boolean;
 	mcpPort: number;
 	mcpToken: string;
-	mcpTierWriteReviewed: boolean;
-	mcpTierWriteVault: boolean;
+	mcpVaultWrites: VaultWriteMode;
 	mcpTierNavigate: boolean;
 	mcpTierManage: boolean;
 	mcpTierExtensions: boolean;
@@ -78,6 +83,7 @@ export function enabledTiersFromSettings(settings: AgentSandboxSettings): Set<Pe
 	for (const def of GATED_TIERS) {
 		if (settings[def.settingKey]) tiers.add(def.tier);
 	}
+	for (const tier of vaultWriteTiers(settings.mcpVaultWrites)) tiers.add(tier);
 	return tiers;
 }
 
@@ -115,8 +121,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	mcpEnabled: true,
 	mcpPort: 28080,
 	mcpToken: "",
-	mcpTierWriteReviewed: false,
-	mcpTierWriteVault: false,
+	mcpVaultWrites: "none",
 	mcpTierNavigate: false,
 	mcpTierManage: false,
 	mcpTierExtensions: false,
@@ -569,6 +574,24 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		escDesc.setText(
 			"These tiers grant Claude capabilities beyond its filesystem access. Enable only what you need.",
 		);
+
+		new Setting(el)
+			.setName("Vault-wide writes")
+			.setDesc(
+				"Writes outside the scoped write directory. None: scoped only. Reviewed: each change prompts a diff approval. Full: unrestricted, no review.",
+			)
+			.addDropdown((dd) =>
+				dd
+					.addOption("none", "None")
+					.addOption("reviewed", "Reviewed")
+					.addOption("full", "Full (no review)")
+					.setValue(this.plugin.settings.mcpVaultWrites)
+					.onChange(async (value) => {
+						this.plugin.settings.mcpVaultWrites = value as VaultWriteMode;
+						this.plugin.saveSettings();
+						void this.plugin.restartMcpIfRunning();
+					}),
+			);
 
 		for (const tier of GATED_TIERS) {
 			new Setting(el)

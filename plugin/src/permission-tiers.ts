@@ -11,20 +11,10 @@ export interface TierDef {
 	desc: string;
 }
 
-/** MCP tiers gated behind per-tier user toggles. */
+/** MCP tiers gated behind per-tier user toggles. Write tiers are handled
+ * separately via a single dropdown (see VaultWriteMode) so Reviewed and Full
+ * are mutually exclusive. */
 export const GATED_TIERS: readonly TierDef[] = [
-	{
-		tier: "writeReviewed",
-		settingKey: "mcpTierWriteReviewed",
-		name: "Write (reviewed)",
-		desc: "Vault-wide writes that require your approval. A diff dialog appears in Obsidian for each change.",
-	},
-	{
-		tier: "writeVault",
-		settingKey: "mcpTierWriteVault",
-		name: "Write (vault-wide)",
-		desc: "Create and modify files anywhere in the vault. Allows Claude to modify any file.",
-	},
 	{
 		tier: "navigate",
 		settingKey: "mcpTierNavigate",
@@ -44,3 +34,14 @@ export const GATED_TIERS: readonly TierDef[] = [
 		desc: "Access third-party plugin APIs (Dataview, Templater, Tasks, Canvas). Requires target plugins to be installed.",
 	},
 ];
+
+/** Vault-wide write mode — mutually exclusive choice between no vault-wide
+ * writes (scoped only), reviewed writes (diff modal per change), or full
+ * unrestricted writes. Rendered as a dropdown in settings. */
+export type VaultWriteMode = "none" | "reviewed" | "full";
+
+export function vaultWriteTiers(mode: VaultWriteMode): PermissionTier[] {
+	if (mode === "reviewed") return ["writeReviewed"];
+	if (mode === "full") return ["writeVault"];
+	return [];
+}
