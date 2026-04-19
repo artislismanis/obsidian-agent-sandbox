@@ -1,7 +1,8 @@
 import type { App, TFile, CachedMetadata } from "obsidian";
-import { prepareSimpleSearch } from "obsidian";
+import { prepareSimpleSearch, prepareFuzzySearch } from "obsidian";
 import { z } from "zod/v4";
-import { isPathWithinDir, isPathAllowed } from "./validation";
+import { isPathWithinDir, isPathAllowed, isRealPathWithinBase } from "./validation";
+import { FileSystemAdapter } from "obsidian";
 import type { WriteOperation } from "./diff-review-modal";
 
 export type { WriteOperation };
@@ -85,7 +86,15 @@ function resolveFile(
 	if (resolved && pathFilter) {
 		if (!isPathAllowed(resolved.path, pathFilter.allowlist, pathFilter.blocklist)) return null;
 	}
+	if (resolved && !isVaultPathSafe(app, resolved.path)) return null;
 	return resolved;
+}
+
+/** True when `vaultPath` resolves to a real filesystem path inside the vault base. */
+function isVaultPathSafe(app: App, vaultPath: string): boolean {
+	const adapter = app.vault.adapter;
+	if (!(adapter instanceof FileSystemAdapter)) return true;
+	return isRealPathWithinBase(adapter.getBasePath(), adapter.getFullPath(vaultPath));
 }
 
 export type ReviewFn = (request: {
@@ -94,7 +103,14 @@ export type ReviewFn = (request: {
 	oldContent?: string;
 	newContent?: string;
 	description: string;
+	affectedLinks?: string[];
 }) => Promise<{ approved: boolean }>;
+
+export type ReviewBatchFn = (request: {
+	operation: WriteOperation;
+	description: string;
+	items: Array<{ filePath: string; oldContent?: string; newContent?: string }>;
+}) => Promise<{ approved: boolean; approvedPaths: string[] }>;
 
 export function buildTools(
 	app: App,
@@ -102,6 +118,7 @@ export function buildTools(
 	pathFilter?: PathFilter,
 	reviewFn?: ReviewFn,
 	cache?: { get<T>(key: string, compute: () => T): T },
+	reviewBatchFn?: ReviewBatchFn,
 ): McpToolDef[] {
 	const tools: McpToolDef[] = [];
 
@@ -198,6 +215,40 @@ export function buildTools(
 				return results.length >= limit;
 			});
 			return text(results.join("\n") || "No matches found.");
+		},
+	});
+
+	tools.push({
+		name: "vault_search_fuzzy",
+		tier: "read",
+		config: {
+			title: "Fuzzy search vault",
+			description:
+				"Fuzzy full-text search across all markdown files — tolerates typos and approximate matches. Results are score-sorted.",
+			inputSchema: {
+				query: z.string().describe("Search query text (fuzzy matched)"),
+				limit: z.number().optional().describe("Max results (default 20)"),
+			},
+		},
+		handler: async (args) => {
+			const query = args.query as string;
+			const limit = (args.limit as number | undefined) ?? 20;
+			const search = prepareFuzzySearch(query);
+			const hits: { path: string; score: number; snippet: string }[] = [];
+			await forEachMarkdownChunked((file, content) => {
+				const match = search(content);
+				if (!match) return;
+				const firstOffset = match.matches[0]?.[0] ?? 0;
+				const start = Math.max(0, firstOffset - 60);
+				const end = Math.min(content.length, firstOffset + 120);
+				const snippet = content.slice(start, end).replace(/\n/g, " ");
+				hits.push({ path: file.path, score: match.score, snippet });
+			});
+			hits.sort((a, b) => b.score - a.score);
+			const formatted = hits
+				.slice(0, limit)
+				.map((h) => `${h.path} (score ${h.score.toFixed(2)}): ...${h.snippet}...`);
+			return text(formatted.join("\n") || "No matches found.");
 		},
 	});
 
@@ -745,6 +796,7 @@ export function buildTools(
 		oldContent: string | undefined,
 		newContent: string | undefined,
 		description: string,
+		affectedLinks: string[] | undefined = undefined,
 	): Promise<McpToolResult | null> {
 		if (!review) return null;
 		const result = await review({
@@ -753,6 +805,7 @@ export function buildTools(
 			oldContent,
 			newContent,
 			description,
+			affectedLinks,
 		});
 		return result.approved ? null : error("Change rejected by user.");
 	}
@@ -771,6 +824,7 @@ export function buildTools(
 		review: ReviewFn | undefined;
 		apply: () => Promise<unknown>;
 		successMsg: string;
+		affectedLinks?: string[];
 	}): Promise<McpToolResult> {
 		const rejected = await requireReview(
 			op.review,
@@ -779,6 +833,7 @@ export function buildTools(
 			op.oldContent,
 			op.newContent,
 			op.description,
+			op.affectedLinks,
 		);
 		if (rejected) return rejected;
 		await op.apply();
@@ -820,6 +875,8 @@ export function buildTools(
 				const path = args.path as string;
 				const guard = guardPath(path);
 				if (guard) return guard;
+				if (!isVaultPathSafe(app, path))
+					return error("Path resolves outside the vault (symlink).");
 				if (app.vault.getFileByPath(path))
 					return error("File already exists. Use vault_modify to update it.");
 				const content = (args.content as string | undefined) ?? "";
@@ -1251,6 +1308,14 @@ export function buildTools(
 
 	// ── Manage tier ───────────────────────────────────
 
+	function collectBacklinks(targetPath: string): string[] {
+		const backlinks: string[] = [];
+		for (const [source, targets] of Object.entries(app.metadataCache.resolvedLinks)) {
+			if (targets[targetPath]) backlinks.push(source);
+		}
+		return backlinks;
+	}
+
 	tools.push({
 		name: "vault_rename",
 		tier: "manage",
@@ -1270,8 +1335,15 @@ export function buildTools(
 			const ext = newName.includes(".") ? "" : `.${f.extension}`;
 			const dir = f.parent?.path ?? "";
 			const newPath = dir ? `${dir}/${newName}${ext}` : `${newName}${ext}`;
-			await app.fileManager.renameFile(f, newPath);
-			return text(`Renamed to ${newPath}`);
+			return runWrite({
+				operation: "rename",
+				filePath: f.path,
+				description: `Rename ${f.path} → ${newPath}`,
+				affectedLinks: collectBacklinks(f.path),
+				review: reviewFn,
+				apply: () => app.fileManager.renameFile(f, newPath),
+				successMsg: `Renamed to ${newPath}`,
+			});
 		},
 	});
 
@@ -1292,8 +1364,15 @@ export function buildTools(
 			if (!f) return error("File not found.");
 			const dest = args.to as string;
 			const newPath = `${dest}/${f.name}`;
-			await app.fileManager.renameFile(f, newPath);
-			return text(`Moved to ${newPath}`);
+			return runWrite({
+				operation: "move",
+				filePath: f.path,
+				description: `Move ${f.path} → ${newPath}`,
+				affectedLinks: collectBacklinks(f.path),
+				review: reviewFn,
+				apply: () => app.fileManager.renameFile(f, newPath),
+				successMsg: `Moved to ${newPath}`,
+			});
 		},
 	});
 
@@ -1311,8 +1390,15 @@ export function buildTools(
 		handler: async (args) => {
 			const f = resolveFile(app, args, pathFilter);
 			if (!f) return error("File not found.");
-			await app.vault.trash(f, true);
-			return text(`Deleted ${f.path}`);
+			return runWrite({
+				operation: "delete",
+				filePath: f.path,
+				description: `Delete ${f.path}`,
+				affectedLinks: collectBacklinks(f.path),
+				review: reviewFn,
+				apply: () => app.vault.trash(f, true),
+				successMsg: `Deleted ${f.path}`,
+			});
 		},
 	});
 
@@ -1328,6 +1414,8 @@ export function buildTools(
 		},
 		handler: async (args) => {
 			const path = args.path as string;
+			if (!isVaultPathSafe(app, path))
+				return error("Path resolves outside the vault (symlink).");
 			await app.vault.createFolder(path);
 			return text(`Created folder ${path}`);
 		},
@@ -1382,7 +1470,40 @@ export function buildTools(
 				}
 			}
 
-			for (const file of matched) {
+			let targets: TFile[] = matched;
+			if (reviewBatchFn) {
+				const items = matched.map((file) => {
+					const oldFm = frontmatterSnapshot(file);
+					const newFm =
+						rawValue !== undefined
+							? { ...oldFm, [property]: value }
+							: (() => {
+									const { [property]: _r, ...rest } = oldFm;
+									void _r;
+									return rest;
+								})();
+					return {
+						filePath: file.path,
+						oldContent: JSON.stringify(oldFm, null, 2),
+						newContent: JSON.stringify(newFm, null, 2),
+					};
+				});
+				const op: WriteOperation =
+					rawValue !== undefined ? "frontmatter_set" : "frontmatter_delete";
+				const verb = rawValue !== undefined ? `Set ${property}` : `Delete ${property}`;
+				const result = await reviewBatchFn({
+					operation: op,
+					description: `${verb} on ${matched.length} file(s) matching "${query}"`,
+					items,
+				});
+				if (!result.approved) return error("Change rejected by user.");
+				const approved = new Set(result.approvedPaths);
+				targets = matched.filter((f) => approved.has(f.path));
+				if (targets.length === 0)
+					return text("Batch approved with no files selected; nothing to do.");
+			}
+
+			for (const file of targets) {
 				await app.fileManager.processFrontMatter(file, (fm) => {
 					if (rawValue !== undefined) {
 						fm[property] = value;
@@ -1393,7 +1514,7 @@ export function buildTools(
 			}
 
 			const label = rawValue !== undefined ? `Set ${property}` : `Deleted ${property}`;
-			return text(`${label} on ${matched.length} file(s).`);
+			return text(`${label} on ${targets.length} file(s).`);
 		},
 	});
 

@@ -4,7 +4,7 @@ import type { App } from "obsidian";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { randomUUID, timingSafeEqual } from "crypto";
-import type { PermissionTier, McpToolDef, PathFilter, ReviewFn } from "./mcp-tools";
+import type { PermissionTier, McpToolDef, PathFilter, ReviewFn, ReviewBatchFn } from "./mcp-tools";
 import { buildTools } from "./mcp-tools";
 import { VaultCache } from "./mcp-cache";
 
@@ -15,6 +15,7 @@ export interface McpServerConfig {
 	getWriteDir: () => string;
 	pathFilter?: PathFilter;
 	reviewFn?: ReviewFn;
+	reviewBatchFn?: ReviewBatchFn;
 }
 
 const SESSION_TIMEOUT_MS = 10 * 60_000;
@@ -77,9 +78,14 @@ export interface AuditEntry {
 class AuditLog {
 	private entries: AuditEntry[] = [];
 	private maxEntries: number;
+	private sink: ((entry: AuditEntry) => void | Promise<void>) | null = null;
 
 	constructor(maxEntries: number) {
 		this.maxEntries = maxEntries;
+	}
+
+	setSink(sink: ((entry: AuditEntry) => void | Promise<void>) | null): void {
+		this.sink = sink;
 	}
 
 	record(entry: AuditEntry): void {
@@ -87,11 +93,60 @@ class AuditLog {
 		if (this.entries.length > this.maxEntries) {
 			this.entries = this.entries.slice(-this.maxEntries);
 		}
+		if (this.sink) {
+			try {
+				const maybe = this.sink(entry);
+				if (maybe instanceof Promise) {
+					maybe.catch(() => {
+						/* sink failures never block tool execution */
+					});
+				}
+			} catch {
+				/* sink failures never block tool execution */
+			}
+		}
 	}
 
 	getEntries(): readonly AuditEntry[] {
 		return this.entries;
 	}
+}
+
+const AUDIT_FILE = ".oas/mcp-audit.jsonl";
+const AUDIT_FILE_MAX_BYTES = 1_024_000;
+const AUDIT_FILE_ARCHIVE = ".oas/mcp-audit.1.jsonl";
+
+function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
+	const adapter = app.vault.adapter;
+	let ensuredDir = false;
+	return async (entry) => {
+		if (!ensuredDir) {
+			try {
+				if (!(await adapter.exists(".oas"))) await adapter.mkdir(".oas");
+			} catch {
+				/* ignore */
+			}
+			ensuredDir = true;
+		}
+		try {
+			if (await adapter.exists(AUDIT_FILE)) {
+				const stat = await adapter.stat(AUDIT_FILE);
+				if (stat && stat.size > AUDIT_FILE_MAX_BYTES) {
+					try {
+						if (await adapter.exists(AUDIT_FILE_ARCHIVE)) {
+							await adapter.remove(AUDIT_FILE_ARCHIVE);
+						}
+						await adapter.rename(AUDIT_FILE, AUDIT_FILE_ARCHIVE);
+					} catch {
+						/* rotation is best-effort */
+					}
+				}
+			}
+			await adapter.append(AUDIT_FILE, JSON.stringify(entry) + "\n");
+		} catch {
+			/* audit write failures must never block */
+		}
+	};
 }
 
 // ── MCP server ───────────────────────────────────────
@@ -117,12 +172,14 @@ export class ObsidianMcpServer {
 		if (this.httpServer) return;
 
 		this.cache = new VaultCache(this.app.metadataCache);
+		this.auditLog.setSink(createFileAuditSink(this.app));
 		this.tools = buildTools(
 			this.app,
 			this.config.getWriteDir,
 			this.config.pathFilter,
 			this.config.reviewFn,
 			this.cache,
+			this.config.reviewBatchFn,
 		).filter((t) => this.config.enabledTiers.has(t.tier));
 
 		this.startTime = Date.now();
@@ -155,6 +212,7 @@ export class ObsidianMcpServer {
 
 		this.cache?.destroy();
 		this.cache = null;
+		this.auditLog.setSink(null);
 	}
 
 	private resetSessionTimeout(sid: string): void {

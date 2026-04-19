@@ -8,7 +8,7 @@ This is Claude's configurable workspace inside the Agent Sandbox container. Ever
 |------|---------|
 | `.claude/settings.json` | Claude Code project settings (permission mode, env, experiments) |
 | `.claude/settings.local.json` | Per-machine overrides (gitignored) |
-| `.claude/skills/` | Project skills — currently: `research-topic`, `link-hygiene`, `reviewed-edit` |
+| `.claude/skills/` | Project skills — currently: `research-topic`, `link-hygiene`, `reviewed-edit`, `tag-audit`, `daily-review`, `note-refactor` |
 | `.claude/agents/` | Sub-agents (if present) |
 | `.claude/commands/` | Slash commands (if present) |
 | `.mcp.json` | MCP server configuration (memory, etc.) |

@@ -9,7 +9,10 @@ export type WriteOperation =
 	| "patch"
 	| "search_replace"
 	| "frontmatter_set"
-	| "frontmatter_delete";
+	| "frontmatter_delete"
+	| "rename"
+	| "move"
+	| "delete";
 
 const OPERATION_LABELS: Record<WriteOperation, string> = {
 	create: "Create file",
@@ -20,6 +23,9 @@ const OPERATION_LABELS: Record<WriteOperation, string> = {
 	search_replace: "Search and replace",
 	frontmatter_set: "Set frontmatter",
 	frontmatter_delete: "Delete frontmatter property",
+	rename: "Rename file",
+	move: "Move file",
+	delete: "Delete file",
 };
 
 export interface ReviewRequest {
@@ -28,6 +34,8 @@ export interface ReviewRequest {
 	oldContent?: string;
 	newContent?: string;
 	description: string;
+	/** For rename/move/delete: notes whose wikilinks reference this file. */
+	affectedLinks?: string[];
 }
 
 export interface ReviewResult {
@@ -105,6 +113,26 @@ export class DiffReviewModal extends Modal {
 
 		contentEl.createEl("div", { cls: "diff-review-path", text: this.request.filePath });
 
+		if (this.request.affectedLinks && this.request.affectedLinks.length > 0) {
+			const header = contentEl.createEl("div", { cls: "diff-review-affected-header" });
+			header.setText(`${this.request.affectedLinks.length} note(s) link here:`);
+			const list = contentEl.createEl("ul", { cls: "diff-review-affected-list" });
+			list.style.maxHeight = "200px";
+			list.style.overflow = "auto";
+			list.style.margin = "4px 0 12px 16px";
+			for (const link of this.request.affectedLinks) {
+				list.createEl("li", { text: link });
+			}
+		} else if (
+			this.request.affectedLinks !== undefined &&
+			this.request.affectedLinks.length === 0
+		) {
+			contentEl.createEl("div", {
+				cls: "diff-review-affected-empty",
+				text: "No other notes link to this file.",
+			});
+		}
+
 		if (this.request.oldContent !== undefined || this.request.newContent !== undefined) {
 			const diffEl = contentEl.createEl("pre", { cls: "diff-review-diff" });
 			diffEl.style.maxHeight = "400px";
@@ -149,6 +177,96 @@ export class DiffReviewModal extends Modal {
 	onClose(): void {
 		if (this.resolve) {
 			this.resolve({ approved: false });
+			this.resolve = null;
+		}
+		this.contentEl.empty();
+	}
+}
+
+export interface BatchReviewRequest {
+	operation: WriteOperation;
+	description: string;
+	items: Array<{ filePath: string; oldContent?: string; newContent?: string }>;
+}
+
+export interface BatchReviewResult {
+	approved: boolean;
+	approvedPaths: string[];
+}
+
+export class BatchReviewModal extends Modal {
+	private resolve: ((result: BatchReviewResult) => void) | null = null;
+	private request: BatchReviewRequest;
+	private selected = new Set<string>();
+
+	constructor(app: App, request: BatchReviewRequest) {
+		super(app);
+		this.request = request;
+		for (const item of request.items) this.selected.add(item.filePath);
+	}
+
+	review(): Promise<BatchReviewResult> {
+		return new Promise<BatchReviewResult>((resolve) => {
+			this.resolve = resolve;
+			this.open();
+		});
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		this.titleEl.setText(`Review batch: ${OPERATION_LABELS[this.request.operation]}`);
+
+		contentEl.createEl("p", {
+			text: this.request.description,
+			cls: "diff-review-description",
+		});
+
+		contentEl.createEl("div", {
+			cls: "diff-review-count",
+			text: `${this.request.items.length} file(s) affected. Uncheck any you want to skip.`,
+		});
+
+		const list = contentEl.createEl("div", { cls: "batch-review-list" });
+		list.style.maxHeight = "400px";
+		list.style.overflow = "auto";
+		list.style.margin = "8px 0";
+		for (const item of this.request.items) {
+			const row = list.createEl("label", { cls: "batch-review-row" });
+			row.style.display = "flex";
+			row.style.alignItems = "center";
+			row.style.gap = "8px";
+			row.style.padding = "4px 0";
+			const checkbox = row.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+			checkbox.checked = true;
+			checkbox.addEventListener("change", () => {
+				if (checkbox.checked) this.selected.add(item.filePath);
+				else this.selected.delete(item.filePath);
+			});
+			row.createEl("span", { text: item.filePath });
+		}
+
+		contentEl.createDiv({ cls: "modal-button-container" }, (div) => {
+			div.createEl("button", { text: "Reject all", cls: "mod-muted" }, (btn) => {
+				btn.addEventListener("click", () => {
+					this.resolve?.({ approved: false, approvedPaths: [] });
+					this.close();
+				});
+			});
+			div.createEl("button", { text: "Approve selected", cls: "mod-cta" }, (btn) => {
+				btn.addEventListener("click", () => {
+					this.resolve?.({
+						approved: true,
+						approvedPaths: [...this.selected],
+					});
+					this.close();
+				});
+			});
+		});
+	}
+
+	onClose(): void {
+		if (this.resolve) {
+			this.resolve({ approved: false, approvedPaths: [] });
 			this.resolve = null;
 		}
 		this.contentEl.empty();

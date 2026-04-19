@@ -3,6 +3,8 @@ import type { TFile, TFolder } from "obsidian";
 
 vi.mock("obsidian", () => ({
 	prepareSimpleSearch: vi.fn(() => () => ({ score: 1, matches: [[0, 5]] })),
+	prepareFuzzySearch: vi.fn(() => () => ({ score: 1, matches: [[0, 5]] })),
+	FileSystemAdapter: class {},
 }));
 
 import { buildTools } from "../mcp-tools";

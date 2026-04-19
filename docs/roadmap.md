@@ -79,7 +79,7 @@ Extend the MCP server with deeper Obsidian integration. Patterns informed by exi
 - [x] `vault_graph_neighborhood` — all notes within N hops of a file
 - [x] `vault_graph_path` — shortest link path between two notes
 - [x] `vault_graph_clusters` — find densely connected note groups
-- [ ] `vault_search_fuzzy` — fuzzy search using Obsidian's prepareFuzzySearch
+- [x] `vault_search_fuzzy` — fuzzy search using Obsidian's prepareFuzzySearch (score-sorted)
 - [x] `vault_properties` — list all properties across vault with counts
 - [x] `vault_recent` — recently modified files (sorted by mtime)
 
@@ -106,7 +106,7 @@ Access capabilities of other installed Obsidian plugins via `app.plugins.getPlug
 - [x] Operation audit log (in-memory ring buffer, GET /mcp/audit endpoint)
 - [x] Review guard covers all 8 write operations (was create+modify only — silent bypass via append/patch/search_replace/frontmatter/prepend closed)
 - [x] Capability tiers vs escalation tiers — settings UI split; `read`/`writeScoped` always-on when MCP enabled, gated toggles for `writeReviewed`/`writeVault`/`navigate`/`manage`/`extensions`
-- [ ] Symlink resolution in path validation
+- [x] Symlink resolution in path validation (`isRealPathWithinBase` with `FileSystemAdapter.realpathSync`, applied to reads + create paths + folder creation)
 
 ### Format Awareness
 Obsidian markdown conventions (wikilinks, callouts, embeds, properties) are handled separately via kepano/obsidian-skills packaged as standalone skills — not part of this plugin's core.
@@ -129,18 +129,18 @@ Obsidian markdown conventions (wikilinks, callouts, embeds, properties) are hand
 - [x] Review modal for frontmatter set/delete — JSON-stringified old vs new frontmatter preview
 - [x] `WriteOperation` union type replaces stringly-typed operation; modal shows human labels
 - [x] `runWrite` helper — structural review gate that makes bypass impossible to reintroduce
-- [ ] Review modal for rename/move/delete — show operation description + affected links
-- [ ] Batch review option — queue multiple proposed changes, review all at once
-- [ ] Audit trail — log approved/rejected operations to a file for later review
+- [x] Review modal for rename/move/delete — `affectedLinks` list (backlinks), wired via `runWrite` on all three manage handlers
+- [x] Batch review option — `BatchReviewModal` with per-item checkboxes; `vault_batch_frontmatter` uses it when `writeReviewed` is enabled
+- [x] File-based audit trail — append-only JSONL at `vault/.oas/mcp-audit.jsonl` with 1 MB single-generation rotation; `GET /mcp/audit` still returns the in-memory ring buffer
 
 ### Skills (workflow guidance)
 Curated skills living under `workspace/.claude/skills/` that teach Claude how to chain MCP tools for common vault tasks.
 - [x] `research-topic` — discovery via `vault_search` → `vault_context` → `vault_graph_neighborhood`
 - [x] `link-hygiene` — `vault_unresolved` + `vault_orphans` + `vault_suggest_links` + fix loop
 - [x] `reviewed-edit` — safe out-of-workspace writes via `_reviewed` tools
-- [ ] `tag-audit` — `vault_tags` + `vault_properties` → merge/rename via `vault_search_replace`
-- [ ] `daily-review` — `vault_recent` + `vault_context` for "what did I work on this week"
-- [ ] `note-refactor` — `vault_backlinks` pre-check before rename/move/delete
+- [x] `tag-audit` — `vault_tags` + `vault_properties` → merge/rename via `vault_search_replace`
+- [x] `daily-review` — `vault_recent` + `vault_context` for "what did I work on this week"
+- [x] `note-refactor` — `vault_backlinks` pre-check before rename/move/delete
 
 ## Phase 5: UX & Integration Depth
 

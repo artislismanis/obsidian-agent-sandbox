@@ -3,6 +3,8 @@ import type { TFile, TFolder } from "obsidian";
 
 vi.mock("obsidian", () => ({
 	prepareSimpleSearch: vi.fn(() => () => ({ score: 1, matches: [[0, 5]] })),
+	prepareFuzzySearch: vi.fn(() => () => ({ score: 1, matches: [[0, 5]] })),
+	FileSystemAdapter: class {},
 }));
 
 import { buildTools } from "../mcp-tools";
@@ -147,5 +149,64 @@ describe("write tools honor reviewFn", () => {
 		const tools = buildTools(app as never, () => "agent-workspace", undefined, review);
 		await getTool(tools, "vault_modify").handler({ path: "notes/a.md", content: "x" });
 		expect(review).not.toHaveBeenCalled();
+	});
+
+	describe("manage tier review (rename/move/delete)", () => {
+		const manageCases: {
+			name: string;
+			args: Record<string, unknown>;
+			operation: string;
+			mutated: "renameFile" | "trash";
+		}[] = [
+			{
+				name: "vault_rename",
+				args: { path: "notes/a.md", name: "b.md" },
+				operation: "rename",
+				mutated: "renameFile",
+			},
+			{
+				name: "vault_move",
+				args: { path: "notes/a.md", to: "archive" },
+				operation: "move",
+				mutated: "renameFile",
+			},
+			{
+				name: "vault_delete",
+				args: { path: "notes/a.md" },
+				operation: "delete",
+				mutated: "trash",
+			},
+		];
+
+		for (const c of manageCases) {
+			it(`${c.name} calls review with affectedLinks and aborts on rejection`, async () => {
+				const review = vi.fn(async () => ({ approved: false }));
+				app.metadataCache.resolvedLinks = {
+					"notes/other.md": { "notes/a.md": 1 },
+				} as never;
+				const tools = buildTools(app as never, () => "agent-workspace", undefined, review);
+				const result = await getTool(tools, c.name).handler(c.args);
+				expect(review).toHaveBeenCalledTimes(1);
+				const firstCall = review.mock.calls[0] as unknown as [
+					{ operation: string; affectedLinks?: string[] },
+				];
+				expect(firstCall[0].operation).toBe(c.operation);
+				expect(firstCall[0].affectedLinks).toEqual(["notes/other.md"]);
+				expect(result.isError).toBe(true);
+				expect(app.fileManager.renameFile).not.toHaveBeenCalled();
+				expect(app.vault.trash).not.toHaveBeenCalled();
+			});
+
+			it(`${c.name} proceeds on approval`, async () => {
+				const review = vi.fn(async () => ({ approved: true }));
+				const tools = buildTools(app as never, () => "agent-workspace", undefined, review);
+				const result = await getTool(tools, c.name).handler(c.args);
+				expect(review).toHaveBeenCalledTimes(1);
+				expect(result.isError ?? false).toBe(false);
+				const mutator =
+					c.mutated === "trash" ? app.vault.trash : app.fileManager.renameFile;
+				expect(mutator).toHaveBeenCalled();
+			});
+		}
 	});
 });

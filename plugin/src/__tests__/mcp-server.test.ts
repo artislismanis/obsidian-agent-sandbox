@@ -4,6 +4,8 @@ import type { IncomingHttpHeaders } from "http";
 
 vi.mock("obsidian", () => ({
 	prepareSimpleSearch: vi.fn(() => () => null),
+	prepareFuzzySearch: vi.fn(() => () => null),
+	FileSystemAdapter: class {},
 }));
 
 vi.mock("@modelcontextprotocol/sdk/server/mcp.js", () => {
@@ -61,6 +63,14 @@ function createMockApp() {
 			append: vi.fn(async () => {}),
 			trash: vi.fn(async () => {}),
 			createFolder: vi.fn(async () => {}),
+			adapter: {
+				exists: vi.fn(async () => false),
+				mkdir: vi.fn(async () => {}),
+				stat: vi.fn(async () => ({ size: 0 })),
+				rename: vi.fn(async () => {}),
+				remove: vi.fn(async () => {}),
+				append: vi.fn(async () => {}),
+			},
 		},
 		metadataCache: {
 			getFileCache: vi.fn(() => null),
@@ -253,6 +263,57 @@ describe("ObsidianMcpServer", () => {
 			expect(res.status).toBe(200);
 			const body = JSON.parse(res.body);
 			expect(Array.isArray(body.entries)).toBe(true);
+		});
+
+		it("creates .oas directory and appends a JSON line per invocation", async () => {
+			// Reach into private state to trigger an audit entry via the sink.
+			// Easier than spinning up a full MCP tool invocation over HTTP.
+			interface AuditShape {
+				timestamp: number;
+				tool: string;
+				success: boolean;
+				durationMs: number;
+			}
+			const sinkFn = (
+				server as unknown as {
+					auditLog: { record: (e: AuditShape) => void };
+				}
+			).auditLog;
+			sinkFn.record({
+				timestamp: Date.now(),
+				tool: "vault_read",
+				success: true,
+				durationMs: 3,
+			});
+			await new Promise((r) => setTimeout(r, 5));
+			expect(app.vault.adapter.append).toHaveBeenCalledWith(
+				".oas/mcp-audit.jsonl",
+				expect.stringContaining('"tool":"vault_read"'),
+			);
+		});
+
+		it("does not throw when the file sink fails", async () => {
+			app.vault.adapter.append.mockRejectedValueOnce(new Error("disk full"));
+			interface AuditShape {
+				timestamp: number;
+				tool: string;
+				success: boolean;
+				durationMs: number;
+			}
+			const log = (
+				server as unknown as {
+					auditLog: { record: (e: AuditShape) => void };
+				}
+			).auditLog;
+			expect(() =>
+				log.record({
+					timestamp: Date.now(),
+					tool: "vault_read",
+					success: true,
+					durationMs: 2,
+				}),
+			).not.toThrow();
+			await new Promise((r) => setTimeout(r, 5));
 		});
 	});
 

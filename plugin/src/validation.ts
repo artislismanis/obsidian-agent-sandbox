@@ -1,6 +1,8 @@
 /** Shared input validators. Used by both settings.ts (UI) and docker.ts (runtime). */
 
 import { posix as posixPath } from "path";
+import { realpathSync } from "fs";
+import { resolve as resolveNative, sep as nativeSep } from "path";
 
 export function isValidWriteDir(dir: string): boolean {
 	if (!dir.trim()) return false;
@@ -83,6 +85,45 @@ export function isPathAllowed(filePath: string, allowlist: string[], blocklist: 
 	for (const allowed of allowlist) {
 		const na = norm(allowed);
 		if (normalized === na || normalized.startsWith(na + "/")) return true;
+	}
+	return false;
+}
+
+/**
+ * Resolve a vault-relative path to its real filesystem path and verify it
+ * stays under the vault base. Blocks symlinks that escape the vault.
+ *
+ * - Desktop Obsidian supplies `basePath` + `getFullPath`. Mobile / test
+ *   adapters that don't should pass `basePath: null` — this function becomes
+ *   a no-op pass-through on those.
+ * - If the target file doesn't yet exist (e.g. `vault_create` path), realpath
+ *   the longest existing ancestor and verify containment there.
+ * - A `realpathOverride` hook lets tests inject the realpath result without
+ *   touching the filesystem.
+ */
+export function isRealPathWithinBase(
+	basePath: string | null,
+	fullPath: string,
+	realpathOverride?: (p: string) => string,
+): boolean {
+	if (!basePath) return true;
+	const realpath = realpathOverride ?? realpathSync;
+	const baseReal = ((): string => {
+		try {
+			return realpath(basePath);
+		} catch {
+			return resolveNative(basePath);
+		}
+	})();
+	let probe = fullPath;
+	while (probe && probe !== resolveNative(probe, "..")) {
+		try {
+			const real = realpath(probe);
+			const baseWithSep = baseReal.endsWith(nativeSep) ? baseReal : baseReal + nativeSep;
+			return real === baseReal || real.startsWith(baseWithSep);
+		} catch {
+			probe = resolveNative(probe, "..");
+		}
 	}
 	return false;
 }

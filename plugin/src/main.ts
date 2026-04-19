@@ -1,6 +1,6 @@
 import type { WorkspaceLeaf } from "obsidian";
 import { FileSystemAdapter, Menu, Modal, Notice, Plugin, debounce } from "obsidian";
-import { DiffReviewModal } from "./diff-review-modal";
+import { BatchReviewModal, DiffReviewModal } from "./diff-review-modal";
 import {
 	type AgentSandboxSettings,
 	DEFAULT_SETTINGS,
@@ -436,6 +436,9 @@ export default class AgentSandboxPlugin extends Plugin {
 						: undefined,
 				reviewFn: this.settings.mcpTierWriteReviewed
 					? async (req) => new DiffReviewModal(this.app, req).review()
+					: undefined,
+				reviewBatchFn: this.settings.mcpTierWriteReviewed
+					? async (req) => new BatchReviewModal(this.app, req).review()
 					: undefined,
 			});
 			await this.mcpServer.start();
