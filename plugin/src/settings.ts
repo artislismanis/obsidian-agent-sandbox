@@ -32,6 +32,7 @@ export interface AgentSandboxSettings {
 	mcpToken: string;
 	mcpTierRead: boolean;
 	mcpTierWriteScoped: boolean;
+	mcpTierWriteReviewed: boolean;
 	mcpTierWriteVault: boolean;
 	mcpTierNavigate: boolean;
 	mcpTierManage: boolean;
@@ -69,6 +70,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	mcpToken: "",
 	mcpTierRead: true,
 	mcpTierWriteScoped: true,
+	mcpTierWriteReviewed: false,
 	mcpTierWriteVault: false,
 	mcpTierNavigate: false,
 	mcpTierManage: false,
@@ -488,6 +490,11 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					"Create and modify files within the vault write directory only (" +
 					(this.plugin.settings.vaultWriteDir || "agent-workspace") +
 					"/).",
+			},
+			{
+				key: "mcpTierWriteReviewed",
+				name: "Write (reviewed)",
+				desc: "Vault-wide writes that require your approval. A diff dialog appears in Obsidian for each change.",
 			},
 			{
 				key: "mcpTierWriteVault",

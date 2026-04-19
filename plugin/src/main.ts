@@ -1,5 +1,6 @@
 import type { WorkspaceLeaf } from "obsidian";
 import { FileSystemAdapter, Menu, Modal, Notice, Plugin, debounce } from "obsidian";
+import { DiffReviewModal } from "./diff-review-modal";
 import { type AgentSandboxSettings, DEFAULT_SETTINGS, AgentSandboxSettingTab } from "./settings";
 import { DockerManager } from "./docker";
 import type { ContainerState } from "./status-bar";
@@ -389,6 +390,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		const tiers = new Set<PermissionTier>();
 		if (this.settings.mcpTierRead) tiers.add("read");
 		if (this.settings.mcpTierWriteScoped) tiers.add("writeScoped");
+		if (this.settings.mcpTierWriteReviewed) tiers.add("writeReviewed");
 		if (this.settings.mcpTierWriteVault) tiers.add("writeVault");
 		if (this.settings.mcpTierNavigate) tiers.add("navigate");
 		if (this.settings.mcpTierManage) tiers.add("manage");
@@ -422,6 +424,9 @@ export default class AgentSandboxPlugin extends Plugin {
 					allowlist.length > 0 || blocklist.length > 0
 						? { allowlist, blocklist }
 						: undefined,
+				reviewFn: this.settings.mcpTierWriteReviewed
+					? async (req) => new DiffReviewModal(this.app, req).review()
+					: undefined,
 			});
 			await this.mcpServer.start();
 		} catch (error: unknown) {

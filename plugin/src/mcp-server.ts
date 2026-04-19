@@ -4,7 +4,7 @@ import type { App } from "obsidian";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { randomUUID, timingSafeEqual } from "crypto";
-import type { PermissionTier, McpToolDef, PathFilter } from "./mcp-tools";
+import type { PermissionTier, McpToolDef, PathFilter, ReviewFn } from "./mcp-tools";
 import { buildTools } from "./mcp-tools";
 
 export interface McpServerConfig {
@@ -13,6 +13,7 @@ export interface McpServerConfig {
 	enabledTiers: Set<PermissionTier>;
 	getWriteDir: () => string;
 	pathFilter?: PathFilter;
+	reviewFn?: ReviewFn;
 }
 
 const SESSION_TIMEOUT_MS = 10 * 60_000;
@@ -113,9 +114,12 @@ export class ObsidianMcpServer {
 	async start(): Promise<void> {
 		if (this.httpServer) return;
 
-		this.tools = buildTools(this.app, this.config.getWriteDir, this.config.pathFilter).filter(
-			(t) => this.config.enabledTiers.has(t.tier),
-		);
+		this.tools = buildTools(
+			this.app,
+			this.config.getWriteDir,
+			this.config.pathFilter,
+			this.config.reviewFn,
+		).filter((t) => this.config.enabledTiers.has(t.tier));
 
 		this.startTime = Date.now();
 

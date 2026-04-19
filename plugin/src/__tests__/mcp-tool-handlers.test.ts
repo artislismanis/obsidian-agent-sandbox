@@ -108,7 +108,12 @@ describe("MCP tool handlers", () => {
 		app.metadataCache.unresolvedLinks = {
 			"notes/hello.md": { nonexistent: 1 },
 		};
-		tools = buildTools(app as never, () => "agent-workspace");
+		tools = buildTools(
+			app as never,
+			() => "agent-workspace",
+			undefined,
+			async () => ({ approved: true }),
+		);
 	});
 
 	describe("tool registration", () => {
@@ -150,6 +155,8 @@ describe("MCP tool handlers", () => {
 			expect(names).toContain("vault_context");
 			expect(names).toContain("vault_suggest_links");
 			expect(names).toContain("vault_batch_frontmatter");
+			expect(names).toContain("vault_create_reviewed");
+			expect(names).toContain("vault_modify_reviewed");
 		});
 
 		it("assigns correct tiers", () => {

@@ -6,6 +6,7 @@ import { isPathWithinDir, isPathAllowed } from "./validation";
 export type PermissionTier =
 	| "read"
 	| "writeScoped"
+	| "writeReviewed"
 	| "writeVault"
 	| "navigate"
 	| "manage"
@@ -84,10 +85,19 @@ function resolveFile(
 	return resolved;
 }
 
+export type ReviewFn = (request: {
+	operation: string;
+	filePath: string;
+	oldContent?: string;
+	newContent?: string;
+	description: string;
+}) => Promise<{ approved: boolean }>;
+
 export function buildTools(
 	app: App,
 	getWriteDir: () => string,
 	pathFilter?: PathFilter,
+	reviewFn?: ReviewFn,
 ): McpToolDef[] {
 	const tools: McpToolDef[] = [];
 
@@ -701,12 +711,32 @@ export function buildTools(
 
 	// ── Write tools (scoped + vault-wide via factory) ────
 
+	async function requireReview(
+		review: ReviewFn | undefined,
+		operation: string,
+		filePath: string,
+		oldContent: string | undefined,
+		newContent: string | undefined,
+		description: string,
+	): Promise<McpToolResult | null> {
+		if (!review) return null;
+		const result = await review({
+			operation,
+			filePath,
+			oldContent,
+			newContent,
+			description,
+		});
+		return result.approved ? null : error("Change rejected by user.");
+	}
+
 	function addWriteTools(
 		tier: PermissionTier,
 		suffix: string,
 		scopeLabel: string,
 		guardPath: (path: string) => McpToolResult | null,
 		resolveForWrite: (args: Record<string, unknown>) => TFile | McpToolResult,
+		review?: ReviewFn,
 	): void {
 		tools.push({
 			name: `vault_create${suffix}`,
@@ -725,7 +755,17 @@ export function buildTools(
 				if (guard) return guard;
 				if (app.vault.getFileByPath(path))
 					return error("File already exists. Use vault_modify to update it.");
-				await app.vault.create(path, (args.content as string | undefined) ?? "");
+				const content = (args.content as string | undefined) ?? "";
+				const rejected = await requireReview(
+					review,
+					"create",
+					path,
+					undefined,
+					content,
+					`Create new file: ${path}`,
+				);
+				if (rejected) return rejected;
+				await app.vault.create(path, content);
 				return text(`Created ${path}`);
 			},
 		});
@@ -746,7 +786,17 @@ export function buildTools(
 				const result = resolveForWrite(args);
 				if ("isError" in result) return result as McpToolResult;
 				const f = result as TFile;
-				await app.vault.modify(f, args.content as string);
+				const newContent = args.content as string;
+				const rejected = await requireReview(
+					review,
+					"modify",
+					f.path,
+					await app.vault.read(f),
+					newContent,
+					`Modify file: ${f.path}`,
+				);
+				if (rejected) return rejected;
+				await app.vault.modify(f, newContent);
 				return text(`Modified ${f.path}`);
 			},
 		});
@@ -1025,6 +1075,17 @@ export function buildTools(
 			return f ?? error("File not found.");
 		},
 	);
+
+	if (reviewFn) {
+		addWriteTools(
+			"writeReviewed",
+			"_reviewed",
+			" (reviewed)",
+			() => null,
+			(args) => resolveFile(app, args, pathFilter) ?? error("File not found."),
+			reviewFn,
+		);
+	}
 
 	addWriteTools(
 		"writeVault",
