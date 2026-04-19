@@ -147,9 +147,9 @@ Curated skills living under `workspace/.claude/skills/` that teach Claude how to
 Deeper Obsidian integration and workflow improvements.
 
 ### Obsidian Integration
-- [ ] File context menu → "Analyze in Sandbox" (right-click a note)
+- [x] File context menu → "Analyze in Sandbox" submenu listing prompt templates; custom-prompt modal when templates dir is empty.
 - [ ] Agent output sync (watch agent-workspace/ for new files, notify user)
-- [ ] URI handler (`obsidian://agent-sandbox/open-terminal`)
+- [x] URI handler — `obsidian://agent-sandbox/open-terminal` and `obsidian://agent-sandbox/analyze?path=&template=`.
 - [ ] Quick Switcher integration for terminal tabs
 
 ### Container Improvements

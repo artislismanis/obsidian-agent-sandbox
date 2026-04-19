@@ -1,5 +1,7 @@
 import type { WorkspaceLeaf } from "obsidian";
 import { FileSystemAdapter, Menu, Modal, Notice, Plugin, debounce } from "obsidian";
+import { existsSync as fsExistsSync } from "fs";
+import { join as pathJoin } from "path";
 import { BatchReviewModal, DiffReviewModal } from "./diff-review-modal";
 import {
 	type AgentSandboxSettings,
@@ -19,6 +21,8 @@ import type { AgentStatus, PermissionTier } from "./mcp-tools";
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
+
+import { parsePromptTemplate, substituteFilePlaceholder } from "./prompt-template";
 
 const TOOLTIP_STOPPED = "Container is not running\nClick for options";
 const HEALTH_POLL_INTERVAL = 30_000;
@@ -185,6 +189,70 @@ export default class AgentSandboxPlugin extends Plugin {
 			callback: () => this.toggleMcpServer(),
 		});
 
+		// obsidian://agent-sandbox/open-terminal — activate or open a terminal tab
+		this.registerObsidianProtocolHandler("agent-sandbox/open-terminal", async () => {
+			if (!this.isContainerRunning()) {
+				new Notice("Sandbox container is not running.");
+				return;
+			}
+			await this.activateTerminalView();
+		});
+
+		// obsidian://agent-sandbox/analyze?path=<vault/path>&template=<name>
+		this.registerObsidianProtocolHandler("agent-sandbox/analyze", async (params) => {
+			const path = params.path;
+			const templateName = params.template;
+			if (!path) {
+				new Notice("Analyze: missing 'path' parameter.");
+				return;
+			}
+			await this.runAnalyze(path, templateName);
+		});
+
+		// File context menu → "Analyze in Sandbox" submenu
+		this.registerEvent(
+			this.app.workspace.on("file-menu", (menu, file) => {
+				if (!this.settings.mcpEnabled) return;
+				if (!("extension" in file)) return;
+				menu.addItem((item) => {
+					item.setTitle("Analyze in Sandbox").setIcon("bot");
+					const submenu = (
+						item as unknown as { setSubmenu?: () => { addItem: Menu["addItem"] } }
+					).setSubmenu?.();
+					const addTemplateItem = (
+						target: { addItem: Menu["addItem"] },
+						label: string,
+						action: () => void,
+					) => {
+						target.addItem((sub) => sub.setTitle(label).onClick(action));
+					};
+					const container = submenu ?? menu;
+					void this.loadPromptTemplates().then((templates) => {
+						if (templates.length === 0) {
+							addTemplateItem(
+								container,
+								"Custom prompt…",
+								() => void this.runAnalyzeCustom(file.path),
+							);
+						} else {
+							for (const t of templates) {
+								addTemplateItem(
+									container,
+									t.label,
+									() => void this.runAnalyze(file.path, t.name),
+								);
+							}
+							addTemplateItem(
+								container,
+								"Custom prompt…",
+								() => void this.runAnalyzeCustom(file.path),
+							);
+						}
+					});
+				});
+			}),
+		);
+
 		if (this.settings.mcpEnabled) {
 			void this.startMcpServer();
 		}
@@ -281,7 +349,10 @@ export default class AgentSandboxPlugin extends Plugin {
 		});
 	}
 
-	async activateTerminalView(sessionName?: string): Promise<void> {
+	async activateTerminalView(
+		sessionName?: string,
+		initialPrompt?: string,
+	): Promise<TerminalView | null> {
 		const leaf = this.app.workspace.getLeaf("tab");
 		await leaf.setViewState({
 			type: VIEW_TYPE_TERMINAL,
@@ -289,6 +360,109 @@ export default class AgentSandboxPlugin extends Plugin {
 			state: sessionName ? { sessionName } : {},
 		});
 		this.app.workspace.revealLeaf(leaf);
+		const view = leaf.view instanceof TerminalView ? leaf.view : null;
+		if (view && initialPrompt) view.queueInitialPrompt(initialPrompt);
+		return view;
+	}
+
+	/**
+	 * Load prompt templates from `workspace/.claude/prompts/*.md` (relative
+	 * to this plugin's host-side location). Each file's first non-empty line
+	 * before the `---` separator is the display label; the rest of the body
+	 * is the prompt text with `{{file}}` as the file-path placeholder.
+	 */
+	async loadPromptTemplates(): Promise<{ name: string; label: string; body: string }[]> {
+		const dir = this.resolvePromptsDir();
+		if (!dir) return [];
+		try {
+			const fs = await import("fs/promises");
+			const entries = await fs.readdir(dir).catch(() => [] as string[]);
+			const out: { name: string; label: string; body: string }[] = [];
+			for (const entry of entries) {
+				if (!entry.endsWith(".md")) continue;
+				const content = await fs.readFile(pathJoin(dir, entry), "utf-8");
+				const [label, body] = parsePromptTemplate(content, entry);
+				out.push({ name: entry.replace(/\.md$/, ""), label, body });
+			}
+			return out.sort((a, b) => a.label.localeCompare(b.label));
+		} catch {
+			return [];
+		}
+	}
+
+	private resolvePromptsDir(): string | null {
+		if (!(this.app.vault.adapter instanceof FileSystemAdapter)) return null;
+		// The prompts dir lives in the sandbox's workspace tree. Look for a
+		// sibling `workspace/.claude/prompts` starting from the vault base
+		// (matches the repo layout). Users without the repo layout can drop
+		// templates in `<vault>/.claude/prompts/` as a fallback.
+		const base = this.app.vault.adapter.getBasePath();
+		const candidates = [
+			pathJoin(base, ".claude", "prompts"),
+			pathJoin(base, "..", "workspace", ".claude", "prompts"),
+		];
+		for (const c of candidates) {
+			if (fsExistsSync(c)) return c;
+		}
+		return null;
+	}
+
+	async runAnalyze(vaultPath: string, templateName?: string): Promise<void> {
+		if (!this.isContainerRunning()) {
+			new Notice("Sandbox container is not running.");
+			return;
+		}
+		const prompt = await this.buildPromptFromTemplate(vaultPath, templateName);
+		if (!prompt) return;
+		await this.activateTerminalView(undefined, prompt);
+	}
+
+	private async runAnalyzeCustom(vaultPath: string): Promise<void> {
+		if (!this.isContainerRunning()) {
+			new Notice("Sandbox container is not running.");
+			return;
+		}
+		const modal = new Modal(this.app);
+		modal.titleEl.setText("Analyze in Sandbox");
+		modal.contentEl.createEl("p", {
+			text: `Prompt for ${vaultPath} — @${vaultPath} will be appended automatically.`,
+		});
+		const input = modal.contentEl.createEl("textarea");
+		input.style.width = "100%";
+		input.style.minHeight = "80px";
+		input.placeholder = "e.g. Summarize this note in 3 bullet points";
+		modal.contentEl.createDiv({ cls: "modal-button-container" }, (div) => {
+			div.createEl("button", { text: "Cancel", cls: "mod-muted" }, (btn) => {
+				btn.addEventListener("click", () => modal.close());
+			});
+			div.createEl("button", { text: "Run", cls: "mod-cta" }, (btn) => {
+				btn.addEventListener("click", async () => {
+					const body = input.value.trim();
+					modal.close();
+					if (!body) return;
+					const prompt = `${body}\n\n(Context: @${vaultPath})`;
+					await this.activateTerminalView(undefined, prompt);
+				});
+			});
+		});
+		modal.open();
+		input.focus();
+	}
+
+	private async buildPromptFromTemplate(
+		vaultPath: string,
+		templateName?: string,
+	): Promise<string | null> {
+		if (!templateName) {
+			return `Please analyze @${vaultPath}.`;
+		}
+		const templates = await this.loadPromptTemplates();
+		const tmpl = templates.find((t) => t.name === templateName);
+		if (!tmpl) {
+			new Notice(`Unknown prompt template: ${templateName}`);
+			return null;
+		}
+		return substituteFilePlaceholder(tmpl.body, vaultPath);
 	}
 
 	// ── Container actions ──────────────────────────────────

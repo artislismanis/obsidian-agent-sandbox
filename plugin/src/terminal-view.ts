@@ -40,6 +40,7 @@ export class TerminalView extends ItemView {
 	private termDisposables: { dispose(): void }[] = [];
 
 	onRenameSession: (() => void) | null = null;
+	private initialPrompt: string | null = null;
 
 	constructor(leaf: WorkspaceLeaf, getSettings: () => TerminalSettings) {
 		super(leaf);
@@ -61,6 +62,16 @@ export class TerminalView extends ItemView {
 
 	getSessionName(): string | null {
 		return this.sessionName;
+	}
+
+	/**
+	 * Queue an initial prompt to run once the terminal connects. Passed to
+	 * `claude` as a command-line argument so it works whether or not Claude
+	 * Code is already auto-started by session.sh. Single-use: cleared after
+	 * injection so reconnects don't replay it.
+	 */
+	queueInitialPrompt(prompt: string): void {
+		this.initialPrompt = prompt;
 	}
 
 	setActivityPrefix(prefix: ActivityPrefix): void {
@@ -358,6 +369,23 @@ export class TerminalView extends ItemView {
 						ws.send(payload.subarray(0, cmd.length + 1));
 					}
 				}, 300);
+			}
+
+			// Inject an initial Claude prompt (from "Analyze in Sandbox" / URI handler).
+			// Runs after any session-attach command so it lands inside the tmux session.
+			if (this.initialPrompt) {
+				const escaped = this.initialPrompt.replace(/'/g, `'\\''`);
+				const cmd = `claude '${escaped}'\n`;
+				const delay = this.sessionName ? 700 : 300;
+				setTimeout(() => {
+					if (ws.readyState === WebSocket.OPEN && gen === this.generation) {
+						const payload = new Uint8Array(cmd.length + 1);
+						payload[0] = CLIENT_MSG.INPUT.charCodeAt(0);
+						textEncoder.encodeInto(cmd, payload.subarray(1));
+						ws.send(payload.subarray(0, cmd.length + 1));
+						this.initialPrompt = null;
+					}
+				}, delay);
 			}
 		};
 
