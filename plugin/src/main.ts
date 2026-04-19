@@ -549,12 +549,14 @@ export default class AgentSandboxPlugin extends Plugin {
 						? { allowlist, blocklist }
 						: undefined,
 				hooks: {
-					review: this.settings.mcpTierWriteReviewed
-						? async (req) => new DiffReviewModal(this.app, req).review()
-						: undefined,
-					reviewBatch: this.settings.mcpTierWriteReviewed
-						? async (req) => new BatchReviewModal(this.app, req).review()
-						: undefined,
+					review:
+						this.settings.mcpVaultWrites === "reviewed"
+							? async (req) => new DiffReviewModal(this.app, req).review()
+							: undefined,
+					reviewBatch:
+						this.settings.mcpVaultWrites === "reviewed"
+							? async (req) => new BatchReviewModal(this.app, req).review()
+							: undefined,
 					onActivity: (update) => this.activityUi.route(update),
 				},
 			});

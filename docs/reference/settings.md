@@ -45,7 +45,8 @@ All plugin settings live in **Obsidian → Settings → Agent Sandbox**. Setting
 | MCP enabled | on | Starts the HTTP server; toggles the always-on `read` / `writeScoped` / `agent` tiers on/off globally. |
 | MCP port | `28080` | Host port for the MCP HTTP endpoint. |
 | Auth token | auto-generated | Regenerable via button. Passed to the container as `OAS_MCP_TOKEN`. |
-| Escalation tiers | all off | Toggles for `writeReviewed`, `writeVault`, `navigate`, `manage`, `extensions`. See `explanation/security-model.md`. |
+| Vault-wide writes | `None` | Dropdown — `None` (scoped only), `Reviewed` (writeReviewed tier; diff modal per change), or `Full` (writeVault tier; no review). Mutually exclusive. |
+| Escalation tiers | all off | Toggles for `navigate`, `manage`, `extensions`. See `explanation/security-model.md`. |
 | Allowed paths / Blocked paths | `""` | Per-path allowlist/blocklist applied inside MCP tools (not the firewall). |
 
 Claude can call the always-on `mcp_capabilities` tool to introspect which tiers are enabled and the current write directory — use this when debugging unexpected "write rejected" errors rather than guessing.

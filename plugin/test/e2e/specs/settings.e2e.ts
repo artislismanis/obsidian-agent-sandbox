@@ -132,7 +132,7 @@ describe("Settings — validation and warnings", function () {
 	});
 
 	describe("MCP tab", function () {
-		it("default tier values: Read on, Write scoped on, others off", async function () {
+		it("default tier values: vault writes None, escalations off", async function () {
 			await openPluginSettings();
 			await switchTab("MCP");
 
@@ -144,9 +144,7 @@ describe("Settings — validation and warnings", function () {
 								string,
 								{
 									settings: {
-										mcpTierRead: boolean;
-										mcpTierWriteScoped: boolean;
-										mcpTierWriteVault: boolean;
+										mcpVaultWrites: "none" | "reviewed" | "full";
 										mcpTierNavigate: boolean;
 										mcpTierManage: boolean;
 									};
@@ -158,9 +156,7 @@ describe("Settings — validation and warnings", function () {
 				const s = plugins["obsidian-agent-sandbox"]?.settings;
 				return s
 					? {
-							read: s.mcpTierRead,
-							writeScoped: s.mcpTierWriteScoped,
-							writeVault: s.mcpTierWriteVault,
+							vaultWrites: s.mcpVaultWrites,
 							navigate: s.mcpTierNavigate,
 							manage: s.mcpTierManage,
 						}
@@ -168,9 +164,7 @@ describe("Settings — validation and warnings", function () {
 			});
 
 			expect(values).not.toBeNull();
-			expect(values!.read).toBe(true);
-			expect(values!.writeScoped).toBe(true);
-			expect(values!.writeVault).toBe(false);
+			expect(values!.vaultWrites).toBe("none");
 			expect(values!.navigate).toBe(false);
 			expect(values!.manage).toBe(false);
 		});

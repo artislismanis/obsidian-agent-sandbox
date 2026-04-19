@@ -32,8 +32,10 @@ The MCP server's tools are split into two kinds of tier:
 - `agent` — `agent_status_set` activity signal (not file access; UI only).
 
 **Gated (escalations)** — off by default; each opt-in grants access beyond filesystem:
-- `writeReviewed` — vault-wide writes that pop a human-in-the-loop diff modal before applying.
-- `writeVault` — vault-wide writes with no review. Highest risk.
+- **Vault-wide writes** (dropdown — `None` / `Reviewed` / `Full`). Mutually exclusive so the agent never has to choose between review-and-no-review paths:
+  - `None` — scoped write directory only (default).
+  - `Reviewed` — registers the `writeReviewed` tier; vault-wide writes pop a human-in-the-loop diff modal before applying.
+  - `Full` — registers the `writeVault` tier; vault-wide writes with no review. Highest risk.
 - `navigate` — open files and affect the Obsidian UI.
 - `manage` — rename/move/delete (with auto link-updates).
 - `extensions` — access third-party plugin APIs (Dataview, Templater, Tasks, Periodic Notes, Canvas).
