@@ -61,7 +61,7 @@ export interface TierDef {
 }
 
 /** Capability tiers — always available when MCP is enabled. */
-export const ALWAYS_ON_TIERS: readonly PermissionTier[] = ["read", "writeScoped"];
+export const ALWAYS_ON_TIERS: readonly PermissionTier[] = ["read", "writeScoped", "agent"];
 
 export const GATED_TIERS: readonly TierDef[] = [
 	{

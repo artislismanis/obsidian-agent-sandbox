@@ -12,6 +12,7 @@ export class StatusBarManager {
 	private el: HTMLElement;
 	private state: ContainerState;
 	private details: string | null = null;
+	private attentionCount = 0;
 
 	constructor(statusBarItemEl: HTMLElement) {
 		this.el = statusBarItemEl;
@@ -36,8 +37,16 @@ export class StatusBarManager {
 		this.el.setAttribute("aria-label", details);
 	}
 
+	setAttentionCount(n: number): void {
+		if (this.attentionCount === n) return;
+		this.attentionCount = n;
+		this.render();
+	}
+
 	private render(): void {
-		this.el.setText(STATE_DISPLAY[this.state]);
+		const base = STATE_DISPLAY[this.state];
+		const badge = this.attentionCount > 0 ? " \u26A0" : "";
+		this.el.setText(base + badge);
 	}
 }
 

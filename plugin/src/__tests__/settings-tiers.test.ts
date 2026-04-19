@@ -14,9 +14,10 @@ import {
 } from "../settings";
 
 describe("enabledTiersFromSettings", () => {
-	it("always includes capability tiers (read, writeScoped)", () => {
+	it("always includes capability tiers (read, writeScoped, agent)", () => {
 		const tiers = enabledTiersFromSettings({ ...DEFAULT_SETTINGS });
 		for (const t of ALWAYS_ON_TIERS) expect(tiers.has(t)).toBe(true);
+		expect(tiers.has("agent")).toBe(true);
 	});
 
 	it("capability tiers stay on even when every gated toggle is false", () => {

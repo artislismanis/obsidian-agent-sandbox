@@ -19,12 +19,20 @@ const textEncoder = new TextEncoder();
 
 let nextInstanceId = 1;
 
+export type ActivityPrefix = "working" | "awaiting_input" | null;
+
+const PREFIX_SYMBOL: Record<Exclude<ActivityPrefix, null>, string> = {
+	working: "\u2699 ", // ⚙
+	awaiting_input: "\u2753 ", // ❓
+};
+
 export class TerminalView extends ItemView {
 	private getSettings: () => TerminalSettings;
 	private instanceId: number;
 	private generation = 0;
 	private connecting = false;
 	private sessionName: string | null = null;
+	private activityPrefix: ActivityPrefix = null;
 	private term: Terminal | null = null;
 	private fitAddon: FitAddon | null = null;
 	private ws: WebSocket | null = null;
@@ -45,9 +53,24 @@ export class TerminalView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return this.sessionName
+		const base = this.sessionName
 			? `Session: ${this.sessionName}`
 			: `Sandbox Terminal ${this.instanceId}`;
+		const prefix = this.activityPrefix ? PREFIX_SYMBOL[this.activityPrefix] : "";
+		return prefix + base;
+	}
+
+	getSessionName(): string | null {
+		return this.sessionName;
+	}
+
+	setActivityPrefix(prefix: ActivityPrefix): void {
+		if (this.activityPrefix === prefix) return;
+		this.activityPrefix = prefix;
+		// Ask Obsidian to re-read the display text for this tab.
+		this.app.workspace.requestSaveLayout();
+		const leaf = this.leaf as unknown as { updateHeader?: () => void };
+		leaf.updateHeader?.();
 	}
 
 	getIcon(): string {

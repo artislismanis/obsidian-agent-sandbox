@@ -9,5 +9,37 @@
 	"statusLine": {
 		"type": "command",
 		"command": "bash .claude/scripts/statusline.sh"
+	},
+	"hooks": {
+		"UserPromptSubmit": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "bash .claude/hooks/notify-status.sh working"
+					}
+				]
+			}
+		],
+		"Stop": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "bash .claude/hooks/notify-status.sh idle"
+					}
+				]
+			}
+		],
+		"Notification": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "bash .claude/hooks/notify-status.sh awaiting_input"
+					}
+				]
+			}
+		]
 	}
 }

@@ -10,10 +10,11 @@ import {
 import { DockerManager } from "./docker";
 import type { ContainerState } from "./status-bar";
 import { FirewallStatusBar, StatusBarManager } from "./status-bar";
+import type { ActivityPrefix } from "./terminal-view";
 import { TerminalView, VIEW_TYPE_TERMINAL } from "./terminal-view";
 import { isValidWriteDir } from "./validation";
 import { ObsidianMcpServer, generateToken } from "./mcp-server";
-import type { PermissionTier } from "./mcp-tools";
+import type { AgentStatus, PermissionTier } from "./mcp-tools";
 
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -445,6 +446,7 @@ export default class AgentSandboxPlugin extends Plugin {
 				reviewBatchFn: this.settings.mcpTierWriteReviewed
 					? async (req) => new BatchReviewModal(this.app, req).review()
 					: undefined,
+				onActivity: (update) => this.onAgentActivity(update),
 			});
 			await this.mcpServer.start();
 		} catch (error: unknown) {
@@ -456,6 +458,59 @@ export default class AgentSandboxPlugin extends Plugin {
 		if (!this.mcpServer) return;
 		await this.mcpServer.stop();
 		this.mcpServer = null;
+		this.clearAgentActivity();
+	}
+
+	private onAgentActivity(update: {
+		sessionName: string;
+		status: AgentStatus;
+		detail?: string;
+	}): void {
+		const prefix: ActivityPrefix =
+			update.status === "working"
+				? "working"
+				: update.status === "awaiting_input"
+					? "awaiting_input"
+					: null;
+
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
+			const view = leaf.view as TerminalView;
+			const sessionKey = view.getSessionName() ?? "__default__";
+			if (sessionKey === update.sessionName) {
+				view.setActivityPrefix(prefix);
+			}
+		}
+
+		this.updateAttentionBadge();
+	}
+
+	private updateAttentionBadge(): void {
+		const activity = this.mcpServer?.getActivity();
+		if (!activity) {
+			this.statusBar.setAttentionCount(0);
+			return;
+		}
+		let count = 0;
+		const waitingNames: string[] = [];
+		for (const [name, entry] of activity) {
+			if (entry.status === "awaiting_input") {
+				count++;
+				waitingNames.push(name === "__default__" ? "(unnamed)" : name);
+			}
+		}
+		this.statusBar.setAttentionCount(count);
+		if (count > 0 && this.statusBar.getState() === "running") {
+			this.statusBar.setDetails(
+				`Sandbox running. ${count} session(s) awaiting input: ${waitingNames.join(", ")}\nClick for options`,
+			);
+		}
+	}
+
+	private clearAgentActivity(): void {
+		this.statusBar.setAttentionCount(0);
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
+			(leaf.view as TerminalView).setActivityPrefix(null);
+		}
 	}
 
 	private async toggleMcpServer(): Promise<void> {

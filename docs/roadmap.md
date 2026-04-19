@@ -167,10 +167,11 @@ The container's `init-firewall.sh` allowlist stays minimal by default (Anthropic
 
 ### Activity feedback
 Inspired by Windows Terminal's Claude Code status icon — show the user whether Claude is working or waiting for input without them having to look at the terminal tab.
-- [ ] Status bar indicator: idle / working / awaiting input, driven by an MCP/in-container signal
-- [ ] Optional audible or tray notification when Claude transitions to "awaiting input" after a long-running task
-- [ ] Terminal tab title decoration when the active tab is backgrounded
-- Design sketch: agent running in the container writes state transitions to a well-known path (e.g. `/workspace/.claude/state/activity.json` with `{ status: "idle" | "working" | "awaiting_input", since: ts }`); plugin watches the file (or polls at a low rate) and drives the UI. MCP is not strictly required but is a natural transport if we'd rather not file-watch.
+- [x] MCP-based transport: new `agent_status_set` tool in always-on `agent` tier. No new filesystem contract, reuses existing MCP auth/audit path.
+- [x] Per-tab title prefix (`⚙ Session: x` working, `❓ Session: x` awaiting input). Each `TerminalView` routes its own session updates via `setActivityPrefix`.
+- [x] Generic status-bar attention badge (`⚠`) + tooltip listing affected sessions when ≥1 session is `awaiting_input`.
+- [x] Claude Code hook integration: `workspace/.claude/hooks/notify-status.sh` called from `UserPromptSubmit` / `Stop` / `Notification` hooks in `settings.json`.
+- [ ] Optional audible or tray notification when Claude transitions to "awaiting input" after a long-running task (deferred to a follow-up).
 
 ### Terminal Polish
 - [ ] Clipboard auto-copy opt-out setting

@@ -4,9 +4,25 @@ import type { App } from "obsidian";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { randomUUID, timingSafeEqual } from "crypto";
-import type { PermissionTier, McpToolDef, PathFilter, ReviewFn, ReviewBatchFn } from "./mcp-tools";
+import type {
+	PermissionTier,
+	McpToolDef,
+	PathFilter,
+	ReviewFn,
+	ReviewBatchFn,
+	AgentStatus,
+	OnActivity,
+} from "./mcp-tools";
 import { buildTools } from "./mcp-tools";
 import { VaultCache } from "./mcp-cache";
+
+export interface ActivityEntry {
+	status: AgentStatus;
+	detail?: string;
+	updatedAt: number;
+}
+
+const ACTIVITY_STALE_MS = 10 * 60_000;
 
 export interface McpServerConfig {
 	port: number;
@@ -16,6 +32,7 @@ export interface McpServerConfig {
 	pathFilter?: PathFilter;
 	reviewFn?: ReviewFn;
 	reviewBatchFn?: ReviewBatchFn;
+	onActivity?: OnActivity;
 }
 
 const SESSION_TIMEOUT_MS = 10 * 60_000;
@@ -162,6 +179,7 @@ export class ObsidianMcpServer {
 	private rateLimiter = new RateLimiter(RATE_LIMIT_READ, RATE_LIMIT_WRITE);
 	private auditLog = new AuditLog(AUDIT_MAX_ENTRIES);
 	private cache: VaultCache | null = null;
+	private activity = new Map<string, ActivityEntry>();
 
 	constructor(app: App, config: McpServerConfig) {
 		this.app = app;
@@ -180,6 +198,7 @@ export class ObsidianMcpServer {
 			this.config.reviewFn,
 			this.cache,
 			this.config.reviewBatchFn,
+			(update) => this.recordActivity(update),
 		).filter((t) => this.config.enabledTiers.has(t.tier));
 
 		this.startTime = Date.now();
@@ -238,6 +257,30 @@ export class ObsidianMcpServer {
 
 	isRunning(): boolean {
 		return this.httpServer !== null;
+	}
+
+	private recordActivity(update: {
+		sessionName: string;
+		status: AgentStatus;
+		detail?: string;
+	}): void {
+		this.activity.set(update.sessionName, {
+			status: update.status,
+			detail: update.detail,
+			updatedAt: Date.now(),
+		});
+		this.config.onActivity?.(update);
+	}
+
+	/** Returns the current activity map with stale `working` entries rolled to `idle`. */
+	getActivity(): Map<string, ActivityEntry> {
+		const now = Date.now();
+		for (const [name, entry] of this.activity) {
+			if (entry.status === "working" && now - entry.updatedAt > ACTIVITY_STALE_MS) {
+				this.activity.set(name, { ...entry, status: "idle" });
+			}
+		}
+		return new Map(this.activity);
 	}
 
 	getToolCount(): number {

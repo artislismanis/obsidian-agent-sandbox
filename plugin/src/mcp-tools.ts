@@ -14,7 +14,16 @@ export type PermissionTier =
 	| "writeVault"
 	| "navigate"
 	| "manage"
-	| "extensions";
+	| "extensions"
+	| "agent";
+
+export type AgentStatus = "idle" | "working" | "awaiting_input";
+
+export type OnActivity = (update: {
+	sessionName: string;
+	status: AgentStatus;
+	detail?: string;
+}) => void;
 
 export interface McpToolDef {
 	name: string;
@@ -119,6 +128,7 @@ export function buildTools(
 	reviewFn?: ReviewFn,
 	cache?: { get<T>(key: string, compute: () => T): T },
 	reviewBatchFn?: ReviewBatchFn,
+	onActivity?: OnActivity,
 ): McpToolDef[] {
 	const tools: McpToolDef[] = [];
 
@@ -1515,6 +1525,41 @@ export function buildTools(
 
 			const label = rawValue !== undefined ? `Set ${property}` : `Deleted ${property}`;
 			return text(`${label} on ${targets.length} file(s).`);
+		},
+	});
+
+	// ── Agent tier ────────────────────────────────────
+
+	tools.push({
+		name: "agent_status_set",
+		tier: "agent",
+		config: {
+			title: "Set agent activity status",
+			description:
+				"Report the current agent lifecycle state so the plugin can show which sessions are working, awaiting input, or idle. Call on transitions (e.g. at the start of a long tool call, when a user prompt is needed, when you're done).",
+			inputSchema: {
+				status: z
+					.enum(["idle", "working", "awaiting_input"])
+					.describe("Current agent state"),
+				sessionName: z
+					.string()
+					.optional()
+					.describe(
+						"tmux session name if running inside one (e.g. $(tmux display-message -p '#S')). Omit for an unnamed session.",
+					),
+				detail: z
+					.string()
+					.optional()
+					.describe("Short human-readable context (e.g. tool name, question)"),
+			},
+		},
+		handler: async (args) => {
+			const status = args.status as AgentStatus;
+			const sessionName =
+				((args.sessionName as string | undefined) ?? "").trim() || "__default__";
+			const detail = (args.detail as string | undefined) ?? undefined;
+			onActivity?.({ sessionName, status, detail });
+			return text("OK");
 		},
 	});
 
