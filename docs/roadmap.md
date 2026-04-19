@@ -70,20 +70,18 @@ Restructure docs for beta tester audience using the Diátaxis framework.
 Extend the MCP server with deeper Obsidian integration. Patterns informed by existing ecosystem projects (aaronsb/obsidian-mcp-plugin, cyanheads/obsidian-mcp-server, coddingtonbear/obsidian-local-rest-api, kepano/obsidian-skills).
 
 ### Surgical Editing (inspired by Local REST API + cyanheads)
-Current tools only support full-file read/modify/append. Add targeted operations:
-- [ ] `vault_search_replace` — find and replace within a file (regex support, case sensitivity flag)
-- [ ] `vault_patch` — insert content relative to a heading, block reference, or line number
-- [ ] `vault_prepend` — prepend content after frontmatter
-- [ ] `vault_frontmatter_delete` — remove a frontmatter property
+- [x] `vault_search_replace` — find and replace within a file (regex support, case sensitivity flag)
+- [x] `vault_patch` — insert content relative to a heading or line number
+- [x] `vault_prepend` — prepend content after frontmatter
+- [x] `vault_frontmatter_delete` — remove a frontmatter property
 
 ### Graph & Knowledge Tools (inspired by aaronsb)
-Current link tools are flat lookups. Add depth:
-- [ ] `vault_graph_neighborhood` — all notes within N hops of a file
-- [ ] `vault_graph_path` — shortest link path between two notes
-- [ ] `vault_graph_clusters` — find densely connected note groups
+- [x] `vault_graph_neighborhood` — all notes within N hops of a file
+- [x] `vault_graph_path` — shortest link path between two notes
+- [x] `vault_graph_clusters` — find densely connected note groups
 - [ ] `vault_search_fuzzy` — fuzzy search using Obsidian's prepareFuzzySearch
-- [ ] `vault_properties` — list all properties across vault with counts
-- [ ] `vault_recent` — recently modified files (sorted by mtime)
+- [x] `vault_properties` — list all properties across vault with counts
+- [x] `vault_recent` — recently modified files (sorted by mtime)
 
 ### Plugin API Integrations (inspired by aaronsb + enhanced server)
 Access capabilities of other installed Obsidian plugins via `app.plugins.getPlugin()`:
@@ -94,38 +92,37 @@ Access capabilities of other installed Obsidian plugins via `app.plugins.getPlug
 - [ ] `vault_periodic_note` — access daily/weekly/monthly notes (requires Periodic Notes)
 - [ ] `vault_canvas_read` — read canvas structure as JSON
 - [ ] `vault_canvas_modify` — add/remove nodes and edges
-- [ ] New **Extensions** permission tier for plugin-dependent tools
+- [x] New **Extensions** permission tier for plugin-dependent tools (wiring + settings only)
 - [ ] Graceful handling when target plugin is not installed
 
 ### Workflow & Context (inspired by aaronsb)
-Higher-level tools that combine multiple operations:
-- [ ] `vault_context` — return current note + backlinks + outgoing links + frontmatter in one call
-- [ ] `vault_suggest_links` — find notes that could be linked based on content overlap
-- [ ] `vault_batch_frontmatter` — set/delete a property across multiple files matching a query
+- [x] `vault_context` — return current note + backlinks + outgoing links + frontmatter in one call
+- [x] `vault_suggest_links` — find notes that could be linked based on content overlap
+- [x] `vault_batch_frontmatter` — set/delete a property across multiple files matching a query
 
 ### Security Hardening (inspired by aaronsb's security model)
-- [ ] Path-based allowlists/blocklists (protect specific folders)
-- [ ] Rate limiting per tool
-- [ ] Operation audit log (log MCP tool calls for user review)
+- [x] Path-based allowlists/blocklists (protect specific folders)
+- [x] Rate limiting per tool (token-bucket, 60/min reads, 20/min writes)
+- [x] Operation audit log (in-memory ring buffer, GET /mcp/audit endpoint)
 - [ ] Symlink resolution in path validation
 
 ### Format Awareness
 Obsidian markdown conventions (wikilinks, callouts, embeds, properties) are handled separately via kepano/obsidian-skills packaged as standalone skills — not part of this plugin's core.
 
 ### Infrastructure
-- [ ] MCP server status in status bar tooltip
-- [ ] Auto-restart MCP server on tier setting changes
-- [ ] Health check endpoint for container to verify MCP is alive
-- [ ] In-memory cache for vault-wide operations with metadata-change invalidation
-- [ ] Configurable response size limits per tool
+- [x] MCP server status in status bar tooltip
+- [x] Auto-restart MCP server on tier setting changes
+- [x] Health check endpoint (GET /mcp/health)
+- [x] In-memory cache for vault-wide operations with metadata-change invalidation (VaultCache)
+- [x] Configurable response size limits per tool (500KB, auto-truncate)
 
 ### Human-in-the-Loop Review (new permission tier)
-A **Write (reviewed)** tier where every vault write pauses for human approval in Obsidian before executing. Claude proposes a change, a diff modal appears in Obsidian, user approves or rejects, Claude gets the result.
-- [ ] `DiffReviewModal` — Obsidian Modal showing file path, old vs new content (unified diff), Approve/Reject buttons. Returns a Promise resolved by button click (same async pattern as existing `promptSessionName()`)
-- [ ] New **Write (reviewed)** permission tier — sits between Write Scoped and Write Vault. All writes through this tier route through the review modal regardless of path
-- [ ] Wire into `addWriteTools()` factory — reviewed-tier tools call the modal before executing the vault operation
-- [ ] Review modal for frontmatter changes — show property name + old/new value
-- [ ] Review modal for file creation — show proposed path + content (no "old" side)
+- [x] `DiffReviewModal` — Obsidian Modal showing file path, operation type, unified diff with colored additions/removals, Approve/Reject buttons
+- [x] `computeUnifiedDiff()` — lightweight line-by-line diff algorithm
+- [x] New **Write (reviewed)** permission tier — sits between Write Scoped and Write Vault
+- [x] Wire into `addWriteTools()` factory — reviewed-tier tools call reviewFn before executing
+- [x] Review modal for file creation — show proposed path + content
+- [x] Review modal for file modification — show old vs new content diff
 - [ ] Review modal for rename/move/delete — show operation description + affected links
 - [ ] Batch review option — queue multiple proposed changes, review all at once
 - [ ] Audit trail — log approved/rejected operations to a file for later review
