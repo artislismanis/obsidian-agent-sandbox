@@ -33,3 +33,7 @@ workspace/vault/
 .claude/settings.local.json
 workspace/.claude/settings.local.json
 tmux-*.log
+
+# test artifacts
+plugin/test/fixtures/vault/.oas/memory.json
+container/package-lock.json

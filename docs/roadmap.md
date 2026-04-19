@@ -22,13 +22,13 @@ Bug fixes and UX improvements identified during testing.
 
 Enable managed beta testing via Obsidian BRAT.
 
-- [ ] Create `plugin/versions.json`
-- [ ] Create `plugin/version-bump.mjs` (syncs manifest.json + versions.json)
-- [ ] Create `plugin/.npmrc` (tag-version-prefix="")
-- [ ] Create `.github/workflows/release.yml` (build + GitHub Release on version tags)
-- [ ] Create `.github/workflows/check.yml` (lint + test on PRs touching plugin/)
-- [ ] Add `"version"` script to plugin/package.json
-- [ ] First BRAT-compatible release
+- [x] Create `plugin/versions.json` (maps plugin version → minAppVersion)
+- [x] Create `plugin/version-bump.mjs` (syncs manifest.json + versions.json on `npm version`)
+- [x] Create `plugin/.npmrc` (`tag-version-prefix=""` so `npm version 0.2.0` tags as `0.2.0`, not `v0.2.0`)
+- [x] Create `.github/workflows/release.yml` (build + GitHub Release on version tags; verifies tag matches manifest.json; uploads main.js / manifest.json / styles.css)
+- [x] Create `.github/workflows/check.yml` (lint + format + type-check + tests on PRs touching plugin/)
+- [x] Add `"version"` script to plugin/package.json
+- [ ] First BRAT-compatible release — bump to 0.2.0, push the tag, verify the Release and BRAT install against a clean Obsidian profile
 
 ## Phase 3: Documentation (Diátaxis)
 

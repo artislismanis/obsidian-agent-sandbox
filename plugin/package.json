@@ -17,6 +17,7 @@
 		"test:e2e": "wdio run ./wdio.conf.mts",
 		"test:e2e:headless": "xvfb-run -a wdio run ./wdio.conf.mts",
 		"check": "npm run lint && npm run format:check && tsc -noEmit -skipLibCheck && npm run test",
+		"version": "node version-bump.mjs",
 		"prepare": "husky"
 	},
 	"keywords": [],
