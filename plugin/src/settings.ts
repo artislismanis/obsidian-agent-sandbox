@@ -46,6 +46,7 @@ export interface AgentSandboxSettings {
 	mcpTierExtensions: boolean;
 	mcpPathAllowlist: string;
 	mcpPathBlocklist: string;
+	agentOutputNotify: "new" | "new_or_modified" | "off";
 }
 
 /**
@@ -146,6 +147,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	mcpTierExtensions: false,
 	mcpPathAllowlist: "",
 	mcpPathBlocklist: "",
+	agentOutputNotify: "new",
 };
 
 type TabId = "general" | "terminal" | "advanced" | "mcp";
@@ -364,6 +366,26 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					this.plugin.settings.autoStopContainer = value;
 					this.plugin.saveSettings();
 				}),
+			);
+
+		new Setting(el)
+			.setName("Notify on agent output")
+			.setDesc(
+				"Show a non-intrusive Notice when the agent writes files under the vault write directory. 'New' only fires on file creation; 'New or modified' also fires on edits (noisier during long edit sessions).",
+			)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("new", "New files only (default)")
+					.addOption("new_or_modified", "New or modified files")
+					.addOption("off", "Off")
+					.setValue(this.plugin.settings.agentOutputNotify)
+					.onChange(async (value) => {
+						this.plugin.settings.agentOutputNotify = value as
+							| "new"
+							| "new_or_modified"
+							| "off";
+						this.plugin.saveSettings();
+					}),
 			);
 	}
 

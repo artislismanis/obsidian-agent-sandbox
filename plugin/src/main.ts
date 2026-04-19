@@ -264,6 +264,32 @@ export default class AgentSandboxPlugin extends Plugin {
 			void this.startMcpServer();
 		}
 
+		// Agent output sync — watch the vault write directory for new / modified
+		// files and surface a non-intrusive Notice. Uses Obsidian's own vault
+		// events so no node fs watcher is needed. Debounced to collapse bursts.
+		this.registerEvent(
+			this.app.vault.on("create", (file) => {
+				if (!("extension" in file)) return;
+				if (this.settings.agentOutputNotify === "off") return;
+				if (!this.isInsideWriteDir(file.path)) return;
+				this.queueAgentOutputNotice("created", file.path);
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on("modify", (file) => {
+				if (this.settings.agentOutputNotify !== "new_or_modified") return;
+				if (!this.isInsideWriteDir(file.path)) return;
+				this.queueAgentOutputNotice("modified", file.path);
+			}),
+		);
+
+		// Quick-Switcher-style picker for open sandbox sessions
+		this.addCommand({
+			id: "sandbox-switch-session",
+			name: "Sandbox: Switch to Sandbox session…",
+			callback: () => this.showSessionPicker(),
+		});
+
 		// Stop container on app quit (onunload only fires on plugin disable, not app exit)
 		this.registerEvent(
 			this.app.workspace.on("quit", (tasks) => {
@@ -904,6 +930,92 @@ export default class AgentSandboxPlugin extends Plugin {
 			this.statusBar.setDetails(`Docker error: ${msg}\nClick for options`);
 			this.stopHealthPoll();
 		}
+	}
+
+	private isInsideWriteDir(path: string): boolean {
+		const dir = this.settings.vaultWriteDir || "agent-workspace";
+		return path === dir || path.startsWith(dir + "/");
+	}
+
+	private agentOutputBuffer: { kind: "created" | "modified"; path: string }[] = [];
+	private agentOutputDebounceId: number | null = null;
+	private lastAgentOutputNoticeAt = 0;
+
+	private queueAgentOutputNotice(kind: "created" | "modified", path: string): void {
+		this.agentOutputBuffer.push({ kind, path });
+		if (this.agentOutputDebounceId != null) return;
+		this.agentOutputDebounceId = window.setTimeout(() => {
+			this.agentOutputDebounceId = null;
+			this.flushAgentOutputNotices();
+		}, 2000);
+	}
+
+	private flushAgentOutputNotices(): void {
+		const buf = this.agentOutputBuffer;
+		this.agentOutputBuffer = [];
+		if (buf.length === 0) return;
+		const now = Date.now();
+		if (now - this.lastAgentOutputNoticeAt < 5000) return;
+		this.lastAgentOutputNoticeAt = now;
+		if (buf.length === 1) {
+			const { kind, path } = buf[0];
+			new Notice(`Agent ${kind} ${path}`, 5000);
+		} else {
+			const createdCount = buf.filter((e) => e.kind === "created").length;
+			const modifiedCount = buf.length - createdCount;
+			const parts: string[] = [];
+			if (createdCount > 0) parts.push(`${createdCount} created`);
+			if (modifiedCount > 0) parts.push(`${modifiedCount} modified`);
+			new Notice(`Agent output: ${parts.join(", ")}`, 5000);
+		}
+	}
+
+	private showSessionPicker(): void {
+		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL);
+		if (leaves.length === 0) {
+			new Notice("No open sandbox terminals.");
+			return;
+		}
+		const modal = new Modal(this.app);
+		modal.titleEl.setText("Switch to Sandbox session");
+		const input = modal.contentEl.createEl("input", { type: "text" }) as HTMLInputElement;
+		input.placeholder = "Filter sessions…";
+		input.style.width = "100%";
+		input.style.marginBottom = "8px";
+		const list = modal.contentEl.createEl("div");
+		list.style.maxHeight = "300px";
+		list.style.overflow = "auto";
+
+		const render = (filter: string) => {
+			list.empty();
+			const needle = filter.toLowerCase().trim();
+			for (const leaf of leaves) {
+				const view = leaf.view as TerminalView;
+				const name = view.getSessionName() ?? "(unnamed)";
+				const label = `Session: ${name}`;
+				if (needle && !label.toLowerCase().includes(needle)) continue;
+				const row = list.createEl("div");
+				row.style.padding = "6px 8px";
+				row.style.cursor = "pointer";
+				row.style.borderRadius = "4px";
+				row.addEventListener("mouseenter", () => {
+					row.style.backgroundColor = "var(--background-modifier-hover)";
+				});
+				row.addEventListener("mouseleave", () => {
+					row.style.backgroundColor = "";
+				});
+				row.setText(label);
+				row.addEventListener("click", () => {
+					modal.close();
+					this.app.workspace.setActiveLeaf(leaf, { focus: true });
+					this.app.workspace.revealLeaf(leaf);
+				});
+			}
+		};
+		render("");
+		input.addEventListener("input", () => render(input.value));
+		modal.open();
+		input.focus();
 	}
 
 	private async checkStartupPortConflicts(): Promise<number[]> {

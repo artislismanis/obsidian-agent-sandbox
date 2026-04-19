@@ -148,9 +148,9 @@ Deeper Obsidian integration and workflow improvements.
 
 ### Obsidian Integration
 - [x] File context menu → "Analyze in Sandbox" submenu listing prompt templates; custom-prompt modal when templates dir is empty.
-- [ ] Agent output sync (watch agent-workspace/ for new files, notify user)
+- [x] Agent output sync — `vault.on("create"|"modify")` scoped to the write dir, debounced 2 s / rate-limited 5 s, configurable via `agentOutputNotify` setting (new | new_or_modified | off).
 - [x] URI handler — `obsidian://agent-sandbox/open-terminal` and `obsidian://agent-sandbox/analyze?path=&template=`.
-- [ ] Quick Switcher integration for terminal tabs
+- [x] Quick-Switcher-style session picker — `Sandbox: Switch to Sandbox session…` command opens a filterable modal listing open terminal tabs.
 
 ### Container Improvements
 - [x] Container ID verification — captures `docker compose ps -q sandbox` on start/restart; drift detected on health poll triggers a Notice and detaches terminal leaves so they reopen against the new container.
