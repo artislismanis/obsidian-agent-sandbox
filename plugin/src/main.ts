@@ -16,6 +16,7 @@ import { isValidWriteDir } from "./validation";
 import { ObsidianMcpServer, generateToken } from "./mcp-server";
 import type { PermissionTier } from "./mcp-tools";
 import { ActivityUi, AgentOutputNotifier } from "./activity";
+import { showSessionCleanup, showSessionPicker } from "./session-ui";
 
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -207,7 +208,15 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.addCommand({
 			id: "sandbox-cleanup-sessions",
 			name: "Sandbox: Clean up empty sessions",
-			callback: () => void this.cleanupEmptySessions(),
+			callback: () =>
+				void showSessionCleanup(
+					this.app,
+					{
+						listEmptySessions: () => this.docker.listEmptySessions(),
+						killSession: (name) => this.docker.killSession(name),
+					},
+					() => this.isContainerRunning(),
+				),
 		});
 
 		// obsidian://agent-sandbox/open-terminal — activate or open a terminal tab
@@ -259,7 +268,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.addCommand({
 			id: "sandbox-switch-session",
 			name: "Sandbox: Switch to Sandbox session…",
-			callback: () => this.showSessionPicker(),
+			callback: () => showSessionPicker(this.app),
 		});
 
 		// Stop container on app quit (onunload only fires on plugin disable, not app exit)
@@ -755,44 +764,6 @@ export default class AgentSandboxPlugin extends Plugin {
 		}
 	}
 
-	private showSessionPicker(): void {
-		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL);
-		if (leaves.length === 0) {
-			new Notice("No open sandbox terminals.");
-			return;
-		}
-		const modal = new Modal(this.app);
-		modal.titleEl.setText("Switch to Sandbox session");
-		const input = modal.contentEl.createEl("input", {
-			type: "text",
-			cls: "sandbox-modal-filter",
-		}) as HTMLInputElement;
-		input.placeholder = "Filter sessions…";
-		const list = modal.contentEl.createEl("div", { cls: "sandbox-modal-list" });
-
-		const render = (filter: string) => {
-			list.empty();
-			const needle = filter.toLowerCase().trim();
-			for (const leaf of leaves) {
-				const view = leaf.view as TerminalView;
-				const name = view.getSessionName() ?? "(unnamed)";
-				const label = `Session: ${name}`;
-				if (needle && !label.toLowerCase().includes(needle)) continue;
-				const row = list.createEl("div", { cls: "sandbox-modal-row-clickable" });
-				row.setText(label);
-				row.addEventListener("click", () => {
-					modal.close();
-					this.app.workspace.setActiveLeaf(leaf, { focus: true });
-					this.app.workspace.revealLeaf(leaf);
-				});
-			}
-		};
-		render("");
-		input.addEventListener("input", () => render(input.value));
-		modal.open();
-		input.focus();
-	}
-
 	private async checkStartupPortConflicts(): Promise<number[]> {
 		const ports = [this.settings.ttydPort];
 		if (this.settings.mcpEnabled) ports.push(this.settings.mcpPort);
@@ -888,57 +859,6 @@ export default class AgentSandboxPlugin extends Plugin {
 			new Notice(`${opts.failurePrefix}: ${msg}`);
 			return false;
 		}
-	}
-
-	private async cleanupEmptySessions(): Promise<void> {
-		if (!this.isContainerRunning()) {
-			new Notice("Sandbox container is not running.");
-			return;
-		}
-		const candidates = await this.docker.listEmptySessions();
-		if (candidates.length === 0) {
-			new Notice("No empty tmux sessions to clean up.");
-			return;
-		}
-		const modal = new Modal(this.app);
-		modal.titleEl.setText("Clean up empty sessions");
-		modal.contentEl.createEl("p", {
-			text: `${candidates.length} session(s) have no attached clients. Kill the selected ones?`,
-		});
-		const selected = new Set(candidates);
-		const list = modal.contentEl.createEl("ul", { cls: "sandbox-modal-check-list" });
-		for (const name of candidates) {
-			const row = list.createEl("li", { cls: "sandbox-modal-check-row" });
-			const cb = row.createEl("input", { type: "checkbox" }) as HTMLInputElement;
-			cb.checked = true;
-			cb.addEventListener("change", () => {
-				if (cb.checked) selected.add(name);
-				else selected.delete(name);
-			});
-			row.createEl("span", { text: name });
-		}
-		modal.contentEl.createDiv({ cls: "modal-button-container" }, (div) => {
-			div.createEl("button", { text: "Cancel", cls: "mod-muted" }, (btn) => {
-				btn.addEventListener("click", () => modal.close());
-			});
-			div.createEl("button", { text: "Kill selected", cls: "mod-cta" }, (btn) => {
-				btn.addEventListener("click", async () => {
-					modal.close();
-					const toKill = [...selected];
-					let killed = 0;
-					for (const name of toKill) {
-						try {
-							await this.docker.killSession(name);
-							killed++;
-						} catch {
-							// swallow; report aggregate
-						}
-					}
-					new Notice(`Killed ${killed}/${toKill.length} session(s).`);
-				});
-			});
-		});
-		modal.open();
 	}
 
 	private async containerStatus(): Promise<void> {
