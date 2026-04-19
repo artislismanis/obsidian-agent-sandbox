@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { TFile, TFolder } from "obsidian";
 
 vi.mock("obsidian", () => ({
-	prepareSimpleSearch: vi.fn(),
+	prepareSimpleSearch: vi.fn(() => () => ({ score: 1, matches: [[0, 5]] })),
 }));
 
 import { buildTools } from "../mcp-tools";
@@ -147,6 +147,9 @@ describe("MCP tool handlers", () => {
 			expect(names).toContain("vault_move");
 			expect(names).toContain("vault_delete");
 			expect(names).toContain("vault_create_folder");
+			expect(names).toContain("vault_context");
+			expect(names).toContain("vault_suggest_links");
+			expect(names).toContain("vault_batch_frontmatter");
 		});
 
 		it("assigns correct tiers", () => {
@@ -575,6 +578,43 @@ describe("MCP tool handlers", () => {
 				await getTool(tools, "vault_graph_clusters").handler({ minSize: 100 }),
 			);
 			expect(r.text).toContain("no clusters");
+		});
+	});
+
+	describe("vault_context", () => {
+		it("returns combined context for a file", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_context").handler({ path: "notes/hello.md" }),
+			);
+			expect(r.isError).toBe(false);
+			expect(r.text).toContain("notes/hello.md");
+			expect(r.text).toContain("Frontmatter");
+			expect(r.text).toContain("Content");
+			expect(r.text).toContain("content of notes/hello.md");
+		});
+	});
+
+	describe("vault_suggest_links", () => {
+		it("returns suggestions excluding already-linked files", async () => {
+			app.vault.cachedRead.mockResolvedValue("hello world notes");
+			const r = getResult(
+				await getTool(tools, "vault_suggest_links").handler({ path: "notes/hello.md" }),
+			);
+			expect(r.isError).toBe(false);
+		});
+	});
+
+	describe("vault_batch_frontmatter", () => {
+		it("dry run lists matching files", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_batch_frontmatter").handler({
+					query: "content",
+					property: "reviewed",
+					value: "true",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			expect(r.text).toContain("Dry run");
 		});
 	});
 

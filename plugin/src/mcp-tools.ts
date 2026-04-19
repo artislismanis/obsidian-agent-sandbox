@@ -600,6 +600,105 @@ export function buildTools(
 		},
 	});
 
+	// ── Workflow & context tools ──────────────────────
+
+	tools.push({
+		name: "vault_context",
+		tier: "read",
+		config: {
+			title: "File context",
+			description:
+				"Get a file's full context in one call: content, frontmatter, tags, headings, outgoing links, and backlinks.",
+			inputSchema: {
+				file: z.string().optional().describe("File name"),
+				path: z.string().optional().describe("Exact path from vault root"),
+			},
+		},
+		handler: async (args) => {
+			const f = resolveFile(app, args, pathFilter);
+			if (!f) return error("File not found.");
+			const content = await app.vault.read(f);
+			const cache = app.metadataCache.getFileCache(f);
+			const fm = cache?.frontmatter
+				? Object.fromEntries(
+						Object.entries(cache.frontmatter).filter(([k]) => k !== "position"),
+					)
+				: null;
+			const tags = formatTags(cache);
+			const headings = (cache?.headings ?? []).map(
+				(h) => `${"#".repeat(h.level)} ${h.heading}`,
+			);
+			const outgoing = Object.keys(app.metadataCache.resolvedLinks[f.path] ?? {});
+			const backlinks: string[] = [];
+			for (const [source, targets] of Object.entries(app.metadataCache.resolvedLinks)) {
+				if (f.path in targets) backlinks.push(source);
+			}
+			const sections: string[] = [
+				`# ${f.path}\n`,
+				fm ? `## Frontmatter\n${JSON.stringify(fm, null, 2)}\n` : "",
+				tags.length ? `## Tags\n${tags.join(", ")}\n` : "",
+				headings.length ? `## Headings\n${headings.join("\n")}\n` : "",
+				outgoing.length ? `## Outgoing links\n${outgoing.join("\n")}\n` : "",
+				backlinks.length ? `## Backlinks\n${backlinks.join("\n")}\n` : "",
+				`## Content\n${content}`,
+			];
+			return text(sections.filter(Boolean).join("\n"));
+		},
+	});
+
+	tools.push({
+		name: "vault_suggest_links",
+		tier: "read",
+		config: {
+			title: "Suggest links",
+			description:
+				"Find notes that could be linked from a file based on content overlap. Excludes already-linked notes.",
+			inputSchema: {
+				file: z.string().optional().describe("File name"),
+				path: z.string().optional().describe("Exact path from vault root"),
+				limit: z.number().optional().describe("Max suggestions (default 10)"),
+			},
+		},
+		handler: async (args) => {
+			const f = resolveFile(app, args, pathFilter);
+			if (!f) return error("File not found.");
+			const limit = (args.limit as number | undefined) ?? 10;
+			const content = await app.vault.read(f);
+			const alreadyLinked = new Set(
+				Object.keys(app.metadataCache.resolvedLinks[f.path] ?? {}),
+			);
+			alreadyLinked.add(f.path);
+
+			const words = content
+				.toLowerCase()
+				.replace(/[^\w\s]/g, " ")
+				.split(/\s+/)
+				.filter((w) => w.length > 3);
+			const wordSet = new Set(words);
+
+			const candidates: { path: string; score: number }[] = [];
+			for (const other of app.vault.getMarkdownFiles()) {
+				if (alreadyLinked.has(other.path)) continue;
+				let score = 0;
+				if (wordSet.has(other.basename.toLowerCase())) score += 5;
+				const otherContent = await app.vault.cachedRead(other);
+				const otherWords = otherContent
+					.toLowerCase()
+					.replace(/[^\w\s]/g, " ")
+					.split(/\s+/)
+					.filter((w) => w.length > 3);
+				for (const w of otherWords) {
+					if (wordSet.has(w)) score++;
+				}
+				if (score > 0) candidates.push({ path: other.path, score });
+			}
+
+			candidates.sort((a, b) => b.score - a.score);
+			const results = candidates.slice(0, limit).map((c) => `${c.path} (score: ${c.score})`);
+			return text(results.join("\n") || "(no suggestions)");
+		},
+	});
+
 	// ── Write tools (scoped + vault-wide via factory) ────
 
 	function addWriteTools(
@@ -1039,6 +1138,71 @@ export function buildTools(
 			const path = args.path as string;
 			await app.vault.createFolder(path);
 			return text(`Created folder ${path}`);
+		},
+	});
+
+	// ── Batch operations ──────────────────────────────
+
+	tools.push({
+		name: "vault_batch_frontmatter",
+		tier: "manage",
+		config: {
+			title: "Batch frontmatter update",
+			description:
+				"Set or delete a frontmatter property across all files matching a search query. Use dryRun to preview changes.",
+			inputSchema: {
+				query: z.string().describe("Search query to match files"),
+				property: z.string().describe("Frontmatter property name"),
+				value: z
+					.string()
+					.optional()
+					.describe("Value to set (JSON-encoded for objects/arrays). Omit to delete."),
+				dryRun: z.boolean().optional().describe("Preview only, no changes (default true)"),
+			},
+		},
+		handler: async (args) => {
+			const query = args.query as string;
+			const property = args.property as string;
+			const rawValue = args.value as string | undefined;
+			const dryRun = (args.dryRun as boolean | undefined) ?? true;
+
+			const search = prepareSimpleSearch(query);
+			const matched: TFile[] = [];
+			for (const file of app.vault.getMarkdownFiles()) {
+				const content = await app.vault.cachedRead(file);
+				if (search(content)) matched.push(file);
+			}
+
+			if (matched.length === 0) return text("No files matched the query.");
+
+			if (dryRun) {
+				const label = rawValue !== undefined ? `set ${property}` : `delete ${property}`;
+				return text(
+					`Dry run — would ${label} on ${matched.length} file(s):\n${matched.map((f) => f.path).join("\n")}`,
+				);
+			}
+
+			let value: unknown;
+			if (rawValue !== undefined) {
+				try {
+					value = JSON.parse(rawValue);
+				} catch {
+					value = rawValue;
+				}
+			}
+
+			for (const file of matched) {
+				await app.fileManager.processFrontMatter(file, (fm) => {
+					if (rawValue !== undefined) {
+						fm[property] = value;
+					} else {
+						delete fm[property];
+					}
+				});
+			}
+
+			const label = rawValue !== undefined ? `Set ${property}` : `Deleted ${property}`;
+			return text(`${label} on ${matched.length} file(s).`);
 		},
 	});
 
