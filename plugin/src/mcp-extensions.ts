@@ -9,6 +9,7 @@
  */
 
 import type { App, TFile } from "obsidian";
+import { TFile as TFileClass } from "obsidian";
 import { z } from "zod/v4";
 import type { McpToolDef } from "./mcp-tools";
 import { defineTool, text, error } from "./mcp-tools";
@@ -426,7 +427,7 @@ export function registerTasksTools(app: App, push: ToolPusher): void {
 interface TemplaterApi {
 	templater?: {
 		create_new_note_from_template?: (
-			template: string | { path: string },
+			template: TFile | string | { path: string },
 			folder?: string | { path: string },
 			filename?: string,
 			openNewNote?: boolean,
@@ -460,17 +461,25 @@ export function registerTemplaterTools(app: App, push: ToolPusher): void {
 				const plugin = getTemplater(app);
 				if (!plugin?.templater?.create_new_note_from_template)
 					return error("Templater plugin is not available.");
-				const template = args.template as string;
+				const templatePath = args.template as string;
 				const folder = args.folder as string | undefined;
 				const filename = args.filename as string | undefined;
+				// Templater's API treats a string `template` arg inconsistently across
+				// versions — in current builds it writes the string as literal content
+				// instead of resolving it as a template file. Resolve to a TFile ourselves.
+				const templateFile = app.vault.getAbstractFileByPath(templatePath);
+				if (!templateFile || !(templateFile instanceof TFileClass))
+					return error(
+						`Template not found at '${templatePath}'. Pass a vault-relative path to a markdown template file.`,
+					);
 				try {
 					const created = await plugin.templater.create_new_note_from_template(
-						template,
+						templateFile,
 						folder,
 						filename,
 						false,
 					);
-					if (!created) return error("Templater returned no file (template not found?).");
+					if (!created) return error("Templater returned no file.");
 					return text(`Created ${created.path}`);
 				} catch (e: unknown) {
 					const msg = e instanceof Error ? e.message : String(e);

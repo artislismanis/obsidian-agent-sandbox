@@ -15,6 +15,7 @@ import type {
 } from "./mcp-tools";
 import { buildTools } from "./mcp-tools";
 import { VaultCache } from "./mcp-cache";
+import { ALWAYS_ON_TIERS, GATED_TIERS } from "./permission-tiers";
 
 export interface ActivityEntry {
 	status: AgentStatus;
@@ -49,6 +50,7 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT_READ = 60;
 const RATE_LIMIT_WRITE = 20;
 const AUDIT_MAX_ENTRIES = 200;
+const TOOL_TIMEOUT_MS = 10_000;
 
 // ── Rate limiter ─────────────────────────────────────
 
@@ -398,11 +400,50 @@ export class ObsidianMcpServer {
 		});
 	}
 
+	private registerCapabilitiesTool(server: McpServer): void {
+		server.registerTool(
+			"mcp_capabilities",
+			{
+				title: "Report MCP capabilities",
+				description:
+					"Return the currently enabled permission tiers, the active write directory, per-tier tool counts, and rate-limit budgets. Call this at the start of a session (or after a permission error) to discover what you can do without trial-and-error.",
+				inputSchema: {},
+			},
+			async () => {
+				const enabled = Array.from(this.config.enabledTiers);
+				const always = ALWAYS_ON_TIERS.filter((t) => this.config.enabledTiers.has(t));
+				const escalations = GATED_TIERS.filter((g) =>
+					this.config.enabledTiers.has(g.tier),
+				).map((g) => g.tier);
+				const toolsByTier: Record<string, string[]> = {};
+				for (const t of this.tools) {
+					(toolsByTier[t.tier] ??= []).push(t.name);
+				}
+				const body = {
+					enabledTiers: enabled,
+					alwaysOn: always,
+					escalations,
+					writeDir: this.config.getWriteDir(),
+					toolsByTier,
+					rateLimits: {
+						defaultReadsPerMin: RATE_LIMIT_READ,
+						defaultWritesPerMin: RATE_LIMIT_WRITE,
+					},
+				};
+				return {
+					content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }],
+				};
+			},
+		);
+	}
+
 	private createMcpServer(): McpServer {
 		const server = new McpServer({
 			name: "obsidian-vault",
 			version: "0.1.0",
 		});
+
+		this.registerCapabilitiesTool(server);
 
 		for (const tool of this.tools) {
 			server.registerTool(tool.name, tool.config, async (args) => {
@@ -421,7 +462,22 @@ export class ObsidianMcpServer {
 				const start = Date.now();
 				let success = true;
 				try {
-					const result = await tool.handler(args as Record<string, unknown>);
+					const handlerPromise = tool.handler(args as Record<string, unknown>);
+					let timer: ReturnType<typeof setTimeout> | undefined;
+					const timeout = new Promise<never>((_, reject) => {
+						timer = setTimeout(
+							() =>
+								reject(
+									new Error(
+										`Tool '${tool.name}' did not respond within ${TOOL_TIMEOUT_MS / 1000}s`,
+									),
+								),
+							TOOL_TIMEOUT_MS,
+						);
+					});
+					const result = await Promise.race([handlerPromise, timeout]).finally(() => {
+						if (timer) clearTimeout(timer);
+					});
 					const text = result.content?.[0]?.text;
 					if (text && Buffer.byteLength(text) > MAX_RESPONSE_BYTES) {
 						result.content[0].text =
