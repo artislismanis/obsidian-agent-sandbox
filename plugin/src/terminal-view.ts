@@ -3,6 +3,7 @@ import { ItemView, Scope } from "obsidian";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import type { TerminalSettings, TerminalThemeMode } from "./settings";
+import { logger } from "./logger";
 import { pollUntilReady, buildWsUrl, exponentialBackoff } from "./ttyd-client";
 
 import { VIEW_TYPE_TERMINAL } from "./view-types";
@@ -179,6 +180,7 @@ export class TerminalView extends ItemView {
 		if (this.connecting) return;
 		this.connecting = true;
 		const gen = this.generation;
+		logger.info("Terminal", `Connecting (gen ${gen})`);
 
 		try {
 			const container = this.contentEl;
@@ -349,8 +351,10 @@ export class TerminalView extends ItemView {
 		const ws = new WebSocket(wsUrl, ["tty"]);
 		ws.binaryType = "arraybuffer";
 		this.ws = ws;
+		logger.info("Terminal", `WebSocket connecting to ${wsUrl} (gen ${gen})`);
 
 		ws.onopen = () => {
+			logger.info("Terminal", `WebSocket open (gen ${gen})`);
 			const msg = JSON.stringify({
 				columns: term.cols,
 				rows: term.rows,
@@ -407,14 +411,18 @@ export class TerminalView extends ItemView {
 			}
 		};
 
-		ws.onclose = () => {
+		ws.onclose = (event) => {
+			logger.warn(
+				"Terminal",
+				`WebSocket closed (gen ${gen}, code ${event.code}, reason: ${event.reason || "none"})`,
+			);
 			if (gen === this.generation) {
 				this.showError(container, "Connection closed. The container may have stopped.");
 			}
 		};
 
 		ws.onerror = () => {
-			// onclose always fires after onerror, so error handling is done there
+			logger.error("Terminal", `WebSocket error (gen ${gen})`);
 		};
 
 		this.termDisposables.push(

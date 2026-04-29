@@ -15,6 +15,7 @@ import type {
 } from "./mcp-tools";
 import { buildTools } from "./mcp-tools";
 import { VaultCache } from "./mcp-cache";
+import { logger } from "./logger";
 import { ALWAYS_ON_TIERS, GATED_TIERS } from "./permission-tiers";
 
 export interface ActivityEntry {
@@ -215,21 +216,38 @@ export class ObsidianMcpServer {
 		this.startTime = Date.now();
 
 		this.httpServer = createServer((req, res) => {
-			void this.handleRequest(req, res);
+			this.handleRequest(req, res).catch((err) => {
+				logger.error("MCP", "Unhandled error in request handler", err);
+				if (!res.headersSent) {
+					res.writeHead(500, { "Content-Type": "application/json" });
+					res.end(JSON.stringify({ error: "Internal server error" }));
+				}
+			});
+		});
+
+		this.httpServer.on("clientError", (err) => {
+			logger.warn("MCP", "Client error", err.message);
 		});
 
 		await new Promise<void>((resolve, reject) => {
 			this.httpServer!.listen(this.config.port, "0.0.0.0", () => resolve());
 			this.httpServer!.on("error", reject);
 		});
+
+		logger.info("MCP", `Started on port ${this.config.port} with ${this.tools.length} tools`);
 	}
 
 	async stop(): Promise<void> {
+		logger.info("MCP", "Stopping server...");
 		for (const timeout of this.sessionTimeouts.values()) clearTimeout(timeout);
 		this.sessionTimeouts.clear();
 
-		for (const transport of this.transports.values()) {
-			await transport.close?.();
+		for (const [sid, transport] of this.transports.entries()) {
+			try {
+				await transport.close?.();
+			} catch (err) {
+				logger.warn("MCP", `Error closing transport ${sid.slice(0, 8)}…`, err);
+			}
 		}
 		this.transports.clear();
 
@@ -318,6 +336,7 @@ export class ObsidianMcpServer {
 		}
 
 		if (!this.checkAuth(req)) {
+			logger.debug("MCP", `Auth failed: ${req.method} ${req.url}`);
 			res.writeHead(401, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: "Unauthorized" }));
 			return;
@@ -341,15 +360,25 @@ export class ObsidianMcpServer {
 			return;
 		}
 
-		if (req.method === "POST") {
-			await this.handlePost(req, res);
-		} else if (req.method === "GET") {
-			await this.handleGet(req, res);
-		} else if (req.method === "DELETE") {
-			await this.handleDelete(req, res);
-		} else {
-			res.writeHead(405);
-			res.end("Method Not Allowed");
+		logger.debug("MCP", `${req.method} /mcp`);
+
+		try {
+			if (req.method === "POST") {
+				await this.handlePost(req, res);
+			} else if (req.method === "GET") {
+				await this.handleGet(req, res);
+			} else if (req.method === "DELETE") {
+				await this.handleDelete(req, res);
+			} else {
+				res.writeHead(405);
+				res.end("Method Not Allowed");
+			}
+		} catch (err) {
+			logger.error("MCP", `Error handling ${req.method} /mcp`, err);
+			if (!res.headersSent) {
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "Internal server error" }));
+			}
 		}
 	}
 
@@ -489,17 +518,20 @@ export class ObsidianMcpServer {
 				} catch (err: unknown) {
 					success = false;
 					const msg = err instanceof Error ? err.message : String(err);
+					logger.error("MCP", `Tool ${tool.name} threw`, err);
 					return {
 						content: [{ type: "text" as const, text: `Error: ${msg}` }],
 						isError: true,
 					};
 				} finally {
+					const duration = Date.now() - start;
 					this.auditLog.record({
 						timestamp: Date.now(),
 						tool: tool.name,
 						success,
-						durationMs: Date.now() - start,
+						durationMs: duration,
 					});
+					logger.debug("MCP", `${tool.name} ${success ? "ok" : "err"} ${duration}ms`);
 				}
 			});
 		}
@@ -521,6 +553,7 @@ export class ObsidianMcpServer {
 		const transport = new StreamableHTTPServerTransport({
 			sessionIdGenerator: () => randomUUID(),
 			onsessioninitialized: (sid: string) => {
+				logger.info("MCP", `New session ${sid.slice(0, 8)}…`);
 				this.transports.set(sid, transport);
 				this.resetSessionTimeout(sid);
 			},
@@ -528,12 +561,22 @@ export class ObsidianMcpServer {
 
 		transport.onclose = () => {
 			const sid = transport.sessionId;
-			if (sid) this.cleanupSession(sid);
+			if (sid) {
+				logger.debug("MCP", `Session ${sid.slice(0, 8)}… closed`);
+				this.cleanupSession(sid);
+			}
 		};
 
-		const server = this.createMcpServer();
-		await server.connect(transport);
-		await transport.handleRequest(req, res, body);
+		try {
+			const server = this.createMcpServer();
+			await server.connect(transport);
+			await transport.handleRequest(req, res, body);
+		} catch (err) {
+			logger.error("MCP", "Failed to initialize MCP session", err);
+			const sid = transport.sessionId;
+			if (sid) this.cleanupSession(sid);
+			throw err;
+		}
 	}
 
 	private async handleGet(req: IncomingMessage, res: ServerResponse): Promise<void> {
