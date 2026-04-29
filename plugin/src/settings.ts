@@ -1,6 +1,7 @@
 import type { App } from "obsidian";
 import { Modal, PluginSettingTab, Setting } from "obsidian";
 import type AgentSandboxPlugin from "./main";
+import { setLogLevel } from "./logger";
 import type { PermissionTier } from "./mcp-tools";
 import {
 	ALWAYS_ON_TIERS,
@@ -54,6 +55,7 @@ export interface AgentSandboxSettings {
 	mcpPathAllowlist: string;
 	mcpPathBlocklist: string;
 	agentOutputNotify: "new" | "new_or_modified" | "off";
+	logLevel: "debug" | "info" | "warn" | "error";
 }
 
 /**
@@ -128,6 +130,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	mcpPathAllowlist: "",
 	mcpPathBlocklist: "",
 	agentOutputNotify: "new",
+	logLevel: "info",
 };
 
 type TabId = "general" | "terminal" | "advanced" | "mcp";
@@ -642,6 +645,28 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	}
 
 	private renderAdvanced(el: HTMLElement): void {
+		new Setting(el).setName("Diagnostics").setHeading();
+
+		new Setting(el)
+			.setName("Log level")
+			.setDesc(
+				"Controls verbosity of plugin logs in the developer console (Ctrl+Shift+I). " +
+					"Debug shows MCP tool calls, session lifecycle, and WebSocket events.",
+			)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("debug", "Debug")
+					.addOption("info", "Info")
+					.addOption("warn", "Warn")
+					.addOption("error", "Error")
+					.setValue(this.plugin.settings.logLevel)
+					.onChange(async (value) => {
+						this.plugin.settings.logLevel = value as AgentSandboxSettings["logLevel"];
+						this.plugin.saveSettings();
+						setLogLevel(this.plugin.settings.logLevel);
+					}),
+			);
+
 		new Setting(el).setName("Resource limits").setHeading();
 
 		new Setting(el)

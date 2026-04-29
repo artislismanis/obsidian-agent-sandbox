@@ -13,6 +13,7 @@ import type { ContainerState } from "./status-bar";
 import { FirewallStatusBar, StatusBarManager } from "./status-bar";
 import { TerminalView, VIEW_TYPE_TERMINAL } from "./terminal-view";
 import { isValidWriteDir } from "./validation";
+import { setLogLevel } from "./logger";
 import { ObsidianMcpServer, generateToken } from "./mcp-server";
 import type { PermissionTier } from "./mcp-tools";
 import { ActivityUi, AgentOutputNotifier } from "./activity";
@@ -317,6 +318,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			this.settings.mcpToken = generateToken();
 			await this.saveData(this.settings);
 		}
+		setLogLevel(this.settings.logLevel);
 	}
 
 	saveSettings() {

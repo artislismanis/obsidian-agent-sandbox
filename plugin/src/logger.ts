@@ -1,6 +1,6 @@
 const PREFIX = "[Agent Sandbox]";
 
-type LogLevel = "debug" | "info" | "warn" | "error";
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
 let currentLevel: LogLevel = "info";
 
