@@ -386,7 +386,10 @@ describe("Templater integration", () => {
 		(app as unknown as { plugins: unknown }).plugins = {
 			getPlugin: (id: string) =>
 				id === "templater-obsidian"
-					? { templater: { create_new_note_from_template: create } }
+					? {
+							settings: { templates_folder: "Templates" },
+							templater: { create_new_note_from_template: create },
+						}
 					: null,
 			enabledPlugins: new Set(["templater-obsidian"]),
 		};
@@ -409,7 +412,10 @@ describe("Templater integration", () => {
 		(app as unknown as { plugins: unknown }).plugins = {
 			getPlugin: (id: string) =>
 				id === "templater-obsidian"
-					? { templater: { create_new_note_from_template: create } }
+					? {
+							settings: { templates_folder: "Templates" },
+							templater: { create_new_note_from_template: create },
+						}
 					: null,
 			enabledPlugins: new Set(["templater-obsidian"]),
 		};
@@ -502,7 +508,12 @@ describe("Periodic Notes integration", () => {
 			create: true,
 		});
 		expect(r.isError).toBe(true);
-		expect((r.content[0] as { text: string }).text).toMatch(/outside the vault/i);
+		// The path-traversal guard now fires on the `..` segment before reaching
+		// the realpath check; accept either error message so a future change
+		// that routes through realpath again doesn't break the test.
+		expect((r.content[0] as { text: string }).text).toMatch(
+			/(?:outside the vault|'\.\.' segment)/i,
+		);
 	});
 
 	it("returns not-found when create:false and file absent", async () => {
@@ -537,7 +548,13 @@ describe("Write gate — extensions tier boundary enforcement", () => {
 		(app as unknown as { plugins: unknown }).plugins = {
 			getPlugin: (id: string) =>
 				id === "templater-obsidian"
-					? { templater: { create_new_note_from_template: createImpl } }
+					? {
+							// Required by isInsideTemplatesFolder — template paths
+							// must live inside this folder or the tool refuses
+							// (sandbox escape via writeScoped + extensions).
+							settings: { templates_folder: "Templates" },
+							templater: { create_new_note_from_template: createImpl },
+						}
 					: null,
 			enabledPlugins: new Set(["templater-obsidian"]),
 		};

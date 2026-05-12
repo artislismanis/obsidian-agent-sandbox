@@ -482,7 +482,7 @@ describe("MCP tool handlers", () => {
 			expect(settings.trigger_on_file_creation).toBe(true);
 		});
 
-		it("surfaces a plain create message when write_template_to_file throws", async () => {
+		it("surfaces an error when write_template_to_file throws — the on-disk file is empty but the reviewed body didn't land", async () => {
 			const tplFile = makeTFile("Templates/Daily.md");
 			installTemplater({
 				folderTemplates: [{ folder: "agent-workspace", template: "Templates/Daily.md" }],
@@ -494,8 +494,14 @@ describe("MCP tool handlers", () => {
 			const r = getResult(
 				await getTool(tools, "vault_create").handler({ path: "agent-workspace/n.md" }),
 			);
-			expect(r.isError).toBe(false);
-			expect(r.text).toBe("Created agent-workspace/n.md");
+			// Previous behaviour silently returned a "Created" success here —
+			// the file was created but the reviewed template body never landed.
+			// New contract: surface the failure so agent and user know the
+			// on-disk state doesn't match the reviewed preview.
+			expect(r.isError).toBe(true);
+			expect(r.text).toMatch(/template application failed/i);
+			// The file IS still created on disk; the template apply is what
+			// failed. Verify the create call happened.
 			expect(app.vault.create).toHaveBeenCalledWith("agent-workspace/n.md", "");
 		});
 	});

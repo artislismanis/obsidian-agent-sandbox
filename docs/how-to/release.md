@@ -81,7 +81,7 @@ The tag push triggers `.github/workflows/release.yml`:
 - Checks out at the tag.
 - Verifies `GITHUB_REF_NAME` matches `manifest.json.version` (refuses if out of sync).
 - `npm ci && npm run build`.
-- Creates a GitHub Release named `0.2.0` with `dist/main.js`, `dist/manifest.json`, `dist/styles.css` attached. Marked "Pre-release" by default — see step 5 for how to flip.
+- Creates a GitHub Release named `0.2.0` with `dist/main.js`, `dist/manifest.json`, `dist/styles.css` attached. Marked "Stable" by default — set `RELEASE_PRERELEASE=true` (repo variable) to mark as pre-release; see step 5.
 - Auto-generates release notes from commits since the previous tag.
 
 Watch the workflow: `gh run watch` or visit the Actions tab in the repo.
@@ -91,7 +91,7 @@ Watch the workflow: `gh run watch` or visit the Actions tab in the repo.
 Once the workflow is green:
 
 1. **Assets present** — GitHub → Releases → `0.2.0` → confirm `main.js`, `manifest.json`, `styles.css` download.
-2. **Pre-release flag** — the Release is marked "Pre-release" by default. The flag is driven by the `RELEASE_PRERELEASE` repo variable: any value other than the literal string `false` (including unset) makes the Release a pre-release. Flip it off either in the GitHub UI for that single Release, or set `RELEASE_PRERELEASE=false` under repo Settings → Secrets and variables → Actions → Variables to make all future releases stable.
+2. **Pre-release flag** — the Release is marked "Stable" by default. The flag is driven by the `RELEASE_PRERELEASE` repo variable: ONLY the literal string `true` makes the Release a pre-release; any other value (including unset) ships as stable. To mark a release as pre-release, either tick the box in the GitHub UI for that single Release, or set `RELEASE_PRERELEASE=true` under repo Settings → Secrets and variables → Actions → Variables.
 3. **BRAT install** — in a clean Obsidian profile:
     - Command palette → **BRAT: Add a beta plugin for testing**.
     - Paste the repo URL (e.g. `https://github.com/artislismanis/obsidian-agent-sandbox`).
@@ -99,10 +99,10 @@ Once the workflow is green:
 
 ### 6. Post-release
 
-If the release is stable (not pre-release):
+If the release was incorrectly marked pre-release (variable set to `true`):
 
 1. Uncheck "Pre-release" on the GitHub Release.
-2. Set the `RELEASE_PRERELEASE=false` repo variable (or remove the `prerelease:` line from `.github/workflows/release.yml` entirely) once the plugin is submitted to the Obsidian community plugin registry.
+2. Unset (or set to `false`) the `RELEASE_PRERELEASE` repo variable so future releases default to stable.
 
 If critical bug found immediately:
 

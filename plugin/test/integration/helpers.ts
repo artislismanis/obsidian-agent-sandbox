@@ -10,6 +10,12 @@ export const MCP_TOKEN = "integration-test-token";
 
 const execOpts: ExecSyncOptions = {
 	stdio: "pipe",
+	// Bound every containerExec/compose call by a 30s timeout so a hanging
+	// container (claude infinite loop, tmux stall, network blocked by
+	// iptables tests) doesn't deadlock the suite for the file's full 60s
+	// vitest budget. Claude-code tests need longer — they override this
+	// inline when they need to.
+	timeout: 30000,
 	env: {
 		...process.env,
 		OAS_VAULT_PATH: VAULT_DIR,

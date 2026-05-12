@@ -188,7 +188,7 @@ echo "── Container env ─────────────────�
 # bindings — they're not exposed inside the container. Resource limits
 # are surfaced in the next section from cgroup; mount-source paths are
 # visible above in Mount points.
-for var in TERM OAS_TTYD_PORT OAS_VAULT_WRITE_DIR OAS_MEMORY_FILE_NAME OAS_ALLOWED_PRIVATE_HOSTS OAS_ALLOWED_DOMAINS MEMORY_FILE_PATH; do
+for var in TERM OAS_TTYD_PORT OAS_TTYD_DEBUG OAS_VAULT_WRITE_DIR OAS_MEMORY_FILE_NAME OAS_ALLOWED_PRIVATE_HOSTS OAS_ALLOWED_DOMAINS OAS_MCP_PORT OAS_HOST_IP MEMORY_FILE_PATH; do
   printf "  %-24s = %s\n" "$var" "${!var:-<unset>}"
 done
 

@@ -16,8 +16,10 @@ on:
       - ".github/workflows/links.yml"
   schedule:
     # Weekly external-link sweep — catches upstream URL changes between
-    # commits.
-    - cron: "0 6 * * 1"
+    # commits. Staggered 5 minutes off codeql.yml's slot (which uses 06:00)
+    # so both scheduled jobs don't contend for runners or hit GitHub's
+    # scheduler with the same firing minute.
+    - cron: "5 6 * * 1"
   workflow_dispatch: {}
 
 # Top-level least-privilege fail-safe.

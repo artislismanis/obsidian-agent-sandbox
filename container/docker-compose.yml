@@ -35,6 +35,13 @@ services:
     #                   itself still needs SETUID/SETGID caps to fire from
     #                   root, which is the legitimate priv-drop direction).
     #   FSETID        — preserve setgid bit on dirs during chmod -R fallback
+    #   KILL          — tini (PID 1, uid 0) forwards SIGTERM to the gosu'd
+    #                   claude process (uid 1000). The Linux kill(2) check
+    #                   requires KILL when real/effective uid differ from
+    #                   target's real/saved-set uid; without this cap docker
+    #                   stop's SIGTERM returns EPERM, atuin/claude can't
+    #                   flush mid-fsync, and the container only exits after
+    #                   the 10s SIGKILL grace period.
     cap_drop:
       - ALL
     cap_add:
@@ -46,6 +53,7 @@ services:
       - SETUID
       - SETGID
       - FSETID
+      - KILL
     # Defence in depth: prevent setuid/setgid binaries inside the container
     # from gaining privileges (e.g. via a future image bump that adds one).
     # Has no effect on the existing sudo+gosu flow since those run via the
@@ -71,7 +79,13 @@ services:
         max-size: "10m"
         max-file: "3"
     ports:
-      - "${OAS_TTYD_BIND:-127.0.0.1}:${OAS_TTYD_PORT:-7681}:7681"
+      # Use the same port on both sides so a customised OAS_TTYD_PORT actually
+      # reaches ttyd. ttyd is launched with `-p $OAS_TTYD_PORT` inside the
+      # container (entrypoint.sh), so the container-side port also moves;
+      # mapping host:OAS_TTYD_PORT to container:7681 would route to a closed
+      # port while the healthcheck (which also probes OAS_TTYD_PORT inside)
+      # reports "healthy" — silent breakage.
+      - "${OAS_TTYD_BIND:-127.0.0.1}:${OAS_TTYD_PORT:-7681}:${OAS_TTYD_PORT:-7681}"
     volumes:
       # Claude's workspace — rw, becomes the in-container cwd
       - ../workspace:/workspace:rw

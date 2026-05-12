@@ -23,7 +23,12 @@ _list_sessions() {
 }
 
 session() {
-    if [ -z "$1" ]; then
+    # Use ${1:-} (default-empty) so this works under `set -u` — a user
+    # interactive shell that later sources rc files setting -u would
+    # otherwise bomb with "$1: unbound variable" instead of the usage
+    # message. The function is sourced from .bashrc, so its compat with
+    # downstream shell options matters.
+    if [ -z "${1:-}" ]; then
         echo "usage: session <session-name>" >&2
         echo "active sessions:" >&2
         _list_sessions >&2

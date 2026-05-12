@@ -28,12 +28,7 @@ const SKIP = !isDockerAvailable() || !isImageBuilt();
 
 // Container lifecycle is managed by globalSetup.ts.
 describe.skipIf(SKIP)("MCP server integration with container", () => {
-	it("container can resolve host.docker.internal", () => {
-		const output = containerExec("getent hosts host.docker.internal");
-		expect(output).toMatch(/\d+\.\d+\.\d+\.\d+/);
-	});
-
-	it("container can resolve host.docker.internal", () => {
+	it("container can resolve host.docker.internal to an IPv4 address", () => {
 		// Previously this test piped curl through `|| echo refused` and
 		// accepted `["refused", "401", "000"]` — i.e. "any outcome whatsoever".
 		// That covers neither name resolution nor reachability since curl
@@ -207,6 +202,19 @@ function makeMockApp() {
 			append: async () => {},
 			trash: async () => {},
 			createFolder: async () => {},
+			// Audit-log file sink (mcp-server.ts createFileAuditSink) calls
+			// adapter.mkdir/.stat/.append on every tool invocation. Without
+			// this mock, every call threw TypeError that was silently swallowed
+			// — tests invoked tools without exercising the audit-write path
+			// at all. Match the shape in mcp-server.test.ts:66-73.
+			adapter: {
+				exists: async () => false,
+				mkdir: async () => undefined,
+				stat: async () => ({ size: 0, type: "folder" as const, ctime: 0, mtime: 0 }),
+				rename: async () => undefined,
+				remove: async () => undefined,
+				append: async () => undefined,
+			},
 		},
 		metadataCache: {
 			getFileCache: () => null,

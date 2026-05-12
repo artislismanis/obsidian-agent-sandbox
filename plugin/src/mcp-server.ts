@@ -18,6 +18,8 @@ import { buildTools } from "./mcp-tools";
 import { VaultCache } from "./mcp-cache";
 import { logger, errMsg } from "./logger";
 import { ALWAYS_ON_TIERS, GATED_TIERS } from "./permission-tiers";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const manifest = require("../manifest.json") as { version: string };
 
 export interface ActivityEntry {
 	status: AgentStatus;
@@ -194,19 +196,8 @@ function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
 				try {
 					await adapter.remove(AUDIT_FILE_ARCHIVE).catch(() => undefined);
 					await adapter.rename(AUDIT_FILE, AUDIT_FILE_ARCHIVE);
-					// Only reset the counter on successful rename. Previously the
-					// reset ran inside the try but BEFORE the rename — wait, it ran
-					// after, but a rename failure (file locked on Windows, FS
-					// transient error) was swallowed by the catch and the counter
-					// was NOT reset, which is fine. The bug was the opposite case:
-					// an exception thrown between rename and the next iteration
-					// would leave estimatedBytes stale forever. Re-stat on next
-					// invocation by clearing the cached value, so the next loop
-					// re-evaluates against actual file size.
 					// Rotation succeeded: the live file is now empty, so reset
 					// the counter to 0 rather than -1 (sentinel for re-stat).
-					// Using -1 here meant the post-append += landed one byte
-					// short forever — small drift but easy to avoid.
 					estimatedBytes = 0;
 				} catch {
 					// Rename failed — re-stat next iteration to pick up the real
@@ -215,9 +206,18 @@ function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
 				}
 			}
 			await adapter.append(AUDIT_FILE, line);
-			estimatedBytes += Buffer.byteLength(line);
-		} catch {
-			/* audit write failures must never block */
+			// Guard against accumulating bytes against the re-stat sentinel
+			// (-1). A previous version did `estimatedBytes += line.length`
+			// unconditionally — when rotation failed and the sentinel was set,
+			// the +=N raised it positive, the next iteration's `< 0` check was
+			// false, and the re-stat never happened. The on-disk file then grew
+			// unbounded after the first rename failure.
+			if (estimatedBytes >= 0) estimatedBytes += Buffer.byteLength(line);
+		} catch (e) {
+			// Log at debug level so a persistent failure (disk full, permission
+			// denied) is observable in the developer console instead of vanishing.
+			// Never re-throw — audit writes must not block tool execution.
+			logger.debug("MCP", "Audit append failed", e);
 		}
 	};
 }
@@ -457,9 +457,9 @@ export class ObsidianMcpServer {
 			const u = new URL(origin);
 			if (u.protocol !== "http:" && u.protocol !== "https:") return false;
 			const host = u.hostname;
-			return (
-				host === "127.0.0.1" || host === "localhost" || host === "[::1]" || host === "::1"
-			);
+			// `new URL("http://[::1]/").hostname` returns "::1" (no brackets)
+			// on every Node version — the bracketed literal was dead code.
+			return host === "127.0.0.1" || host === "localhost" || host === "::1";
 		} catch {
 			return false;
 		}
@@ -490,7 +490,14 @@ export class ObsidianMcpServer {
 		}
 
 		if (!this.checkAuth(req)) {
-			logger.debug("MCP", `Auth failed: ${req.method} ${req.url}`);
+			// Strip control chars from req.url before logging — `url` is
+			// attacker-controlled from the loopback, and unescaped CRLF would
+			// let an attacker forge fake log lines in the developer console.
+			// The audit log already JSON-stringifies entries (safe), but the
+			// debug console path doesn't.
+			// eslint-disable-next-line no-control-regex
+			const safeUrl = (req.url ?? "").replace(/[\r\n\t\x00-\x1f\x7f]/g, "?");
+			logger.debug("MCP", `Auth failed: ${req.method} ${safeUrl}`);
 			res.writeHead(401, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: "Unauthorized" }));
 			return;
@@ -518,6 +525,24 @@ export class ObsidianMcpServer {
 
 		try {
 			if (req.method === "POST") {
+				// Reject non-JSON content types. The Bearer token is the primary
+				// defense, but defense-in-depth: a CSRF-style cross-origin POST
+				// from a browser can send Content-Type: text/plain without
+				// triggering a preflight (simple-request semantics). The Origin
+				// check above prevents the attacker reading the response, but
+				// the side effects (audit-log entries, agent_status_set) still
+				// execute. Reject text/plain bodies up-front so the server side
+				// effects only happen for genuine JSON-RPC clients.
+				const ct = req.headers["content-type"] ?? "";
+				if (!/^application\/json(?:;|$)/i.test(ct)) {
+					res.writeHead(415, { "Content-Type": "application/json" });
+					res.end(
+						JSON.stringify({
+							error: "Unsupported Media Type — Content-Type must be application/json",
+						}),
+					);
+					return;
+				}
 				await this.handlePost(req, res);
 			} else if (req.method === "GET" || req.method === "DELETE") {
 				await this.forwardToTransport(req, res);
@@ -713,21 +738,30 @@ export class ObsidianMcpServer {
 		// String .slice() works in UTF-16 code units, so a naive slice past a
 		// multi-byte boundary still over-budgets after re-encoding; we slice
 		// the encoded buffer and decode with Replacement-character fallback.
+		const TRUNCATION_SUFFIX = "\n\n[truncated]";
+		const TRUNCATION_BYTES = Buffer.byteLength(TRUNCATION_SUFFIX);
 		if (Array.isArray(result.content)) {
 			let cumulative = 0;
 			for (const entry of result.content) {
 				if (typeof entry?.text !== "string") continue;
+				// Per-entry cap. Reserve TRUNCATION_BYTES inside the budget so
+				// `subarray(0, MAX_RESPONSE_BYTES) + "[truncated]"` doesn't
+				// exceed the documented cap by the marker's byte length.
 				if (Buffer.byteLength(entry.text) > MAX_RESPONSE_BYTES) {
-					const buf = Buffer.from(entry.text, "utf8").subarray(0, MAX_RESPONSE_BYTES);
-					entry.text = buf.toString("utf8") + "\n\n[truncated]";
+					const sliceBytes = Math.max(0, MAX_RESPONSE_BYTES - TRUNCATION_BYTES);
+					const buf = Buffer.from(entry.text, "utf8").subarray(0, sliceBytes);
+					entry.text = buf.toString("utf8") + TRUNCATION_SUFFIX;
 				}
+				// Cumulative cap. Same reservation: the post-truncation entry
+				// must fit within `remaining` even after the marker is added.
 				const entryBytes = Buffer.byteLength(entry.text);
 				const remaining = MAX_RESPONSE_TOTAL_BYTES - cumulative;
 				if (remaining <= 0) {
 					entry.text = "[truncated]";
 				} else if (entryBytes > remaining) {
-					const buf = Buffer.from(entry.text, "utf8").subarray(0, remaining);
-					entry.text = buf.toString("utf8") + "\n\n[truncated]";
+					const sliceBytes = Math.max(0, remaining - TRUNCATION_BYTES);
+					const buf = Buffer.from(entry.text, "utf8").subarray(0, sliceBytes);
+					entry.text = buf.toString("utf8") + TRUNCATION_SUFFIX;
 				}
 				cumulative += Buffer.byteLength(entry.text);
 			}
@@ -736,9 +770,13 @@ export class ObsidianMcpServer {
 	}
 
 	private createMcpServer(): McpServer {
+		// Read version from manifest.json (the single source of truth that
+		// version-bump.mjs already syncs across the repo) so MCP clients that
+		// surface server identity (e.g. Inspector) don't see a stale 0.1.0 while
+		// the plugin is on 0.1.1+.
 		const server = new McpServer({
 			name: "obsidian-vault",
-			version: "0.1.0",
+			version: manifest.version,
 		});
 
 		this.registerCapabilitiesTool(server);
@@ -829,11 +867,15 @@ export class ObsidianMcpServer {
 		const server = this.createMcpServer();
 		try {
 			await server.connect(transport);
-			// Register the server once the transport is initialized so cleanupSession
-			// can close it. If init fails, server.close() is called in the catch.
+			// `transport.sessionId` is set inside the SDK's onsessioninitialized
+			// callback, which fires from `transport.handleRequest()` — NOT from
+			// `server.connect()`. Reading the sid before handleRequest always
+			// returned undefined, so cleanupSession could never close the SDK
+			// instance and every session leaked an McpServer. Register after
+			// handleRequest so the sid is populated.
+			await transport.handleRequest(req, res, body);
 			const sid = transport.sessionId;
 			if (sid) this.mcpServers.set(sid, server);
-			await transport.handleRequest(req, res, body);
 		} catch (err) {
 			logger.error("MCP", "Failed to initialize MCP session", err);
 			const sid = transport.sessionId;

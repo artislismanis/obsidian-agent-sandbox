@@ -46,12 +46,14 @@ jobs:
           # Match by extension OR shebang so extension-less entrypoints
           # don't silently skip. Use `-exec head -n1` to inspect the first
           # line; gathering by both criteria into a unique list.
+          # Walk the full workspace/.claude tree (skills, commands, hooks,
+          # scripts) rather than hardcoded subdirs — new shell scripts under
+          # new subdirs (e.g. skill-creator output) would otherwise skip
+          # shellcheck silently. Same for container/.
           {
-            find container/scripts container/configs \
-                 workspace/.claude/hooks workspace/.claude/scripts \
+            find container/scripts container/configs workspace/.claude \
               -type f \( -name '*.sh' -o -name '*.bash' \) -print
-            find container/scripts container/configs \
-                 workspace/.claude/hooks workspace/.claude/scripts \
+            find container/scripts container/configs workspace/.claude \
               -type f ! -name '*.sh' ! -name '*.bash' \
               -exec sh -c 'head -1 "$1" | grep -qE "^#!.*\b(sh|bash)\b" && echo "$1"' _ {} \;
           } | sort -u | tee /tmp/shell-files
@@ -59,7 +61,10 @@ jobs:
             echo "ERROR: shellcheck job found no shell files to check — paths or globs must have changed." >&2
             exit 1
           fi
-          xargs -r -a /tmp/shell-files shellcheck -S error
+          # NUL-delimit so filenames with spaces survive (defensive — no such
+          # files today, but xargs's default whitespace split would break
+          # later if anyone adds one).
+          tr '\n' '\0' < /tmp/shell-files | xargs -r -0 shellcheck -S error
 
   hadolint:
     runs-on: ubuntu-latest

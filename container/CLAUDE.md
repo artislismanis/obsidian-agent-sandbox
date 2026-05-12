@@ -28,9 +28,11 @@ This produces `oas-sandbox:latest`. Start via the Obsidian plugin (preferred) or
 
 ## Not visible inside the running container
 
-**This entire folder is deliberately not mounted inside the container.** Claude running as an agent inside the sandbox cannot read or modify Dockerfile, compose config, or scripts. That's by design — it keeps the build contract explicit and reviewable, and prevents accidental mutation of infrastructure from inside an agent session.
+**This folder is deliberately not mounted into Claude's visible filesystem.** Claude running as an agent inside the sandbox cannot read or modify Dockerfile, compose config, or scripts under `/workspace/`. That's by design — it keeps the build contract explicit and reviewable, and prevents accidental mutation of infrastructure from inside an agent session.
 
-The one exception: `scripts/verify.sh` is `COPY`d into the image at `/usr/local/bin/verify.sh` so Claude can introspect runtime state at any time without needing source access.
+Two exceptions:
+- `scripts/verify.sh` is `COPY`d into the image at `/usr/local/bin/verify.sh` so Claude can introspect runtime state without source access.
+- `firewall-extras.txt` is bind-mounted read-only at `/etc/oas/firewall-extras.txt` — outside `/workspace/`, so Claude can't see it via vault tools (and outside the agent's normal browse roots), but `init-firewall.sh` reads it on every apply.
 
 ## Adding a system tool
 
@@ -51,7 +53,7 @@ For domains/CIDRs that should not live in source control (private endpoints, per
 Currently allowed categories:
 - Anthropic (API, statsig, sentry)
 - npm (npmjs.org, yarnpkg.com)
-- GitHub (github.com, api, raw, releases, cli)
+- GitHub (github.com, api, raw, objects, releases, cli)
 - PyPI (pypi.org, files.pythonhosted.org)
 - CDNs (jsdelivr, cdnjs, unpkg)
 - Ubuntu apt mirrors (archive, security, ports, keyserver)

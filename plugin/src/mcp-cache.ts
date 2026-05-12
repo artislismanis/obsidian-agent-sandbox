@@ -1,5 +1,11 @@
 import type { EventRef, MetadataCache } from "obsidian";
 
+// Cap unique cache keys so a misbehaving agent calling `vault_properties` with
+// hundreds of distinct property names between metadata-resolve events doesn't
+// grow the Map unboundedly. Each entry holds a sorted (value, count) array
+// proportional to vault content; the map's key count is what we bound here.
+const MAX_CACHE_ENTRIES = 64;
+
 export class VaultCache {
 	private cache = new Map<string, unknown>();
 	private metadataCache: MetadataCache;
@@ -19,8 +25,19 @@ export class VaultCache {
 	}
 
 	get<T>(key: string, computeFn: () => T): T {
-		if (this.cache.has(key)) return this.cache.get(key) as T;
+		if (this.cache.has(key)) {
+			// LRU touch: delete-then-set so frequently-accessed keys move to
+			// the tail in insertion order. When over cap, drop the head.
+			const v = this.cache.get(key) as T;
+			this.cache.delete(key);
+			this.cache.set(key, v);
+			return v;
+		}
 		const value = computeFn();
+		if (this.cache.size >= MAX_CACHE_ENTRIES) {
+			const oldest = this.cache.keys().next().value;
+			if (oldest !== undefined) this.cache.delete(oldest);
+		}
 		this.cache.set(key, value);
 		return value;
 	}

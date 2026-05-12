@@ -2,11 +2,14 @@ import { requestUrl } from "obsidian";
 
 const FETCH_TIMEOUT_MS = 5000;
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const timeout = new Promise<never>((_, reject) => {
-		timer = setTimeout(() => reject(new Error("timeout")), ms);
+		timer = setTimeout(() => reject(new Error(`${label}: timed out after ${ms}ms`)), ms);
 	});
+	// Swallow the loser's late rejection so it doesn't surface as an
+	// unhandled-rejection warning when the timeout wins the race.
+	promise.catch(() => undefined);
 	return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
@@ -41,13 +44,15 @@ export async function pollUntilReady(
 	bindAddress?: string,
 ): Promise<boolean> {
 	const host = resolveHost(bindAddress);
+	const url = `http://${host}:${port}`;
 	for (let i = 0; i < maxRetries; i++) {
 		if (isAborted()) return false;
 
 		try {
 			const resp = await withTimeout(
-				requestUrl({ url: `http://${host}:${port}`, throw: false }),
+				requestUrl({ url, throw: false }),
 				FETCH_TIMEOUT_MS,
+				url,
 			);
 			if (resp.status === 200) {
 				return true;
@@ -58,6 +63,11 @@ export async function pollUntilReady(
 
 		if (isAborted()) return false;
 
+		// Skip the wait after the FINAL attempt — there's no next iteration to
+		// observe it. The previous loop spent an extra `waitMs` (up to 5s) idle
+		// before returning false, delaying the "could not connect" error UI for
+		// no purpose.
+		if (i === maxRetries - 1) break;
 		const waitMs = typeof backoff === "number" ? backoff : backoff(i);
 		onAttempt?.(i, waitMs);
 		await new Promise((resolve) => setTimeout(resolve, waitMs));

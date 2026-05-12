@@ -40,7 +40,7 @@ Prompt body with the @{{file}} placeholder.
 
 The first non-empty line before `---` is the menu label. The body is passed to `claude` as its initial argument, with `{{file}}` replaced by the clicked note's path.
 
-Shipped: `summarize`, `extract-todos`, `critique`, `explain`. Add your own; no restart needed — they're read on each right-click.
+Shipped: `summarize`, `extract-todos`, `critique`, `explain`. Add your own; no restart needed — they're cached with a 30s background refresh, so newly-added templates appear on the next right-click after that window.
 
 ## `.claude/hooks/` — Claude Code lifecycle hooks
 

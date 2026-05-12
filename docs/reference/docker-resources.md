@@ -26,7 +26,7 @@ Inspect: `docker ps | grep oas-`.
 | Volume | Mount target inside container | Purpose |
 |---|---|---|
 | `oas-claude-config` | `/home/claude/.claude` | Claude Code auth, session history, personal config. Survives container rebuilds. |
-| `oas-shell-history` | `/home/claude/.shell-history` | Bash/zsh history. Survives container rebuilds. |
+| `oas-shell-history` | `/home/claude/.shell-history` | atuin SQLite history DB (`atuin/history.db`). Bash's own `.bash_history` is not written here. Survives container rebuilds. |
 
 Inspect: `docker volume ls | grep oas-`.
 

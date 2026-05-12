@@ -25,10 +25,13 @@ describe("Plugin loads", function () {
 	});
 
 	it("adds the container status bar item", async function () {
-		// The plugin creates status bar items via addStatusBarItem().
-		// Wait for them to render — Obsidian may delay status bar initialization.
-		const statusBar = $(".status-bar");
-		await statusBar.waitForExist({ timeout: 10000 });
+		// `.status-bar` is Obsidian's always-present root container; the plugin
+		// adds a child via addStatusBarItem(). Asserting on the root passes
+		// even if the plugin's status bar is broken. Verify the plugin-owned
+		// element specifically by looking for the "Sandbox:" prefix that
+		// StatusBarManager always writes (see status-bar.ts STATE_DISPLAY).
+		const sandboxItem = $(".status-bar .status-bar-item*=Sandbox");
+		await sandboxItem.waitForExist({ timeout: 10000 });
 	});
 
 	it("registers all expected commands", async function () {

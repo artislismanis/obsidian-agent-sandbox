@@ -30,7 +30,7 @@ On Obsidian load (`onLayoutReady`):
 `startContainer()`:
 1. If busy, notify + bail.
 2. `checkStartupPortConflicts()` test-binds ttyd + MCP ports on the bind address. EADDRINUSE aborts with an actionable Notice.
-3. `ensureWriteDir()` creates the write dir if missing (just creates and swallows "already exists").
+3. `ensureWriteDir()` creates the write dir if missing (checks `getFolderByPath` first; calls `createFolder` only when absent so any unexpected error surfaces uncaught).
 4. `docker compose up -d` — relies on compose's own idempotency (no manual `down` first).
 5. On success: capture container ID, apply firewall, start health + firewall polls.
 
@@ -67,7 +67,7 @@ If you run `docker compose down && up -d` yourself, or another tool recreates th
 ## Shutdown
 
 On Obsidian exit, the `quit` workspace event fires:
-- If `autoStopContainer` is on, spawn `docker compose down` (detached) with a 5s timeout.
+- If `autoStopContainer` is on, race `docker compose down` against a 5s wall-clock timer (via `Promise.race`). Whichever finishes first wins — docker stop continues in the background if the timer expired. If a Docker op is already in-flight (`docker.isBusy()`), use the detached `stopDetached` path instead so the host-side `docker compose down` survives Obsidian's exit.
 - Otherwise leave the container running so the next Obsidian open is instant.
 
 On plugin disable (`onunload`):
