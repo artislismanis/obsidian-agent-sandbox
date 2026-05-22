@@ -55,13 +55,37 @@ updates:
     cooldown:
       default-days: 3
       semver-major-days: 7
-    # Hold @types/node to the major matching the runtime we actually use.
-    # The Dockerfile (`NODE_MAJOR=24`) and `package.json` engines pin Node 24
-    # LTS; pulling @types/node 25 surfaces Node 25-only APIs in autocomplete
-    # that would fail at runtime in the container. Drop this ignore (or bump
-    # the major) when we adopt Node 26 LTS.
+    # Block specific majors that break our tree or need deliberate migration.
+    # Minor/patch bumps still flow normally. Lift each rule when the noted
+    # blocker resolves.
     ignore:
+      # @types/node: track the runtime Node major (currently 24 LTS). Types
+      # 25 surfaces APIs that don't exist at runtime. Lift on Node 26 LTS
+      # (or when we ship a non-LTS runtime).
       - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
+      # typescript: TS 6.0 metapackage release (8.59.4 typescript-eslint
+      # combo) has a peer-dep snarl that fails `npm install`. Wait for
+      # typescript-eslint v9 GA before attempting. Minors/patches under 5.x
+      # still flow — the lockfile is currently stale at 5.3.3.
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
+      # mocha: v11 changed module exports — our e2e specs do
+      # `import { describe, it } from "mocha"` which returns undefined.
+      # Lift when we either pin mocha differently in e2e or refactor the
+      # imports to match v11's shape.
+      - dependency-name: "mocha"
+        update-types:
+          - "version-update:semver-major"
+      # @xterm/xterm: v6 has real breaking changes (overviewRulerWidth
+      # renamed, alt→ctrl+arrow mapping removed, canvas renderer dropped,
+      # windowsMode/fastScrollModifier removed). Our usage is light enough
+      # to likely survive, but a deliberate migration PR (with manual
+      # terminal smoke testing across platforms) is the safer path than
+      # a drive-by dependabot merge.
+      - dependency-name: "@xterm/xterm"
         update-types:
           - "version-update:semver-major"
     # Group related ecosystems into single PRs so reviewers see one
@@ -146,3 +170,11 @@ updates:
     cooldown:
       default-days: 3
       semver-major-days: 14
+    # Ubuntu base image: 24.04 is LTS until April 2029. Block 25.04 (interim
+    # release, 9-month support) and the just-released 26.04 (wait for the
+    # .1 patch + verify the apt tree). Lift the rule once 26.04.x is mature
+    # and we've audited every apt-installed tool still resolves.
+    ignore:
+      - dependency-name: "ubuntu"
+        update-types:
+          - "version-update:semver-major"
