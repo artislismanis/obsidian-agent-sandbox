@@ -7,6 +7,7 @@ vi.mock("obsidian", () => ({
 }));
 
 import { buildTools } from "../mcp-tools";
+import type { PermissionTier } from "../mcp-tools";
 import { makeTFile, createMockApp, getTool } from "./fixtures";
 
 describe("write tools honor reviewFn", () => {
@@ -142,6 +143,21 @@ describe("write tools honor reviewFn", () => {
 			},
 		];
 
+		// manage-tier ops now go through gateVaultWrite, which routes to review
+		// only when writeReviewed is enabled AND the path is outside writeDir.
+		// In production main.ts:655 ties reviewFn presence to
+		// mcpVaultWrites=="reviewed", which sets writeReviewed (not writeVault)
+		// in enabledTiers — so test setup must mirror that pairing.
+		const reviewedTiers: ReadonlySet<PermissionTier> = new Set<PermissionTier>([
+			"read",
+			"writeScoped",
+			"writeReviewed",
+			"navigate",
+			"manage",
+			"extensions",
+			"agent",
+		]);
+
 		for (const c of manageCases) {
 			it(`${c.name} calls review with affectedLinks and aborts on rejection`, async () => {
 				const review = vi.fn(async () => ({ approved: false }));
@@ -152,6 +168,7 @@ describe("write tools honor reviewFn", () => {
 					app: app as never,
 					getWriteDir: () => "agent-workspace",
 					review,
+					enabledTiers: reviewedTiers,
 				});
 				const result = await getTool(tools, c.name).handler(c.args);
 				expect(review).toHaveBeenCalledTimes(1);
@@ -171,6 +188,7 @@ describe("write tools honor reviewFn", () => {
 					app: app as never,
 					getWriteDir: () => "agent-workspace",
 					review,
+					enabledTiers: reviewedTiers,
 				});
 				const result = await getTool(tools, c.name).handler(c.args);
 				expect(review).toHaveBeenCalledTimes(1);

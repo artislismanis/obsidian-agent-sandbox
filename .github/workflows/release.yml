@@ -73,6 +73,13 @@ jobs:
             exit 1
           fi
 
+      # Gate the release on the same check.yml runs against PRs. The SLSA
+      # attestation proves the artifact came from this workflow — it does NOT
+      # prove the artifact works. Without this gate, a release tag pushed
+      # against a regression-laden commit ships signed garbage to BRAT stable.
+      - name: Lint + format + type-check + unit tests
+        run: npm run check
+
       - name: Build
         run: npm run build
 

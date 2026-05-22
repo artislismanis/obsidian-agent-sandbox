@@ -351,6 +351,20 @@ export class TerminalView extends ItemView {
 					"Could not connect to ttyd. Make sure the container is running.",
 				);
 			}
+		} catch (e) {
+			// xterm init or related calls can throw on malformed settings
+			// (custom font that crashes Terminal constructor, etc.). Without
+			// this catch the rejection floats up to `void this.connect()` in
+			// onOpen and the user sees an empty pane with no retry button.
+			logger.error("Terminal", "connect() failed", e);
+			try {
+				this.showError(
+					this.contentEl,
+					`Terminal initialization failed: ${e instanceof Error ? e.message : String(e)}`,
+				);
+			} catch {
+				/* showError itself can throw if contentEl was torn down */
+			}
 		} finally {
 			this.connecting = false;
 		}
@@ -612,7 +626,15 @@ export class TerminalView extends ItemView {
 			// can't interleave with `claude '<escaped>'\n` — otherwise the injected
 			// command would run with the user's bytes appended to it.
 			if (this.initialPrompt) {
-				const escaped = this.initialPrompt.replace(/'/g, `'\\''`);
+				// Collapse newlines BEFORE single-quoting. A literal `\n` inside
+				// a single-quoted string sent over the pty is interpreted by the
+				// readline/cooked-mode line discipline as end-of-line, closing
+				// the line without a closing quote and dropping bash into
+				// `>` continuation (or worse, executing partial input). Prompt
+				// templates from `.claude/prompts/*.md` can contain real newlines;
+				// flatten them to spaces so the injected command stays one line.
+				const flat = this.initialPrompt.replace(/\r?\n/g, " ");
+				const escaped = flat.replace(/'/g, `'\\''`);
 				const cmd = `claude '${escaped}'\n`;
 				const delay = this.sessionName ? 700 : 300;
 				const wasStdinDisabled = term.options.disableStdin === true;

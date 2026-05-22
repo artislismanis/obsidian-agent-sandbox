@@ -59,7 +59,10 @@ export function windowsToWslPath(windowsPath: string): string {
 	const match = windowsPath.match(/^([A-Za-z]):[/\\]/);
 	if (!match) return windowsPath;
 	const driveLetter = match[1].toLowerCase();
-	const rest = windowsPath.slice(3).replace(/\\/g, "/");
+	// Strip leading slashes from the rest to avoid `/mnt/c//path` outputs.
+	// `C:\\folder` (string-literal double-backslash) → after slice(3): `\folder`
+	// → after backslash→slash: `/folder` → would yield `/mnt/c//folder`.
+	const rest = windowsPath.slice(3).replace(/\\/g, "/").replace(/^\/+/, "");
 	return `/mnt/${driveLetter}/${rest}`;
 }
 
@@ -494,7 +497,12 @@ export class DockerManager {
 		let shell: string;
 		let args: string[];
 		if (dockerMode === "wsl") {
-			// On Windows, spawn wsl.exe directly (no bash available on host)
+			// On Windows, spawn wsl.exe directly (no bash available on host).
+			// Validate the distro name even on this detached path — spawn passes
+			// args as an array (no shell injection surface), but a malformed
+			// name lets wsl.exe error in unhelpful ways. Same regex used in
+			// the interactive path's assertValidDistro.
+			if (!VALID_DISTRO_NAME.test(wslDistro)) return;
 			const wslPath = windowsToWslPath(composePath);
 			const escapedPath = wslPath.replace(/'/g, "'\\''");
 			const envPrefix = Object.entries(downEnv)
@@ -619,6 +627,15 @@ export class DockerManager {
 	 * Probe host-local ports for availability. Returns an array of ports
 	 * already bound by a non-compose process. Used as a pre-flight check
 	 * before `docker compose up -d`.
+	 *
+	 * Treats every non-`listening` outcome as a conflict so a clean
+	 * port-in-use message surfaces instead of letting compose fail with an
+	 * opaque "address in use" later. EADDRINUSE → conflict (the typical
+	 * case); EACCES (privileged port), EADDRNOTAVAIL (invalid bind host),
+	 * etc. → also conflict, logged so the dev console has the actual
+	 * errno. A 2s timeout per probe guards against rare cases where neither
+	 * event fires (kernel state quirk) and the original Promise hung
+	 * forever, freezing the start flow.
 	 */
 	async checkPortConflicts(ports: number[], host = "127.0.0.1"): Promise<number[]> {
 		const conflicts: number[] = [];
@@ -627,11 +644,33 @@ export class DockerManager {
 				(port) =>
 					new Promise<void>((resolve) => {
 						const tester = createServer();
+						const timer = setTimeout(() => {
+							logger.warn("Docker", `Port probe ${host}:${port} timed out`);
+							try {
+								tester.close();
+							} catch {
+								/* ignore */
+							}
+							conflicts.push(port);
+							resolve();
+						}, 2000);
 						tester.once("error", (err: NodeJS.ErrnoException) => {
-							if (err.code === "EADDRINUSE") conflicts.push(port);
+							clearTimeout(timer);
+							if (err.code !== "EADDRINUSE") {
+								logger.warn(
+									"Docker",
+									`Port probe ${host}:${port} error ${err.code}: ${err.message}`,
+								);
+							}
+							// Conservative: any error means the port can't be
+							// listened on, which compose will also fail at.
+							// Surfacing as a conflict gives the user a clean
+							// pre-flight message.
+							conflicts.push(port);
 							resolve();
 						});
 						tester.once("listening", () => {
+							clearTimeout(timer);
 							tester.close(() => resolve());
 						});
 						tester.listen(port, host);
@@ -664,14 +703,20 @@ export class DockerManager {
 
 	/**
 	 * Resolve the firewall state with three outcomes:
-	 *  - "enabled" / "disabled": container responded
-	 *  - "unavailable": container missing or exec failed (caller should hide UI,
-	 *    not display as "disabled")
+	 *  - "enabled" / "disabled": container responded with the exact word
+	 *  - "unavailable": container missing, exec failed, or the script printed
+	 *    something unexpected (script broken). Caller should hide UI, not
+	 *    display as "disabled" — the previous behaviour collapsed "broken
+	 *    script" into "disabled", misleading the user into thinking they
+	 *    just needed to enable it.
 	 */
 	async firewallStatus(): Promise<"enabled" | "disabled" | "unavailable"> {
 		try {
-			const output = await this.firewallExec("--status");
-			return output.trim() === "enabled" ? "enabled" : "disabled";
+			const output = (await this.firewallExec("--status")).trim();
+			if (output === "enabled") return "enabled";
+			if (output === "disabled") return "disabled";
+			logger.warn("Docker", `Unexpected firewall --status output: ${output.slice(0, 200)}`);
+			return "unavailable";
 		} catch {
 			return "unavailable";
 		}

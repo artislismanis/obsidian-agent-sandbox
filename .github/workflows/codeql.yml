@@ -57,4 +57,9 @@ jobs:
       - name: Perform analysis
         uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:${{ matrix.language }}"
+          # GitHub's docs recommend `category: ${{ matrix.language }}` for
+          # matrices with different languages. The `/language:` prefix is a
+          # convention for matrices running the same language across config
+          # variants — using it here causes SARIF results to upload with a
+          # non-canonical category, which the UI groups oddly.
+          category: ${{ matrix.language }}

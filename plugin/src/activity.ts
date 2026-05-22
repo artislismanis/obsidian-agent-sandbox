@@ -67,7 +67,20 @@ export class ActivityUi {
 		private statusBar: StatusBarManager,
 		private getActivity: () => ReadonlyMap<string, ActivityEntry> | undefined,
 	) {
-		this.staleTickId = setInterval(() => this.tickStale(), STALE_TICK_MS);
+		// Wrap tickStale in try/catch so a late tick after teardown (clear()
+		// raced by an unload that threw partway) can't propagate as an
+		// unhandled error against stale `this.app` / `this.statusBar` refs.
+		// The interval itself uses raw setInterval (not Plugin.registerInterval)
+		// because ActivityUi isn't plumbed with a Plugin reference — clear()
+		// is responsible for clearing it.
+		this.staleTickId = setInterval(() => {
+			try {
+				this.tickStale();
+			} catch (e) {
+				// eslint-disable-next-line no-console
+				console.warn("[Agent Sandbox] [ActivityUi] tickStale failed:", e);
+			}
+		}, STALE_TICK_MS);
 	}
 
 	route(update: ActivityUpdate): void {

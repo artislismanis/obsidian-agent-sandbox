@@ -92,7 +92,7 @@ npm version 0.2.0       # bumps package.json + manifest.json + versions.json, au
 git push && git push --tags
 ```
 
-The `release.yml` workflow fires on the tag, builds, and uploads `main.js` / `manifest.json` / `styles.css` to a pre-release GitHub Release. BRAT users pick up updates on Obsidian start.
+The `release.yml` workflow fires on the tag, builds, and uploads `main.js` / `manifest.json` / `styles.css` to a GitHub Release (stable by default; set the `RELEASE_PRERELEASE=true` repo variable to mark as pre-release). BRAT users pick up updates on Obsidian start.
 
 ## Development
 

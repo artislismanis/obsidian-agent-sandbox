@@ -53,7 +53,7 @@ Use the container's built-in package managers — the image ships Node 24 and Py
 npm install -g <package>
 # or — Python uses uv (no system pip on PATH for the `claude` user):
 uv pip install <package>     # into the active uv-managed env
-pipx install <package>       # for standalone CLI tools
+uv tool install <package>    # for standalone CLI tools (uv's pipx equivalent)
 ```
 
 Runtime installs do **not** persist across a container rebuild. Node globals live under `~/.nvm/default/lib/node_modules` and Python tools under `~/.local` — neither path is on a named volume, so a rebuild wipes them. (The `oas-claude-config` volume holds Claude Code auth, project settings, and chat history only — not language package globals.) For tools you want permanently, add them to the Dockerfile's `RUN npm install -g ...` / uv install block and rebuild.

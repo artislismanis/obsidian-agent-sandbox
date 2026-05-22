@@ -87,11 +87,26 @@ ensure_ownership() {
     fi
 }
 
+# Defensive guard against malicious OAS_VAULT_WRITE_DIR. The compose YAML
+# bind-mount source uses this value unvalidated; if a user (or compromised
+# config) sets `OAS_VAULT_WRITE_DIR=../other-folder`, the bind source escapes
+# the vault root. Docker normalises the destination too, so the mount can land
+# at an unexpected location. Reject obvious shapes (`..` segments, slashes,
+# leading dots) up-front before any chown happens. Empty/unset uses the
+# default and is fine.
+write_dir="${OAS_VAULT_WRITE_DIR:-agent-workspace}"
+case "$write_dir" in
+    *..*|*/*|*\\*|.*)
+        echo "ERROR: OAS_VAULT_WRITE_DIR='$write_dir' must be a single relative segment (no slashes, no '..', no leading dot)." >&2
+        exit 1
+        ;;
+esac
+
 # Named volumes
 ensure_ownership /home/claude/.claude
 ensure_ownership /home/claude/.shell-history
 # Vault RW overlays
-ensure_ownership "/workspace/vault/${OAS_VAULT_WRITE_DIR:-agent-workspace}"
+ensure_ownership "/workspace/vault/${write_dir}"
 ensure_ownership /workspace/vault/.oas
 
 # IPv4-only stance: docker-compose sets net.ipv6.conf.all.disable_ipv6=1, but

@@ -41,7 +41,7 @@ Check you got the new image: **Sandbox: Container Status** or `cd container && d
 | `workspace/**` | — (mounted rw) | — |
 | `container/Dockerfile` | — | ✔ |
 | `container/scripts/**` | — | ✔ (entrypoint/session/verify are baked into the image) |
-| `container/firewall-extras.txt` | — | no rebuild, just restart container (file is mounted ro) |
+| `container/firewall-extras.txt` | — | no rebuild — either restart the container or rerun `/usr/local/bin/init-firewall.sh` inside the container (file is mounted ro and re-read on every apply) |
 | `container/docker-compose.yml` | — | no rebuild, just `docker compose up -d` |
 
 ## Rolling back

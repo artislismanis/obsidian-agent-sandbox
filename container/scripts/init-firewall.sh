@@ -17,8 +17,14 @@ LOCK_FILE="/var/lock/oas-firewall.lock"
 # --disable / --status / --list-sources don't mutate the active ruleset
 # in conflicting ways, so they skip the lock to stay responsive.
 case "${1:-}" in
-  --disable|--status|--list-sources) ;;
+  --status|--list-sources) ;;
   *)
+    # --disable also takes the lock — it mutates the active ruleset
+    # (flushes OUTPUT, destroys ipset). Letting it run concurrently with
+    # the apply path raced: --disable would `ipset destroy allowed_ips`
+    # mid-apply, and the subsequent `ipset swap allowed_ips_new allowed_ips`
+    # in the apply path would fail because the target no longer exists,
+    # leaving the new ipset orphaned and the OUTPUT chain unchanged.
     exec 9>"$LOCK_FILE"
     if ! flock -n 9; then
       echo "init-firewall.sh: another instance is already running ($LOCK_FILE)" >&2
@@ -107,10 +113,13 @@ _trim() {
   printf '%s' "$s"
 }
 
-# Validate an IPv4 octet (0-255).
+# Validate an IPv4 octet (0-255). Rejects leading-zero forms ("01", "010")
+# because some libc inet_aton variants reinterpret them as octal — a user
+# typing "0177.0.0.1" would otherwise get a literal-decimal rule when they
+# meant 127.0.0.1. Always reject to keep the contract dot-decimal-only.
 _is_valid_octet() {
   local n="$1"
-  [[ "$n" =~ ^[0-9]+$ ]] || return 1
+  [[ "$n" =~ ^(0|[1-9][0-9]*)$ ]] || return 1
   (( n >= 0 && n <= 255 ))
 }
 
@@ -156,10 +165,13 @@ for d in "${BASELINE_DOMAINS[@]}"; do
   add_entry baseline "$d"
 done
 
-# Plugin-supplied (comma-separated env var)
+# Plugin-supplied (comma-separated env var). Strip `#` comments so a user
+# who put a comment in the env var doesn't end up trying to resolve a domain
+# with trailing `#text` (silent DNS-resolution failure with no clear cause).
 if [ -n "${OAS_ALLOWED_DOMAINS:-}" ]; then
   IFS=',' read -ra PLUGIN_EXTRAS <<< "$OAS_ALLOWED_DOMAINS"
   for d in "${PLUGIN_EXTRAS[@]}"; do
+    d="${d%%#*}"
     add_entry plugin "$d"
   done
 fi
@@ -203,6 +215,11 @@ fi
 ipset create allowed_ips hash:net -exist
 ipset create allowed_ips_new hash:net -exist
 ipset flush allowed_ips_new
+
+# Trap orphan cleanup: if `set -e` aborts anywhere between here and the
+# final `ipset destroy allowed_ips_new` below, the new set is left dangling.
+# This trap clears it on any abnormal exit; the success path disarms it.
+trap 'ipset destroy allowed_ips_new 2>/dev/null || true' EXIT
 
 echo "Resolving domains..."
 # Track baseline domains separately so a failure to resolve one (e.g.
@@ -311,6 +328,9 @@ fi
 # Atomically swap the ipset so iptables rules always reference a complete set
 ipset swap allowed_ips_new allowed_ips
 ipset destroy allowed_ips_new
+# Disarm the orphan-cleanup trap now that allowed_ips_new is gone; reapply
+# at the end so a failure in iptables-restore below doesn't leak.
+trap - EXIT
 
 # Build the OUTPUT chain into a single iptables-restore transaction so the
 # chain is replaced atomically. Previous design did `-F OUTPUT` followed by
@@ -319,8 +339,27 @@ ipset destroy allowed_ips_new
 # and traffic was silently dropped. iptables-restore commits all rules in
 # one kernel transaction.
 MCP_PORT="${OAS_MCP_PORT:-28080}"
-GATEWAY=$(ip route | awk '/default/ {print $3}')
+# Validate MCP_PORT — typo'd values would land verbatim in --dport and
+# iptables-restore would reject the whole transaction, leaving the firewall
+# half-applied with the previous OUTPUT rules intact (or completely down on
+# a fresh container).
+if ! [[ "$MCP_PORT" =~ ^[0-9]+$ ]] || (( MCP_PORT < 1 || MCP_PORT > 65535 )); then
+  echo "init-firewall: ERROR: invalid OAS_MCP_PORT='$MCP_PORT' (must be 1-65535)" >&2
+  exit 1
+fi
+# Take the first default route only — `awk '/default/ {print $3}'` without
+# an `exit` returns multiple lines when the container has multiple default
+# routes (rare but happens with attached secondary networks), which then
+# slammed iptables-restore with a multi-line `-d $GATEWAY` literal.
+GATEWAY=$(ip route | awk '/default/ {print $3; exit}')
 OAS_HOST=$(getent hosts host.docker.internal 2>/dev/null | awk '{print $1; exit}')
+# Reject OAS_HOST if it isn't an IPv4 address. getent can return an IPv6
+# alias for host.docker.internal on some hosts; passing it verbatim to
+# iptables-restore (which expects IPv4) aborts the transaction.
+if [ -n "$OAS_HOST" ] && ! _is_ipv4_or_cidr "$OAS_HOST"; then
+  echo "init-firewall: WARNING: host.docker.internal resolved to non-IPv4 '$OAS_HOST' — skipping MCP gateway rule" >&2
+  OAS_HOST=""
+fi
 
 # Collect IPv4 nameservers BEFORE building the rule heredoc. If there are no
 # IPv4 nameservers in resolv.conf (IPv6-only Docker network, unusual host
@@ -355,9 +394,16 @@ fi
     echo "-A OUTPUT -d $ns -p tcp --dport 53 -j ACCEPT"
   done
 
-  # Block cloud metadata endpoint BEFORE allowlist ACCEPTs — defense in depth
-  # in case 169.254.169.254 ever ends up in allowed_ips by mistake.
-  echo "-A OUTPUT -d 169.254.169.254 -j DROP"
+  # Block cloud metadata + DNS-rebinding surfaces BEFORE allowlist ACCEPTs —
+  # defense in depth in case any of these IPs ends up in allowed_ips by mistake
+  # (a malicious authoritative DNS for an allowlisted domain can return any IP).
+  #   169.254.0.0/16 — link-local incl. AWS/Azure/GCP metadata (.169.254)
+  #   100.64.0.0/10  — CGNAT range incl. Alibaba metadata (100.100.100.200)
+  # Legitimate access to these is opt-in via OAS_ALLOWED_PRIVATE_HOSTS (which
+  # adds rules AFTER these DROPs but is keyed on specific IPv4/CIDRs, not the
+  # broad ranges below).
+  echo "-A OUTPUT -d 169.254.0.0/16 -j DROP"
+  echo "-A OUTPUT -d 100.64.0.0/10 -j DROP"
 
   echo "-A OUTPUT -m set --match-set allowed_ips dst -p tcp --dport 443 -j ACCEPT"
   echo "-A OUTPUT -m set --match-set allowed_ips dst -p tcp --dport 80 -j ACCEPT"

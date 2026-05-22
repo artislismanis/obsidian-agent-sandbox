@@ -140,7 +140,15 @@ export class AnalyzeManager {
 		const now = Date.now();
 		if (now - this.lastRefreshAt > REFRESH_INTERVAL_MS) {
 			this.lastRefreshAt = now;
-			void this.readTemplatesFromDisk().then((fresh) => (this.cachedTemplates = fresh));
+			void this.readTemplatesFromDisk()
+				.then((fresh) => (this.cachedTemplates = fresh))
+				.catch((err) => {
+					// On refresh failure, clear lastRefreshAt so the next
+					// right-click retries instead of being pinned to the
+					// rate-limit window for 30 seconds.
+					this.lastRefreshAt = 0;
+					logger.warn("Analyze", "Template refresh failed", err);
+				});
 		}
 
 		// Wrap menu callbacks so a rejected runAnalyze/runAnalyzeCustom promise

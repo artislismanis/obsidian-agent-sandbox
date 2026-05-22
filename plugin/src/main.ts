@@ -57,7 +57,16 @@ export default class AgentSandboxPlugin extends Plugin {
 
 	private debouncedSaveSettings = debounce(
 		async () => {
-			await this.saveData(this.settings);
+			try {
+				await this.saveData(this.settings);
+			} catch (e) {
+				// Without this guard, saveData rejections (disk full, permission
+				// glitch on data.json) silently vanish — debounce doesn't surface
+				// the inner promise. Settings changes would appear to "stick" in
+				// the UI but be lost on next reload.
+				logger.error("Plugin", "Settings save failed", e);
+				new Notice(`Failed to save settings: ${errMsg(e)}`);
+			}
 		},
 		500,
 		true,
@@ -138,8 +147,12 @@ export default class AgentSandboxPlugin extends Plugin {
 				if (oldName) {
 					try {
 						await this.docker.renameSession(oldName, newName);
-					} catch {
-						new Notice("Failed to rename tmux session.");
+					} catch (e) {
+						logger.error("Plugin", "renameSession failed", e);
+						// Surface the real cause (validation message, tmux state,
+						// docker error) instead of a blank "Failed". Without this
+						// the user sees a generic notice and has to open dev tools.
+						new Notice(`Failed to rename tmux session: ${errMsg(e)}`);
 						return;
 					}
 				}
@@ -246,9 +259,19 @@ export default class AgentSandboxPlugin extends Plugin {
 					return;
 				}
 				const text = formatConnectionLog(events);
-				await navigator.clipboard.writeText(text);
+				// Always log to dev console first so the postmortem data is
+				// recoverable even when the clipboard write rejects (document
+				// not focused, clipboard API disabled).
 				logger.info("Terminal", `Connection log (${events.length} events):\n${text}`);
-				new Notice(`Copied ${events.length} terminal connection events to clipboard.`);
+				try {
+					await navigator.clipboard.writeText(text);
+					new Notice(`Copied ${events.length} terminal connection events to clipboard.`);
+				} catch (e) {
+					logger.error("Terminal", "Clipboard write failed", e);
+					new Notice(
+						`Could not copy to clipboard: ${errMsg(e)}. See developer console for the log content.`,
+					);
+				}
 			},
 		});
 
@@ -268,21 +291,35 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		// obsidian://agent-sandbox/open-terminal — activate or open a terminal tab
 		this.registerObsidianProtocolHandler("agent-sandbox/open-terminal", async () => {
-			if (!this.isContainerRunning()) {
-				new Notice("Sandbox container is not running.");
-				return;
+			try {
+				if (!this.isContainerRunning()) {
+					new Notice("Sandbox container is not running.");
+					return;
+				}
+				await this.activateTerminalView();
+			} catch (e) {
+				logger.error("Plugin", "agent-sandbox/open-terminal handler failed", e);
+				new Notice(`Open terminal failed: ${errMsg(e)}`);
 			}
-			await this.activateTerminalView();
 		});
 
 		// obsidian://agent-sandbox/analyze?path=<vault/path>&template=<name>
 		this.registerObsidianProtocolHandler("agent-sandbox/analyze", async (params) => {
-			const path = params.path;
-			if (!path) {
-				new Notice("Analyze: missing 'path' parameter.");
-				return;
+			try {
+				const path = params.path;
+				if (!path) {
+					new Notice("Analyze: missing 'path' parameter.");
+					return;
+				}
+				await this.analyze.runAnalyze(path, params.template);
+			} catch (e) {
+				// Obsidian's protocol-handler dispatcher swallows unhandled
+				// rejections silently. Without this catch, external tooling
+				// triggering this URI sees nothing visible when something fails
+				// (e.g. template load throws unexpectedly).
+				logger.error("Plugin", "agent-sandbox/analyze handler failed", e);
+				new Notice(`Analyze failed: ${errMsg(e)}`);
 			}
-			await this.analyze.runAnalyze(path, params.template);
 		});
 
 		// File context menu → "Analyze in Sandbox" submenu
@@ -365,8 +402,12 @@ export default class AgentSandboxPlugin extends Plugin {
 		// just before unload can't construct a fresh server after stop()
 		// returns. queueMcpOp's tail catches both success and failure paths,
 		// so awaiting once flushes whatever is pending without throwing.
-		await this.mcpQueue.catch(() => {});
-		await this.mcpServer?.stop().catch(() => {});
+		await this.mcpQueue.catch((e) =>
+			logger.warn("Plugin", "Pending MCP queue op rejected during unload", e),
+		);
+		await this.mcpServer
+			?.stop()
+			.catch((e) => logger.warn("Plugin", "MCP stop during unload failed", e));
 		this.agentOutput?.dispose();
 		// ActivityUi holds a setInterval for the stale-rolling tick — clear()
 		// drops it. Idempotent.
@@ -390,7 +431,18 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 		if (!this.settings.mcpToken) {
 			this.settings.mcpToken = generateToken();
-			await this.saveData(this.settings);
+			// Guard the save so a disk/permission failure on first install
+			// doesn't abort onload. Without this, the first-load saveData
+			// reject propagated through onload and the plugin appeared to
+			// "not load" with no visible error.
+			try {
+				await this.saveData(this.settings);
+			} catch (e) {
+				logger.error("Plugin", "Could not persist initial MCP token; using ephemeral", e);
+				new Notice(
+					"Could not save plugin settings; MCP token will not persist across restarts.",
+				);
+			}
 		}
 		setLogLevel(this.settings.logLevel);
 	}
@@ -677,6 +729,14 @@ export default class AgentSandboxPlugin extends Plugin {
 				/* nothing usable started */
 			}
 			this.mcpServer = null;
+			// Reset mcpEnabled so the settings toggle reflects runtime reality
+			// — otherwise the toggle stays ON, every plugin reload retries the
+			// failing start, and the user sees a Notice each restart while
+			// believing MCP is enabled.
+			if (this.settings.mcpEnabled) {
+				this.settings.mcpEnabled = false;
+				this.saveSettings();
+			}
 			new Notice(`MCP server failed to start: ${errMsg(error)}`);
 		}
 	}

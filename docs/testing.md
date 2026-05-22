@@ -116,7 +116,7 @@ After that, `npm run test:integration` will include the four Claude tests (`clau
 
 | Suite | Path | What's covered |
 |-------|------|----------------|
-| **Unit** | `src/__tests__/*.test.ts` | Input validation (write dir, private hosts, memory, CPUs, bind address, port, memory file name, path-prefix lists), WSL + Windows shell escaping (incl. `$`/backtick neutralisation), WSL path conversion, env var injection, `parseIsRunning` state machine, ttyd polling / URL construction, status bar state transitions, firewall status bar, timing-safe MCP auth, path traversal protection, every MCP tool handler |
+| **Unit** | `src/__tests__/*.test.ts` | Input validation (write dir, private hosts, memory, CPUs, bind address, memory file name, path-prefix lists; numeric range checks like port / font size / scrollback are inline in `settings.ts` via `addNumberSetting` rather than a named validator), WSL + Windows shell escaping (incl. `$`/backtick neutralisation), WSL path conversion, env var injection, `parseIsRunning` state machine, ttyd polling / URL construction, status bar state transitions, firewall status bar, timing-safe MCP auth, path traversal protection, every MCP tool handler |
 | **Integration** | `test/integration/*.test.ts` | Container health + `verify.sh`, vault ro/rw mounts + mount isolation, narrow sudo scope + `OAS_SUDO_PASSWORD` unset after drop-privileges, MCP env var injection, MCP HTTP auth / routing / CORS, Docker resource naming (`oas-test` prefix), firewall enable / allowlist / disable, tmux session create + list + persist, ttyd port remapping, Claude Code auth + `claude -p` execution + memory MCP tool use + filesystem `Read` tool |
 | **E2E** | `test/e2e/specs/*.e2e.ts` | Plugin loads and is enabled, ribbon icon present, status bar renders, all commands registered, settings tabs render, MCP permission tiers visible with correct defaults, MCP token auto-generates and regenerates, numeric/text setting validation adds/removes `sandbox-input-error` class, bind address security warning toggles dynamically, per-setting "Requires restart" labels appear on restart-needing settings only |
 
@@ -218,11 +218,13 @@ The integration suite covers `claude -p` against memory and filesystem MCP serve
 
 #### Tier disable removes tools
 
+`Read`, `Write (scoped)`, and `agent` are always-on when MCP is enabled — not individually toggleable (see `docs/reference/settings.md`). Test the togglable tiers instead.
+
 **Actions:**
-1. Disable the "Write Scoped" tier in MCP settings, toggle MCP off then on
+1. Disable the "Navigate" tier in MCP settings, toggle MCP off then on (or restart MCP).
 2. `claude -p "What MCP tools do you have?"`
 
-**Expected:** `vault_create` and other writeScoped tools no longer appear in the response.
+**Expected:** `vault_open` no longer appears. Toggling `Navigate` back on and restarting MCP brings it back. Same shape for `Manage` (controls `vault_rename`/`vault_move`/`vault_delete`/`vault_create_folder`/`vault_batch_frontmatter`) and `Extensions` (controls Dataview/Templater/Tasks/Canvas/Periodic Notes tools).
 
 ---
 
@@ -621,7 +623,7 @@ Toggle setting to `new_or_modified` → subsequent `vault_modify` calls also fir
 
 **Actions:** Observe the loading status.
 
-**Expected:** Message updates like `Connecting to terminal… (attempt 2/8, retry in 0.8s)`. Intervals grow up to 8s and cap there for the remaining attempts. Starting the container mid-retry → connection establishes and the terminal renders.
+**Expected:** Message updates like `Connecting to terminal… (attempt 2/15, retry in 0.8s)`. Intervals grow exponentially (500ms × 1.5^n) and cap at 5s for the remaining attempts. (The 8s cap referenced elsewhere is for *reconnect* after an established session, not initial connect.) Starting the container mid-retry → connection establishes and the terminal renders.
 
 #### Startup progress indicator
 

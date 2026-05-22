@@ -86,12 +86,28 @@ function getTemplaterPlugin(app: App): TemplaterPlugin | null {
 /**
  * Apply the matching Templater folder template to a freshly created file.
  *
- * Returns the template's vault path on success, or null if no template
- * matched (or Templater isn't installed/enabled).
+ * Returns `{ ok: true, template }` with the template's vault path on success,
+ * `{ ok: false, reason: "none" }` when no template matches (silent skip), or
+ * `{ ok: false, reason: "failed", error }` when the template existed but
+ * Templater rejected the apply. The distinction matters because the caller
+ * (vault_create) reviewed the template body and approved it — if the apply
+ * fails, the on-disk file is empty and the user's approved content never
+ * landed. Returning that as a generic "no template" is a silent failure;
+ * surfacing the error lets the caller communicate that the file was created
+ * empty instead of with the approved template body.
  */
-export async function applyTemplaterFolderTemplate(app: App, file: TFile): Promise<string | null> {
+export type TemplaterApplyResult =
+	| { ok: true; template: string }
+	| { ok: false; reason: "none" }
+	| { ok: false; reason: "failed"; error: string };
+
+export async function applyTemplaterFolderTemplate(
+	app: App,
+	file: TFile,
+): Promise<TemplaterApplyResult> {
 	const tp = getTemplaterPlugin(app);
-	if (!tp?.templater || !tp.settings?.enable_folder_templates) return null;
+	if (!tp?.templater || !tp.settings?.enable_folder_templates)
+		return { ok: false, reason: "none" };
 	const folderTemplates = tp.settings.folder_templates ?? [];
 	const dir = file.parent?.path ?? "";
 	// Longest-prefix wins, matching Templater's own resolution.
@@ -104,15 +120,15 @@ export async function applyTemplaterFolderTemplate(app: App, file: TFile): Promi
 		const len = folder.length;
 		if (!best || len > best.len) best = { folder: ft.folder, template: ft.template, len };
 	}
-	if (!best) return null;
+	if (!best) return { ok: false, reason: "none" };
 	const tplFile = app.vault.getFileByPath(best.template);
-	if (!tplFile) return null;
+	if (!tplFile) return { ok: false, reason: "none" };
 	try {
 		await tp.templater.write_template_to_file(tplFile, file);
-		return tplFile.path;
+		return { ok: true, template: tplFile.path };
 	} catch (e) {
 		logger.error("templater", "folder-template application failed", e);
-		return null;
+		return { ok: false, reason: "failed", error: e instanceof Error ? e.message : String(e) };
 	}
 }
 

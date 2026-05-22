@@ -15,7 +15,7 @@ import type { McpToolDef, PermissionTier, ReviewFn } from "./mcp-tools";
 import { defineTool, text, error, gateVaultWrite, forEachMarkdownChunked } from "./mcp-tools";
 import { logger, errMsg } from "./logger";
 import { getInstalledPlugin } from "./obsidian-internals";
-import { isPathWithinDir, isRealPathWithinBase } from "./validation";
+import { isPathWithinDir, isRealPathWithinBase, pathHasParentSegment } from "./validation";
 import { getVaultBasePath, getVaultFullPath } from "./obsidian-internals";
 
 /**
@@ -42,6 +42,7 @@ export interface WriteGate {
 function resolveCanvasFile(app: App, path: string): TFile | null {
 	const f = app.vault.getFileByPath(path);
 	if (!f || f.extension !== "canvas") return null;
+	if (!isVaultPathSafe(app, f.path)) return null;
 	return f;
 }
 
@@ -201,7 +202,22 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 					review: gate.review,
 					oldContent: raw,
 					newContent: updated,
-					apply: () => app.vault.modify(f, updated),
+					apply: async () => {
+						// CAS recheck against editor edits during a long-running
+						// review. The other single-file write tools use runWrite's
+						// recheckFile option; canvas takes gateVaultWrite which has
+						// no equivalent — so re-read here and abort if the canvas
+						// changed between review and apply. Without this, an
+						// approved reviewed-tier canvas edit would silently clobber
+						// the user's concurrent edits in the canvas UI.
+						const current = await app.vault.read(f);
+						if (current !== raw) {
+							throw new Error(
+								`Canvas '${f.path}' changed during review — aborting to avoid clobbering an external edit. Re-run the tool to see the current contents.`,
+							);
+						}
+						await app.vault.modify(f, updated);
+					},
 					successMsg: `Modified ${f.path} (${summary || "no-op"}).`,
 				});
 			},
@@ -299,7 +315,14 @@ const PRIORITY_EMOJI: Record<NonNullable<TaskEntry["priority"]>, string> = {
 };
 const DATE_EMOJI = ["📅", "⏳", "🛫", "📆"] as const;
 const PRIORITY_STRIP_RE = new RegExp(Object.values(PRIORITY_EMOJI).join("|"), "gu");
-const DATE_STRIP_RE = new RegExp(`(?:${DATE_EMOJI.join("|")})\\s*\\d{4}-\\d{2}-\\d{2}`, "gu");
+// Match both emoji-prefix (📅 YYYY-MM-DD) and @field() (e.g. @due(YYYY-MM-DD))
+// forms — DATE_FIELDS accepts both for extraction; the strip must too,
+// otherwise `Do thing @due(2024-01-01)` would yield text containing the raw
+// `@due(...)` even after stripping.
+const DATE_STRIP_RE = new RegExp(
+	`(?:(?:${DATE_EMOJI.join("|")})\\s*\\d{4}-\\d{2}-\\d{2}|@(?:due|scheduled|start)\\(\\d{4}-\\d{2}-\\d{2}\\))`,
+	"gu",
+);
 
 const DATE_FIELDS: { key: "due" | "scheduled" | "start"; re: RegExp }[] = (
 	[
@@ -316,8 +339,11 @@ function parseTaskLine(rawLine: string): Omit<TaskEntry, "path" | "line"> | null
 	// Strip trailing CR (CRLF files) so the body and downstream regex captures
 	// don't include the carriage return. Also accept zero whitespace after `]`
 	// so empty checklist items (`- [ ]`) without a body still parse.
+	// Accept `*` and `+` list markers in addition to `-` (CommonMark-valid;
+	// Obsidian renders all three; the Tasks plugin accepts all three) —
+	// previously we silently ignored checklists written with `*`/`+`.
 	const line = rawLine.replace(/\r$/, "");
-	const m = /^\s*-\s*\[( |x|X)\]\s*(.*)$/.exec(line);
+	const m = /^\s*[-*+]\s*\[( |x|X)\]\s*(.*)$/.exec(line);
 	if (!m) return null;
 	const status: "open" | "done" = m[1].toLowerCase() === "x" ? "done" : "open";
 	const body = m[2];
@@ -340,7 +366,7 @@ function parseTaskLine(rawLine: string): Omit<TaskEntry, "path" | "line"> | null
 	return { rawLine, status, text, ...dates, priority, tags };
 }
 
-export function registerTasksTools(app: App, push: ToolPusher): void {
+export function registerTasksTools(app: App, push: ToolPusher, gate: WriteGate): void {
 	if (!getTasks(app)) return;
 
 	push(
@@ -443,6 +469,8 @@ export function registerTasksTools(app: App, push: ToolPusher): void {
 					return error("Tasks plugin is not available.");
 				const f = app.vault.getFileByPath(path);
 				if (!f) return error(`File not found: ${path}`);
+				if (!isVaultPathSafe(app, f.path))
+					return error("Path resolves outside the vault (symlink).");
 				const content = await app.vault.read(f);
 				const lines = content.split("\n");
 				const targetIdx = line - 1;
@@ -451,24 +479,41 @@ export function registerTasksTools(app: App, push: ToolPusher): void {
 				const originalLine = lines[targetIdx];
 				if (!/^\s*-\s*\[.\]/.test(originalLine))
 					return error(`Line ${line} is not a checklist item.`);
+				// Pre-compute the updated content for the review preview. Tasks
+				// plugin's API is synchronous, so calling it here doesn't side-
+				// effect; we just discard the result on rejection inside apply().
+				let updated: string;
 				try {
-					const updated = plugin.apiV1.executeToggleTaskDoneCommand(originalLine, path);
-					if (typeof updated !== "string")
+					const tasksOut = plugin.apiV1.executeToggleTaskDoneCommand(originalLine, path);
+					if (typeof tasksOut !== "string")
 						return error("Tasks plugin returned an unexpected value.");
-					if (updated === originalLine) return text(`No change at ${path}:${line}.`);
-					// Tasks may return multi-line output when splitting recurring tasks.
-					const newBlock = updated.replace(/\n$/, "");
-					const newLines = [
+					if (tasksOut === originalLine) return text(`No change at ${path}:${line}.`);
+					const newBlock = tasksOut.replace(/\n$/, "");
+					updated = [
 						...lines.slice(0, targetIdx),
 						...newBlock.split("\n"),
 						...lines.slice(targetIdx + 1),
-					];
-					await app.vault.modify(f, newLines.join("\n"));
-					return text(`Toggled ${path}:${line}.`);
+					].join("\n");
 				} catch (e: unknown) {
-					const msg = errMsg(e);
-					return error(`Tasks plugin threw: ${msg}`);
+					return error(`Tasks plugin threw: ${errMsg(e)}`);
 				}
+				// Gate the write through the same boundary as every other vault
+				// write. Previously this handler called app.vault.modify directly,
+				// so a user with only the `extensions` tier (no write tiers) could
+				// rewrite ANY markdown file in the vault that happens to contain
+				// a checklist item.
+				return gateVaultWrite({
+					destPath: f.path,
+					operation: "modify",
+					description: `Toggle task at ${path}:${line}`,
+					writeDir: gate.getWriteDir(),
+					enabledTiers: gate.enabledTiers,
+					review: gate.review,
+					oldContent: content,
+					newContent: updated,
+					apply: () => app.vault.modify(f, updated),
+					successMsg: `Toggled ${path}:${line}.`,
+				});
 			},
 		}),
 	);
@@ -477,6 +522,9 @@ export function registerTasksTools(app: App, push: ToolPusher): void {
 // ── Templater ───────────────────────────────────────
 
 interface TemplaterApi {
+	settings?: {
+		templates_folder?: string;
+	};
 	templater?: {
 		create_new_note_from_template?: (
 			template: TFile | string | { path: string },
@@ -492,6 +540,17 @@ function getTemplater(app: App): TemplaterApi | null {
 	if (!plugin?.templater || typeof plugin.templater.create_new_note_from_template !== "function")
 		return null;
 	return plugin;
+}
+
+/** True if the candidate path is inside Templater's configured templates folder.
+ *  When the folder isn't configured (rare), refuse all paths — Templater itself
+ *  refuses too without a templates folder, so failing closed matches its UX. */
+function isInsideTemplatesFolder(plugin: TemplaterApi, templatePath: string): boolean {
+	const folder = plugin.settings?.templates_folder;
+	if (!folder || folder.trim() === "") return false;
+	const cleanFolder = folder.replace(/^\/+|\/+$/g, "");
+	if (cleanFolder === "") return false;
+	return isPathWithinDir(templatePath, cleanFolder);
 }
 
 export function registerTemplaterTools(app: App, push: ToolPusher, gate: WriteGate): void {
@@ -513,6 +572,19 @@ export function registerTemplaterTools(app: App, push: ToolPusher, gate: WriteGa
 				const plugin = getTemplater(app);
 				if (!plugin?.templater?.create_new_note_from_template)
 					return error("Templater plugin is not available.");
+				// Restrict template path to Templater's configured templates folder.
+				// Without this, an agent with writeScoped + extensions tiers could
+				// vault_create a malicious template under vaultWriteDir containing
+				// `<% tp.system.run_external_command(...) %>` and then invoke this
+				// tool to execute it (Templater runs templates in the renderer
+				// process, so this is arbitrary JS execution under the user's
+				// identity if the user has Templater's user-system-command toggle
+				// enabled). This restriction matches Templater's own UX — templates
+				// are expected to live in the templates folder.
+				if (!isInsideTemplatesFolder(plugin, templatePath))
+					return error(
+						`Template must live inside Templater's configured templates folder. Got '${templatePath}'.`,
+					);
 				// Templater's API treats a string `template` arg inconsistently across
 				// versions — in current builds it writes the string as literal content
 				// instead of resolving it as a template file. Resolve to a TFile ourselves.
@@ -521,13 +593,21 @@ export function registerTemplaterTools(app: App, push: ToolPusher, gate: WriteGa
 					return error(
 						`Template not found at '${templatePath}'. Pass a vault-relative path to a markdown template file.`,
 					);
-				// Reject path-traversal in user-supplied folder/filename — otherwise
-				// Templater can write outside the gated destPath we compute below.
-				if (folder !== undefined && (folder.includes("..") || folder.includes("\\"))) {
-					return error("'folder' may not contain '..' or backslashes.");
+				// Reject path-traversal in user-supplied folder/filename. The earlier
+				// substring `folder.includes("..")` rejected legitimate names like
+				// `notes..backup` whose segments are not `..` — switch to the segment-
+				// aware helper used elsewhere for consistency.
+				if (
+					folder !== undefined &&
+					(pathHasParentSegment(folder) || folder.includes("\\"))
+				) {
+					return error("'folder' may not contain a '..' segment or backslashes.");
 				}
-				if (filename !== undefined && /[/\\]|\.\./.test(filename)) {
-					return error("'filename' may not contain slashes or '..'.");
+				if (filename !== undefined && /[/\\]/.test(filename)) {
+					return error("'filename' may not contain slashes.");
+				}
+				if (filename !== undefined && pathHasParentSegment(filename)) {
+					return error("'filename' may not contain a '..' segment.");
 				}
 				// Predict Templater's destination path so we can gate before it writes.
 				// Templater itself provides no pre-flight API; replicate its naming:
@@ -656,7 +736,14 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 				// The format string is plugin-controlled but moment passes
 				// through any non-token characters verbatim — including `/` and
 				// `..`. Reject paths whose realpath escapes the vault before we
-				// touch the filesystem.
+				// touch the filesystem. Also reject `..` segments outright: a
+				// format like `../sibling-folder/foo` stays inside the vault
+				// realpath but still writes to an unexpected location.
+				if (pathHasParentSegment(path)) {
+					return error(
+						`Periodic note path '${path}' contains a '..' segment. Check the Periodic Notes format setting.`,
+					);
+				}
 				if (!isVaultPathSafe(app, path)) {
 					return error(
 						`Periodic note path '${path}' resolves outside the vault. Check the Periodic Notes format setting for path-traversal characters.`,
@@ -797,7 +884,7 @@ export function registerExtensionTools(
 	const gate: WriteGate = { getWriteDir, enabledTiers, review };
 	registerCanvasTools(app, push, gate);
 	registerDataviewTools(app, push);
-	registerTasksTools(app, push);
+	registerTasksTools(app, push, gate);
 	registerTemplaterTools(app, push, gate);
 	registerPeriodicNotesTools(app, push, gate);
 	registerExtensionsIntrospection(app, push);

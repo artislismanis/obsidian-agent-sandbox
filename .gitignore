@@ -43,6 +43,8 @@ workspace/vault/
 
 # Claude Code local overrides
 **/.claude/settings.local.json
+# Claude Code scheduler state — runtime artefact, never committed
+**/.claude/scheduled_tasks.lock
 tmux-*.log
 
 # test artifacts

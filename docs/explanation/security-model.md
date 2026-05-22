@@ -44,7 +44,7 @@ The MCP server's tools are split into two kinds of tier:
 
 ## Layer 4 — Human-in-the-loop review
 
-When `writeReviewed` is enabled, every write op routes through a review modal. The 13 gated ops are: 11 single-file writes (`create`, `modify`, `append`, `prepend`, `patch`, `search_replace`, `frontmatter_set`, `frontmatter_delete`, `rename`, `move`, `delete`) plus `create_folder` and the batch path (`batch_frontmatter`, which uses its own `BatchReviewModal`). The single-file modal shows:
+When `writeReviewed` is enabled, every reviewed-tier write op AND every manage-tier op (when manage is also on) routes through a review modal. The reviewed-tier provides eight `_reviewed`-suffixed ops (`create`, `modify`, `append`, `prepend`, `patch`, `search_replace`, `frontmatter_set`, `frontmatter_delete`). Manage adds five more when enabled (`rename`, `move`, `delete`, `create_folder`, `batch_frontmatter`). Extensions adds three more (canvas modify, templater create, periodic note create). Manage/extensions ops go through `gateVaultWrite`, which routes to review only when the destination is outside the configured write directory. The single-file modal shows:
 
 - For content edits: a unified diff of old vs new.
 - For frontmatter edits: JSON-stringified old vs new FM.
@@ -56,7 +56,7 @@ The gate is **structural**: every write handler in `mcp-tools.ts` constructs a `
 
 ## Layer 5 — Rate limiting + audit
 
-- **Rate limit** per tool: token-bucket, 60/min for read tier and navigate, 20/min for writes.
+- **Rate limit** per tool: token-bucket. 60/min for `read` and `navigate`; 20/min for every other tier (`writeScoped`, `writeReviewed`, `writeVault`, `manage`, `extensions`, `agent`). The "write" budget covers read-shaped extensions tools (Dataview/Tasks queries, Canvas read) too — they get the lower budget by virtue of the tier they belong to, not the operation they perform.
 - **Audit log** — in-memory ring buffer of 200 entries, plus append-only JSONL at `vault/.oas/mcp-audit.jsonl` with 1 MB single-generation rotation. `GET /mcp/audit` returns the ring buffer.
 
 Neither layer prevents malicious use — they make it visible after the fact.

@@ -20,8 +20,15 @@ export function pathHasParentSegment(p: string): boolean {
 }
 
 export function isValidWriteDir(dir: string): boolean {
-	if (!dir.trim()) return false;
-	return !pathHasParentSegment(dir) && !dir.startsWith("/") && dir !== ".";
+	const trimmed = dir.trim();
+	if (!trimmed) return false;
+	// Reject trivial current-directory aliases that pass naive checks but break
+	// `isPathWithinDir` downstream (which normalises `./` to `.` and then
+	// rejects all paths as "outside the empty-after-strip directory"). A user
+	// setting `./` would see writeScoped silently deny every write with no
+	// clear UI signal — fail closed at validation instead.
+	if (trimmed === "." || trimmed === "./" || trimmed === "/") return false;
+	return !pathHasParentSegment(trimmed) && !trimmed.startsWith("/");
 }
 
 const VALID_SESSION_NAME = /^[\w.-]+$/;
@@ -33,8 +40,13 @@ const VALID_SESSION_NAME = /^[\w.-]+$/;
  * rejecting shell metacharacters before injection is the only thing
  * preventing a hand-edited persisted view-state from re-executing a
  * malicious name on every Obsidian start.
+ *
+ * Also explicitly rejects `.` and `..` — those are dot-only names that
+ * confuse `session .` / `session ..` invocations and serve no real
+ * use case as session identifiers.
  */
 export function isValidSessionName(name: string): boolean {
+	if (name === "." || name === "..") return false;
 	return VALID_SESSION_NAME.test(name);
 }
 

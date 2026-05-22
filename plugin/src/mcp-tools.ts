@@ -14,7 +14,7 @@ import {
 	previewTemplaterFolderTemplate,
 	withTemplaterHookSuppressed,
 } from "./templater-adapter";
-import { errMsg } from "./logger";
+import { errMsg, logger } from "./logger";
 import { getVaultBasePath, getVaultFullPath } from "./obsidian-internals";
 
 export type { WriteOperation };
@@ -197,29 +197,40 @@ function isVaultPathSafe(app: App, vaultPath: string): boolean {
 	return isRealPathWithinBase(base, full);
 }
 
-/** Parallel-chunked iteration over markdown files; handler returning true stops the walk. */
+/** Parallel-chunked iteration over markdown files; handler returning true stops the walk.
+ *
+ * Returns the count of files that failed to read so callers can surface a
+ * "scan skipped N files" hint in their response. A single unreadable file
+ * (permission glitch, transient FS error) doesn't abort the scan, but the
+ * count keeps the failure observable rather than disappearing into an empty
+ * string substituted for the missing content. */
 export async function forEachMarkdownChunked(
 	app: App,
 	handler: (file: TFile, content: string) => boolean | void | Promise<boolean | void>,
 	files: TFile[] = app.vault.getMarkdownFiles(),
 	chunkSize = 20,
-): Promise<void> {
+): Promise<{ readFailures: number }> {
+	let readFailures = 0;
 	for (let i = 0; i < files.length; i += chunkSize) {
 		const chunk = files.slice(i, i + chunkSize);
-		// Tolerate per-file read errors. A single unreadable file (permission
-		// glitch, transient FS error) used to abort the entire scan via
-		// Promise.all rejection — meaning vault_search / vault_orphans /
-		// vault_suggest_links / vault_tasks_query would fail wholesale because
-		// of one bad file. Skip the bad file with empty content so the scan
-		// completes and surfaces partial results.
 		const contents = await Promise.all(
-			chunk.map((f) => app.vault.cachedRead(f).catch(() => "")),
+			chunk.map((f) =>
+				app.vault.cachedRead(f).catch((err) => {
+					readFailures++;
+					logger.warn(
+						"MCP",
+						`cachedRead failed for ${f.path}: ${err instanceof Error ? err.message : String(err)}`,
+					);
+					return "";
+				}),
+			),
 		);
 		for (let j = 0; j < chunk.length; j++) {
 			const stop = await handler(chunk[j], contents[j]);
-			if (stop) return;
+			if (stop) return { readFailures };
 		}
 	}
+	return { readFailures };
 }
 
 export type ReviewFn = (request: {
@@ -331,7 +342,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		handler: (file: TFile, content: string) => boolean | void | Promise<boolean | void>,
 		files?: TFile[],
 		chunkSize?: number,
-	) => Promise<void> = (handler, files, chunkSize) =>
+	) => Promise<{ readFailures: number }> = (handler, files, chunkSize) =>
 		forEachMarkdownChunked(app, handler, files, chunkSize);
 
 	/** Cached compute, falling through directly when no cache is wired (tests). */
@@ -339,9 +350,20 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		return cache ? cache.get(key, compute) : compute();
 	}
 
+	function visibleMarkdownFiles(): TFile[] {
+		// Apply pathFilter at the iteration boundary so vault-wide tag /
+		// property counts don't leak the existence of tags or properties
+		// from blocklisted files. Without this, an agent with `blocklist:
+		// ["secrets/"]` could still see tag/property totals that included
+		// files it can't read.
+		const all = app.vault.getMarkdownFiles();
+		if (!pathFilter) return all;
+		return all.filter((f) => isPathAllowed(f.path, pathFilter.allowlist, pathFilter.blocklist));
+	}
+
 	function computeTagCountsSorted(): [string, number][] {
 		const counts: Record<string, number> = {};
-		for (const file of app.vault.getMarkdownFiles()) {
+		for (const file of visibleMarkdownFiles()) {
 			const cache = app.metadataCache.getFileCache(file);
 			for (const tag of formatTags(cache)) {
 				counts[tag] = (counts[tag] ?? 0) + 1;
@@ -352,7 +374,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 
 	function computePropertyCountsSorted(): [string, number][] {
 		const counts: Record<string, number> = {};
-		for (const file of app.vault.getMarkdownFiles()) {
+		for (const file of visibleMarkdownFiles()) {
 			const cache = app.metadataCache.getFileCache(file);
 			const fm = cache?.frontmatter;
 			if (!fm) continue;
@@ -399,7 +421,15 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				let files = app.vault.getFiles();
 				if (folder) files = files.filter((f) => isPathWithinDir(f.path, folder));
 				if (extension) files = files.filter((f) => f.extension === extension);
-				return text(files.map((f) => f.path).join("\n") || "(no files)");
+				// Apply pathFilter so blocklisted regions don't leak file
+				// paths to the agent. Without this, `vault_list({folder:
+				// "secrets"})` returned the full path list for any folder
+				// regardless of the configured allow/block list.
+				const paths = filterPaths(
+					files.map((f) => f.path),
+					pathFilter,
+				);
+				return text(paths.join("\n") || "(no files)");
 			},
 		}),
 	);
@@ -421,6 +451,14 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				const results: string[] = [];
 				await forEachMarkdown(
 					(file, content) => {
+						// Drop blocklisted source files so vault_search doesn't
+						// leak content snippets (and existence) from paths the
+						// agent can't otherwise read.
+						if (
+							pathFilter &&
+							!isPathAllowed(file.path, pathFilter.allowlist, pathFilter.blocklist)
+						)
+							return;
 						const match = search(content);
 						if (!match) return;
 						const snippet = extractSnippet(content, match.matches[0]?.[0] ?? 0);
@@ -457,6 +495,13 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				const search = prepareFuzzySearch(query);
 				const hits: { path: string; score: number; snippet: string }[] = [];
 				await forEachMarkdown((file, content) => {
+					// Skip blocklisted source files (info-leak parity with
+					// vault_search above).
+					if (
+						pathFilter &&
+						!isPathAllowed(file.path, pathFilter.allowlist, pathFilter.blocklist)
+					)
+						return;
 					const match = search(content);
 					if (!match) return;
 					const snippet = extractSnippet(content, match.matches[0]?.[0] ?? 0);
@@ -650,6 +695,16 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					)
 						continue;
 					for (const [target, count] of Object.entries(targets)) {
+						// Also filter the TARGET string. Unresolved targets don't
+						// exist on disk, but they reveal the link-text the user
+						// has typed (e.g. "Project X notes") — which can leak
+						// the user's vault structure / naming. Symmetric with
+						// the source filter above.
+						if (
+							pathFilter &&
+							!isPathAllowed(target, pathFilter.allowlist, pathFilter.blocklist)
+						)
+							continue;
 						entries.push(`${target} (from ${source}, ${count}x)`);
 					}
 				}
@@ -676,6 +731,12 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				let files = app.vault.getFiles();
 				if (folder) files = files.filter((f) => isPathWithinDir(f.path, folder));
 				if (extension) files = files.filter((f) => f.extension === extension);
+				// Drop blocklisted entries BEFORE slicing to limit so the
+				// returned set is N visible files, not N-K.
+				if (pathFilter)
+					files = files.filter((f) =>
+						isPathAllowed(f.path, pathFilter.allowlist, pathFilter.blocklist),
+					);
 				files.sort((a, b) => b.stat.mtime - a.stat.mtime);
 				const results = files.slice(0, limit).map((f) => {
 					const date = new Date(f.stat.mtime).toISOString();
@@ -712,7 +773,10 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						);
 					const compute = (): Array<[string, number]> => {
 						const values: Record<string, number> = {};
-						for (const file of app.vault.getMarkdownFiles()) {
+						// Filter to visible files so blocklisted regions don't
+						// leak property-value frequencies (matches vault_tags /
+						// vault_properties totals which use visibleMarkdownFiles).
+						for (const file of visibleMarkdownFiles()) {
 							const fm = app.metadataCache.getFileCache(file)?.frontmatter;
 							if (fm && Object.prototype.hasOwnProperty.call(fm, property)) {
 								const val = JSON.stringify(fm[property]);
@@ -744,9 +808,24 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 	function computeLinkGraph(): LinkGraph {
 		const forward = new Map<string, Set<string>>();
 		const reverse = new Map<string, Set<string>>();
+		// When pathFilter is set, drop edges where either endpoint is
+		// out-of-allowlist BEFORE building forward/reverse. Without this:
+		//  - vault_orphans can be fooled: a visible file linked only by a
+		//    hidden file appears "not orphan" but should be, leaking the
+		//    hidden file's existence.
+		//  - vault_graph_clusters unions visible nodes through hidden hubs,
+		//    leaking which hidden bridges exist between visible regions.
+		//  - vault_graph_path traverses hidden intermediates and reports a
+		//    path that contains nodes the agent can't otherwise see.
+		// Per-tool filterPaths-on-output doesn't recover this — the structure
+		// itself leaks. Filter at graph construction.
+		const allow = (p: string): boolean =>
+			!pathFilter || isPathAllowed(p, pathFilter.allowlist, pathFilter.blocklist);
 		for (const [source, targets] of Object.entries(app.metadataCache.resolvedLinks)) {
+			if (!allow(source)) continue;
 			if (!forward.has(source)) forward.set(source, new Set());
 			for (const target of Object.keys(targets)) {
+				if (!allow(target)) continue;
 				forward.get(source)!.add(target);
 				if (!reverse.has(target)) reverse.set(target, new Set());
 				reverse.get(target)!.add(source);
@@ -756,7 +835,13 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 	}
 
 	function buildLinkGraph(): LinkGraph {
-		return memo("graph", computeLinkGraph);
+		// Cache key includes filter digest so a filter-toggle (settings
+		// change → MCP restart in practice) never serves a stale graph from
+		// a different filter setting.
+		const filterKey = pathFilter
+			? `${pathFilter.allowlist.join(",")}|${pathFilter.blocklist.join(",")}`
+			: "";
+		return memo(`graph:${filterKey}`, computeLinkGraph);
 	}
 
 	tools.push(
@@ -851,13 +936,24 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					return trail.join(" → ");
 				};
 
+				// Walk both forward and reverse edges. The "shortest link path"
+				// query is naturally undirected (link A→B implies "connected" in
+				// either direction from the user's mental model), and
+				// vault_graph_neighborhood already walks both directions. The
+				// previous forward-only walk reported "No path found" between
+				// notes that ARE connected through backlinks, surprising agents.
+				// Graph is already filtered at construction (computeLinkGraph),
+				// so the intermediate-filter check below is now redundant — kept
+				// for defense in depth in case the cached graph ever predates
+				// a filter change.
 				while (head < queue.length) {
 					const current = queue[head++];
-					for (const neighbor of graph.forward.get(current) ?? []) {
+					const neighbors = [
+						...(graph.forward.get(current) ?? []),
+						...(graph.reverse.get(current) ?? []),
+					];
+					for (const neighbor of neighbors) {
 						if (visited.has(neighbor)) continue;
-						// Skip intermediate nodes the agent can't see. The target
-						// is the only node allowed to be filter-checked as endpoint
-						// above; everything between must also be visible.
 						if (
 							neighbor !== targetPath &&
 							pathFilter &&
@@ -1097,6 +1193,10 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		 *  raced the review. Without this, the user could approve a stale diff
 		 *  and the apply would clobber the change. */
 		recheckFile?: TFile;
+		/** Override the CAS comparison target when `oldContent` is a derived
+		 *  representation (e.g. JSON-stringified frontmatter) rather than the
+		 *  raw file contents. When omitted, recheck falls back to `oldContent`. */
+		recheckExpected?: string;
 	}): Promise<McpToolResult> {
 		if (op.review) {
 			const result = await op.review({
@@ -1108,18 +1208,30 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				affectedLinks: op.affectedLinks,
 			});
 			if (!result.approved) return error("Change rejected by user.");
-			if (op.recheckFile && op.oldContent !== undefined) {
+			const expected = op.recheckExpected ?? op.oldContent;
+			if (op.recheckFile && expected !== undefined) {
 				const current = await app.vault.read(op.recheckFile);
-				if (current !== op.oldContent) {
+				if (current !== expected) {
 					return error(
 						`File '${op.filePath}' changed during review — aborting to avoid clobbering an external edit. Re-run the tool to see the current contents.`,
 					);
 				}
 			}
 		}
-		const applyResult = await op.apply();
-		const msg = op.successMsg.replace("{result}", applyResult ?? "");
-		return text(msg);
+		// Catch apply errors and return them as clean tool errors instead of
+		// propagating throws. Without this, an apply() rejection (e.g. the
+		// template-application-failed throw inside vault_create) bubbles out
+		// of runWrite and tests that call handlers directly see an exception
+		// instead of a result with isError. The MCP server runtime wraps
+		// throws too, but mirroring gateVaultWrite's structure keeps both
+		// paths returning well-formed McpToolResult.
+		try {
+			const applyResult = await op.apply();
+			const msg = op.successMsg.replace("{result}", applyResult ?? "");
+			return text(msg);
+		} catch (e) {
+			return error(errMsg(e));
+		}
 	}
 
 	/** Parse `raw` as JSON; fall back to the raw string if it isn't valid JSON. */
@@ -1176,8 +1288,24 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						return error(
 							"Path may not contain a '..' segment or start with '/' or '\\'.",
 						);
+					// Reject Windows drive-letter / NTFS alt-data-stream paths. The
+					// realpath check catches escape, but `foo.md:bar` would write to
+					// an alternate stream invisible in the file tree.
+					if (/^[A-Za-z]:/.test(path) || path.includes(":"))
+						return error(
+							"Path may not contain drive letters or ':' (alt-data-stream).",
+						);
 					const guard = guardPath(path);
 					if (guard) return guard;
+					// Honour pathFilter for creation paths too — without this, a
+					// blocklisted folder (`secrets/`) could be created-into by an
+					// agent that has writeScoped or writeVault but not read access
+					// there. Symmetric with how vault_modify resolves existing files.
+					if (
+						pathFilter &&
+						!isPathAllowed(path, pathFilter.allowlist, pathFilter.blocklist)
+					)
+						return error("Path is blocked by allow/block list.");
 					if (!isVaultPathSafe(app, path))
 						return error("Path resolves outside the vault (symlink).");
 					if (app.vault.getFileByPath(path))
@@ -1204,10 +1332,20 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						apply: () =>
 							withTemplaterHookSuppressed(app, async () => {
 								const created = await app.vault.create(path, content);
-								const tmpl = tryTemplate
-									? await applyTemplaterFolderTemplate(app, created)
-									: null;
-								return tmpl ? ` (applied template ${tmpl})` : "";
+								if (!tryTemplate) return "";
+								const result = await applyTemplaterFolderTemplate(app, created);
+								if (result.ok) return ` (applied template ${result.template})`;
+								if (result.reason === "failed") {
+									// File was created but the reviewed template body
+									// failed to land. Surface as a hard error so the
+									// agent (and user) know the on-disk state doesn't
+									// match what was approved — previously this
+									// disappeared into a generic "Created" success.
+									throw new Error(
+										`File created but template application failed: ${result.error}. The file is empty; the reviewed template body did NOT land.`,
+									);
+								}
+								return "";
 							}),
 						successMsg: `Created ${path}{result}`,
 					});
@@ -1302,6 +1440,13 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					const f = result.file;
 					const value = parseJsonOrString(raw);
 					const oldFm = frontmatterSnapshot(f);
+					// Capture full file content for CAS recheck — frontmatter alone
+					// isn't enough because editor edits could change body content
+					// between the review and apply, and processFrontMatter only
+					// touches the YAML block, but the user reviewed the whole file
+					// implicitly. Use full-content CAS for symmetry with modify/
+					// append/etc.
+					const oldFullContent = review ? await app.vault.read(f) : undefined;
 					return runWrite({
 						operation: "frontmatter_set",
 						filePath: f.path,
@@ -1314,6 +1459,12 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 								fm[property] = value;
 							}),
 						successMsg: `Set ${property} on ${f.path}`,
+						// Recheck full content so external edits during a long
+						// review abort the FM mutation cleanly instead of racing.
+						// recheckExpected overrides the comparison target since
+						// oldContent above is the FM-only JSON snapshot.
+						recheckFile: oldFullContent !== undefined ? f : undefined,
+						recheckExpected: oldFullContent,
 					});
 				},
 			}),
@@ -1343,6 +1494,11 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					if (!Object.prototype.hasOwnProperty.call(oldFm, property))
 						return error(`Property '${property}' not found in frontmatter.`);
 					const { [property]: _dropped, ...newFm } = oldFm;
+					// CAS recheck against editor edits during long reviews —
+					// mirrors vault_frontmatter_set above. Without this, an
+					// approved delete races silently against the user's
+					// concurrent FM edits.
+					const oldFullContent = review ? await app.vault.read(f) : undefined;
 					return runWrite({
 						operation: "frontmatter_delete",
 						filePath: f.path,
@@ -1355,6 +1511,8 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 								delete fm[property];
 							}),
 						successMsg: `Deleted ${property} from ${f.path}`,
+						recheckFile: oldFullContent !== undefined ? f : undefined,
+						recheckExpected: oldFullContent,
 					});
 				},
 			}),
@@ -1386,6 +1544,15 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					regex: useRegex = false,
 					caseSensitive = true,
 				}) => {
+					// Reject empty / whitespace-only search. An empty literal
+					// search escapes to "" → `new RegExp("", "g")` matches the
+					// zero-width position between every character. With a 5 MiB
+					// content cap, a 1 KiB `replacement` would amplify to
+					// ~5 GiB on disk via app.vault.modify. Reject up-front.
+					if (search.length === 0)
+						return error(
+							"'search' must be a non-empty pattern. Use vault_modify to replace whole file contents.",
+						);
 					const result = resolveForWrite({ file, path });
 					if (!result.ok) return result.error;
 					const f = result.file;
@@ -1663,11 +1830,16 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		scopeNote: `Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.`,
 		guardPath: guardWithinWriteDir,
 		resolveForWrite: (args) => {
-			const path = args.path as string | undefined;
-			const guard = path ? guardWithinWriteDir(path) : null;
-			if (guard) return { ok: false, error: guard };
+			// Gate on the resolved TFile.path, not the caller-supplied args.
+			// When the caller passes `file:` (wikilink-style basename) without
+			// `path:`, resolveFile walks the whole vault to find a match — so
+			// gating on `args.path` alone left a writeScoped tool free to write
+			// any file in the vault by basename. Check the resolved path here.
 			const f = resolveFile(app, args, pathFilter);
-			return f ? { ok: true, file: f } : { ok: false, error: error("File not found.") };
+			if (!f) return { ok: false, error: error("File not found.") };
+			const guard = guardWithinWriteDir(f.path);
+			if (guard) return { ok: false, error: guard };
+			return { ok: true, file: f };
 		},
 	});
 
@@ -1766,14 +1938,27 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				const newPath = dir ? `${dir}/${trimmed}${ext}` : `${trimmed}${ext}`;
 				if (!isVaultPathSafe(app, newPath))
 					return error("Destination resolves outside the vault.");
+				if (
+					pathFilter &&
+					!isPathAllowed(newPath, pathFilter.allowlist, pathFilter.blocklist)
+				)
+					return error("Destination path is blocked by allow/block list.");
 				if (newPath !== f.path && app.vault.getFileByPath(newPath))
 					return error(`Destination already exists: ${newPath}`);
-				return runWrite({
+				// Gate the manage op through the vault-write boundary. Without
+				// this, `manage` tier with `mcpVaultWrites: "none"` could rename
+				// ANY vault file — the runWrite call below only checks `review`,
+				// and `reviewFn` is undefined when no vault-wide write mode is
+				// on. gateVaultWrite enforces writeDir / writeVault / writeReviewed
+				// semantics, then chains into runWrite for the rename + recheck.
+				return gateVaultWrite({
+					destPath: f.path,
 					operation: "rename",
-					filePath: f.path,
 					description: `Rename ${f.path} → ${newPath}`,
-					affectedLinks: collectBacklinks(f.path),
+					writeDir: getWriteDir(),
+					enabledTiers,
 					review: reviewFn,
+					affectedLinks: collectBacklinks(f.path),
 					apply: () => app.fileManager.renameFile(f, newPath),
 					successMsg: `Renamed to ${newPath}`,
 				});
@@ -1813,12 +1998,20 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// destination is the same path as the source (no actual move).
 				if (newPath !== f.path && app.vault.getFileByPath(newPath))
 					return error(`Destination already exists: ${newPath}`);
-				return runWrite({
+				// Gate via writeDir/writeReviewed/writeVault — runWrite alone
+				// only checks `review`. With `manage` tier on + `mcpVaultWrites:
+				// "none"` (reviewFn undefined), runWrite would apply immediately
+				// against any vault file. Gate the SOURCE path (move semantically
+				// removes f from its current location); destination is constrained
+				// by isPathAllowed above.
+				return gateVaultWrite({
+					destPath: f.path,
 					operation: "move",
-					filePath: f.path,
 					description: `Move ${f.path} → ${newPath}`,
-					affectedLinks: collectBacklinks(f.path),
+					writeDir: getWriteDir(),
+					enabledTiers,
 					review: reviewFn,
+					affectedLinks: collectBacklinks(f.path),
 					apply: () => app.fileManager.renameFile(f, newPath),
 					successMsg: `Moved to ${newPath}`,
 				});
@@ -1840,12 +2033,18 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			handler: async ({ file, path }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
-				return runWrite({
+				// Gate via writeDir/writeReviewed/writeVault — runWrite alone
+				// only checks `review`. With `manage` tier on + `mcpVaultWrites:
+				// "none"` (reviewFn undefined), runWrite would trash any vault
+				// file with no boundary enforcement.
+				return gateVaultWrite({
+					destPath: f.path,
 					operation: "delete",
-					filePath: f.path,
 					description: `Delete ${f.path}`,
-					affectedLinks: collectBacklinks(f.path),
+					writeDir: getWriteDir(),
+					enabledTiers,
 					review: reviewFn,
+					affectedLinks: collectBacklinks(f.path),
 					apply: () => app.vault.trash(f, true),
 					successMsg: `Deleted ${f.path}`,
 				});
@@ -2030,14 +2229,18 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					.describe("Current agent state"),
 				sessionName: z
 					.string()
+					.max(128)
 					.optional()
 					.describe(
-						"tmux session name if running inside one (e.g. $(tmux display-message -p '#S')). Omit for an unnamed session.",
+						"tmux session name if running inside one (e.g. $(tmux display-message -p '#S')). Omit for an unnamed session. Max 128 chars.",
 					),
 				detail: z
 					.string()
+					.max(1024)
 					.optional()
-					.describe("Short human-readable context (e.g. tool name, question)"),
+					.describe(
+						"Short human-readable context (e.g. tool name, question). Max 1024 chars.",
+					),
 			},
 			handler: async ({ status, sessionName, detail }) => {
 				const name = (sessionName ?? "").trim() || DEFAULT_SESSION_KEY;
