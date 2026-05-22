@@ -47,7 +47,7 @@
 		"eslint": "^10.3.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^17.0.5",
-		"mocha": "^10.8.2",
+		"mocha": "^11.7.6",
 		"obsidian": "^1.7.2",
 		"obsidian-launcher": "^3.0.3",
 		"prettier": "^3.8.3",
