@@ -49,7 +49,7 @@ jobs:
           # Walk the full workspace/.claude tree (skills, commands, hooks,
           # scripts) rather than hardcoded subdirs — new shell scripts under
           # new subdirs (e.g. skill-creator output) would otherwise skip
-          # shellcheck silently. Same for container/.
+          # static analysis silently. Same for container/.
           {
             find container/scripts container/configs workspace/.claude \
               -type f \( -name '*.sh' -o -name '*.bash' \) -print

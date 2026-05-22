@@ -30,7 +30,11 @@ describe("Plugin loads", function () {
 		// even if the plugin's status bar is broken. Verify the plugin-owned
 		// element specifically by looking for the "Sandbox:" prefix that
 		// StatusBarManager always writes (see status-bar.ts STATE_DISPLAY).
-		const sandboxItem = $(".status-bar .status-bar-item*=Sandbox");
+		// WDIO's `*=text` doesn't compose with descendant combinators (` `),
+		// so use XPath here — same approach as settings.e2e.ts.
+		const sandboxItem = $(
+			"//*[contains(concat(' ', normalize-space(@class), ' '), ' status-bar-item ') and contains(., 'Sandbox')]",
+		);
 		await sandboxItem.waitForExist({ timeout: 10000 });
 	});
 
