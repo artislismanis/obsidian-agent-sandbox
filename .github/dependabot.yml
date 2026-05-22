@@ -55,6 +55,15 @@ updates:
     cooldown:
       default-days: 3
       semver-major-days: 7
+    # Hold @types/node to the major matching the runtime we actually use.
+    # The Dockerfile (`NODE_MAJOR=24`) and `package.json` engines pin Node 24
+    # LTS; pulling @types/node 25 surfaces Node 25-only APIs in autocomplete
+    # that would fail at runtime in the container. Drop this ignore (or bump
+    # the major) when we adopt Node 26 LTS.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
     # Group related ecosystems into single PRs so reviewers see one
     # coherent bump set instead of N separate PRs that all touch the
     # lockfile. Patterns are evaluated in order; first match wins.
