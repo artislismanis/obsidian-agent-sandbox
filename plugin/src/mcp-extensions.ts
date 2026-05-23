@@ -12,10 +12,18 @@ import type { App, TFile } from "obsidian";
 import { TFile as TFileClass, moment } from "obsidian";
 import { z } from "zod/v4";
 import type { McpToolDef, PathFilter, PermissionTier, ReviewFn } from "./mcp-tools";
-import { defineTool, text, error, gateVaultWrite, forEachMarkdownChunked } from "./mcp-tools";
+import {
+	defineTool,
+	text,
+	error,
+	gateVaultWrite,
+	forEachMarkdownChunked,
+	isPathAllowedByFilter,
+	validateNewVaultPath,
+} from "./mcp-tools";
 import { logger, errMsg } from "./logger";
 import { getInstalledPlugin, isVaultPathSafe } from "./obsidian-internals";
-import { isPathAllowed, isPathWithinDir, pathHasParentSegment } from "./validation";
+import { isPathWithinDir, pathHasParentSegment } from "./validation";
 
 type ToolPusher = (tool: McpToolDef) => void;
 
@@ -31,10 +39,11 @@ export interface WriteGate {
 	pathFilter?: PathFilter;
 }
 
-/** True when the gate's path filter (if any) allows this path. */
+/** True when the gate's path filter (if any) allows this path. Thin wrapper
+ *  over the shared `isPathAllowedByFilter` so call sites read with a noun
+ *  ("gateAllowsPath") rather than a predicate expression. */
 function gateAllowsPath(gate: WriteGate, vaultPath: string): boolean {
-	if (!gate.pathFilter) return true;
-	return isPathAllowed(vaultPath, gate.pathFilter.allowlist, gate.pathFilter.blocklist);
+	return isPathAllowedByFilter(vaultPath, gate.pathFilter);
 }
 
 function resolveCanvasFile(app: App, path: string, gate: WriteGate): TFile | null {
@@ -660,14 +669,13 @@ export function registerTemplaterTools(app: App, push: ToolPusher, gate: WriteGa
 				const destFolder = (folder ?? "").replace(/^\/+|\/+$/g, "");
 				const destName = filename ?? (templateFile as TFile).basename;
 				const destPath = destFolder ? `${destFolder}/${destName}.md` : `${destName}.md`;
-				// Defense-in-depth symlink check on the computed destination —
-				// sibling write tools (vault_create, vault_create_folder,
-				// vault_rename, vault_move, vault_periodic_note) all call this;
-				// this path historically skipped it.
-				if (!isVaultPathSafe(app, destPath))
-					return error("Destination resolves outside the vault (symlink).");
-				if (!gateAllowsPath(gate, destPath))
-					return error("Path is blocked by allow/block list.");
+				// Defense-in-depth shape + pathFilter + symlink-realpath checks on
+				// the computed destination — sibling write tools (vault_create,
+				// vault_create_folder, vault_rename, vault_move,
+				// vault_periodic_note) all gate through this helper; this path
+				// historically skipped the symlink check entirely.
+				const destError = validateNewVaultPath(app, destPath, gate.pathFilter);
+				if (destError) return destError;
 				return gateVaultWrite({
 					destPath,
 					operation: "create",

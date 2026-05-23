@@ -535,6 +535,18 @@ export class DockerManager {
 
 		let shell: string;
 		let args: string[];
+		// Symmetric with run(): reject control bytes in every env value before
+		// any shell envelope so a hand-edited data.json with CR/LF/NUL in
+		// vaultPath/writeDir can't terminate the export/set statement and let
+		// the rest run as a fresh command. The interactive path is hardened in
+		// buildInnerCommand/buildLocalWindowsCommand; mirror it here so detached
+		// stop on plugin unload doesn't carve a defense-in-depth hole.
+		try {
+			for (const [k, v] of Object.entries(downEnv)) assertNoControlBytes(k, v);
+		} catch {
+			return;
+		}
+
 		if (dockerMode === "wsl") {
 			// On Windows, spawn wsl.exe directly (no bash available on host).
 			// Validate the distro name even on this detached path — spawn passes
@@ -543,23 +555,13 @@ export class DockerManager {
 			// the interactive path's assertValidDistro.
 			if (!VALID_DISTRO_NAME.test(wslDistro)) return;
 			const wslPath = windowsToWslPath(composePath);
-			const escapedPath = wslPath.replace(/'/g, "'\\''");
-			const envPrefix = Object.entries(downEnv)
-				.map(([k, v]) => `${k}='${v.replace(/'/g, "'\\''")}'`)
-				.join(" ");
-			const exportPart = envPrefix ? `export ${envPrefix} && ` : "";
-			const innerCmd = `${exportPart}cd '${escapedPath}' && docker compose down`;
+			const innerCmd = buildInnerCommand(wslPath, "docker compose down", downEnv);
 			shell = "wsl";
 			args = ["-d", wslDistro, "--", "bash", "-c", innerCmd];
 		} else if (process.platform === "win32") {
 			// Native Docker on Windows — use cmd.exe (doubles internal quotes).
-			const escapedPath = composePath.replace(/"/g, '""');
-			const envPrefix = Object.entries(downEnv)
-				.map(([k, v]) => `set "${k}=${v.replace(/"/g, '""')}"`)
-				.join(" && ");
-			const setPart = envPrefix ? envPrefix + " && " : "";
 			shell = "cmd.exe";
-			args = ["/c", `${setPart}cd /d "${escapedPath}" && docker compose down`];
+			args = ["/c", buildLocalWindowsCommand(composePath, "docker compose down", downEnv)];
 		} else {
 			// Linux / Mac — pass the inner command directly to bash -c. Calling
 			// buildLocalCommand here would yield `bash -c "..."` and we'd then
@@ -581,18 +583,24 @@ export class DockerManager {
 		child.unref();
 	}
 
-	async status(): Promise<string> {
-		return this.run("docker compose ps --format json");
-	}
-
-	/** Fast status probe with a short timeout for startup checks and health polls. */
-	async probeStatus(): Promise<string> {
-		return this.run("docker compose ps --format json", PROBE_TIMEOUT);
+	/**
+	 * Run `docker compose ps --format json` and return the raw stdout.
+	 * `timeoutMs` defaults to PROBE_TIMEOUT (fast-fail for startup checks /
+	 * health polls); pass EXEC_TIMEOUT explicitly for user-initiated status
+	 * checks where waiting longer beats failing fast on a slow daemon.
+	 */
+	async probeStatus(timeoutMs: number = PROBE_TIMEOUT): Promise<string> {
+		return this.run("docker compose ps --format json", timeoutMs);
 	}
 
 	/** Convenience: probeStatus + parseIsRunning, returning the running flag directly. */
 	async probeIsRunning(): Promise<boolean> {
 		return DockerManager.parseIsRunning(await this.probeStatus());
+	}
+
+	/** Long-timeout status probe for user-initiated "Check Status" commands. */
+	async status(): Promise<string> {
+		return this.probeStatus(EXEC_TIMEOUT);
 	}
 
 	/**

@@ -134,10 +134,18 @@ class AuditLog {
 		}
 		const sink = this.sink;
 		if (!sink) return;
-		// Chain via the per-sink promise so writes serialise. Errors are logged
-		// but never propagate — sink failures must never block tool execution.
-		this.sinkChain = this.sinkChain.then(
-			() => {
+		// Serialise writes via a per-sink promise chain so rotation (stat →
+		// remove → rename → append) can't interleave with another record() call.
+		// Swallow rejections at every step so a poisoned link can't break the
+		// chain and so sink failures never propagate into tool execution:
+		// - `.catch(() => {})` on the chain neutralises any prior-link rejection
+		//   before we run the next sink call (otherwise the `then`'s onFulfilled
+		//   would be skipped and the recursive rejection would loop forever).
+		// - The inner try/catch + `.catch` handles BOTH sync throws and async
+		//   rejections from this iteration's sink call.
+		this.sinkChain = this.sinkChain
+			.catch(() => {})
+			.then(() => {
 				try {
 					const maybe = sink(entry);
 					return maybe instanceof Promise
@@ -146,11 +154,7 @@ class AuditLog {
 				} catch (e) {
 					logger.debug("MCP", "Audit sink failed", e);
 				}
-			},
-			() => {
-				/* prior link rejected — already logged */
-			},
-		);
+			});
 	}
 
 	getEntries(): readonly AuditEntry[] {
@@ -510,7 +514,13 @@ export class ObsidianMcpServer {
 	 * own MCP client uses Origin: app://obsidian.md).
 	 */
 	private isOriginAllowed(origin: string | undefined): boolean {
-		if (!origin || origin === "null") return true;
+		// Missing Origin = non-browser (curl, Obsidian's main process) — trust it.
+		// Literal "null" = browser-suppressed Origin (file://, data:, sandboxed
+		// iframes, restrictive-Referrer-Policy cross-origin redirects); the bearer
+		// token still protects the endpoint, but echoing ACAO for "null" lets
+		// those contexts read responses, so reject up-front.
+		if (!origin) return true;
+		if (origin === "null") return false;
 		if (origin.startsWith("app://")) return true;
 		try {
 			const u = new URL(origin);

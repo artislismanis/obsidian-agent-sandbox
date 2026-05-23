@@ -139,6 +139,14 @@ export interface PathFilter {
 	blocklist: string[];
 }
 
+/** True when `pathFilter` admits `path` (or no filter is configured). Centralises
+ *  the `!pathFilter || isPathAllowed(...)` idiom that was repeated dozens of
+ *  times across the read/write tools. */
+export function isPathAllowedByFilter(path: string, pathFilter: PathFilter | undefined): boolean {
+	if (!pathFilter) return true;
+	return isPathAllowed(path, pathFilter.allowlist, pathFilter.blocklist);
+}
+
 function resolveFile(
 	app: App,
 	args: { file?: string; path?: string },
@@ -147,9 +155,7 @@ function resolveFile(
 	let resolved: TFile | null = null;
 	if (args.path) resolved = app.vault.getFileByPath(args.path) ?? null;
 	else if (args.file) resolved = app.metadataCache.getFirstLinkpathDest(args.file, "") ?? null;
-	if (resolved && pathFilter) {
-		if (!isPathAllowed(resolved.path, pathFilter.allowlist, pathFilter.blocklist)) return null;
-	}
+	if (resolved && !isPathAllowedByFilter(resolved.path, pathFilter)) return null;
 	if (resolved && !isVaultPathSafe(app, resolved.path)) return null;
 	return resolved;
 }
@@ -162,7 +168,59 @@ function resolveFile(
 function filterPaths(paths: Iterable<string>, pathFilter?: PathFilter): string[] {
 	const arr = [...paths];
 	if (!pathFilter) return arr;
-	return arr.filter((p) => isPathAllowed(p, pathFilter.allowlist, pathFilter.blocklist));
+	return arr.filter((p) => isPathAllowedByFilter(p, pathFilter));
+}
+
+/**
+ * Compare-and-swap helper for reviewed writes. After the user approves a diff
+ * preview, an editor edit could have raced the modal — re-read the file and
+ * abort if the contents diverged from what was reviewed. Used by both
+ * `runWrite` (per-tool path) and `gateVaultWrite` (manage/extensions path);
+ * keeping the comparison + error message in one place stops the two paths
+ * from drifting apart.
+ *
+ * Returns null when the file is unchanged (caller may proceed), or an error
+ * result the caller should return as-is.
+ */
+async function assertUnchangedDuringReview(
+	app: App,
+	file: TFile,
+	expected: string,
+	filePath: string,
+): Promise<McpToolResult | null> {
+	const current = await app.vault.read(file);
+	if (current === expected) return null;
+	return error(
+		`File '${filePath}' changed during review — aborting to avoid clobbering an external edit. Re-run the tool to see the current contents.`,
+	);
+}
+
+/**
+ * Validate a vault-relative path for create operations. Short-circuits the
+ * shape/filter/realpath checks that vault_create, vault_create_folder,
+ * vault_templater_create and vault_periodic_note all need before creating a
+ * new file or folder.
+ *
+ * Rejects: `..` segments, leading `/` or `\`, Windows drive letters, NTFS
+ * alt-data-stream `:`, paths blocked by the configured pathFilter, and paths
+ * whose realpath resolves outside the vault (symlink escape).
+ *
+ * Returns `null` on success or an `McpToolResult` error the handler can
+ * return as-is.
+ */
+export function validateNewVaultPath(
+	app: App,
+	path: string,
+	pathFilter: PathFilter | undefined,
+): McpToolResult | null {
+	if (pathHasParentSegment(path) || path.startsWith("/") || path.startsWith("\\"))
+		return error("Path may not contain a '..' segment or start with '/' or '\\'.");
+	if (/^[A-Za-z]:/.test(path) || path.includes(":"))
+		return error("Path may not contain drive letters or ':' (alt-data-stream).");
+	if (!isPathAllowedByFilter(path, pathFilter))
+		return error("Path is blocked by allow/block list.");
+	if (!isVaultPathSafe(app, path)) return error("Path resolves outside the vault (symlink).");
+	return null;
 }
 
 /**
@@ -298,12 +356,13 @@ export async function gateVaultWrite(args: {
 		// (in-writeDir or writeVault) have no review window to race against.
 		const expected = args.recheckExpected ?? args.oldContent;
 		if (args.recheckFile && args.app && expected !== undefined) {
-			const current = await args.app.vault.read(args.recheckFile);
-			if (current !== expected) {
-				return error(
-					`File '${args.destPath}' changed during review — aborting to avoid clobbering an external edit. Re-run the tool to see the current contents.`,
-				);
-			}
+			const conflict = await assertUnchangedDuringReview(
+				args.app,
+				args.recheckFile,
+				expected,
+				args.destPath,
+			);
+			if (conflict) return conflict;
 		}
 		return runApply();
 	}
@@ -373,7 +432,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		// files it can't read.
 		const all = app.vault.getMarkdownFiles();
 		if (!pathFilter) return all;
-		return all.filter((f) => isPathAllowed(f.path, pathFilter.allowlist, pathFilter.blocklist));
+		return all.filter((f) => isPathAllowedByFilter(f.path, pathFilter));
 	}
 
 	function computeTagCountsSorted(): [string, number][] {
@@ -469,11 +528,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						// Drop blocklisted source files so vault_search doesn't
 						// leak content snippets (and existence) from paths the
 						// agent can't otherwise read.
-						if (
-							pathFilter &&
-							!isPathAllowed(file.path, pathFilter.allowlist, pathFilter.blocklist)
-						)
-							return;
+						if (!isPathAllowedByFilter(file.path, pathFilter)) return;
 						const match = search(content);
 						if (!match) return;
 						const snippet = extractSnippet(content, match.matches[0]?.[0] ?? 0);
@@ -512,11 +567,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				await forEachMarkdown((file, content) => {
 					// Skip blocklisted source files (info-leak parity with
 					// vault_search above).
-					if (
-						pathFilter &&
-						!isPathAllowed(file.path, pathFilter.allowlist, pathFilter.blocklist)
-					)
-						return;
+					if (!isPathAllowedByFilter(file.path, pathFilter)) return;
 					const match = search(content);
 					if (!match) return;
 					const snippet = extractSnippet(content, match.matches[0]?.[0] ?? 0);
@@ -704,22 +755,14 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				for (const [source, targets] of Object.entries(app.metadataCache.unresolvedLinks)) {
 					// Filter by source visibility: if the agent can't see the source
 					// file, don't reveal that it had unresolved links to anything.
-					if (
-						pathFilter &&
-						!isPathAllowed(source, pathFilter.allowlist, pathFilter.blocklist)
-					)
-						continue;
+					if (!isPathAllowedByFilter(source, pathFilter)) continue;
 					for (const [target, count] of Object.entries(targets)) {
 						// Also filter the TARGET string. Unresolved targets don't
 						// exist on disk, but they reveal the link-text the user
 						// has typed (e.g. "Project X notes") — which can leak
 						// the user's vault structure / naming. Symmetric with
 						// the source filter above.
-						if (
-							pathFilter &&
-							!isPathAllowed(target, pathFilter.allowlist, pathFilter.blocklist)
-						)
-							continue;
+						if (!isPathAllowedByFilter(target, pathFilter)) continue;
 						entries.push(`${target} (from ${source}, ${count}x)`);
 					}
 				}
@@ -748,10 +791,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				if (extension) files = files.filter((f) => f.extension === extension);
 				// Drop blocklisted entries BEFORE slicing to limit so the
 				// returned set is N visible files, not N-K.
-				if (pathFilter)
-					files = files.filter((f) =>
-						isPathAllowed(f.path, pathFilter.allowlist, pathFilter.blocklist),
-					);
+				files = files.filter((f) => isPathAllowedByFilter(f.path, pathFilter));
 				files.sort((a, b) => b.stat.mtime - a.stat.mtime);
 				const results = files.slice(0, limit).map((f) => {
 					const date = new Date(f.stat.mtime).toISOString();
@@ -834,8 +874,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		//    path that contains nodes the agent can't otherwise see.
 		// Per-tool filterPaths-on-output doesn't recover this — the structure
 		// itself leaks. Filter at graph construction.
-		const allow = (p: string): boolean =>
-			!pathFilter || isPathAllowed(p, pathFilter.allowlist, pathFilter.blocklist);
+		const allow = (p: string): boolean => isPathAllowedByFilter(p, pathFilter);
 		for (const [source, targets] of Object.entries(app.metadataCache.resolvedLinks)) {
 			if (!allow(source)) continue;
 			if (!forward.has(source)) forward.set(source, new Set());
@@ -969,11 +1008,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					];
 					for (const neighbor of neighbors) {
 						if (visited.has(neighbor)) continue;
-						if (
-							neighbor !== targetPath &&
-							pathFilter &&
-							!isPathAllowed(neighbor, pathFilter.allowlist, pathFilter.blocklist)
-						)
+						if (neighbor !== targetPath && !isPathAllowedByFilter(neighbor, pathFilter))
 							continue;
 						visited.add(neighbor);
 						parent.set(neighbor, current);
@@ -1225,12 +1260,13 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			if (!result.approved) return error("Change rejected by user.");
 			const expected = op.recheckExpected ?? op.oldContent;
 			if (op.recheckFile && expected !== undefined) {
-				const current = await app.vault.read(op.recheckFile);
-				if (current !== expected) {
-					return error(
-						`File '${op.filePath}' changed during review — aborting to avoid clobbering an external edit. Re-run the tool to see the current contents.`,
-					);
-				}
+				const conflict = await assertUnchangedDuringReview(
+					app,
+					op.recheckFile,
+					expected,
+					op.filePath,
+				);
+				if (conflict) return conflict;
 			}
 		}
 		// Catch apply errors and return them as clean tool errors instead of
@@ -1295,34 +1331,17 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				},
 
 				handler: async ({ path, content: contentArg }) => {
-					// Defense in depth: reject obvious traversal up-front so we never
-					// rely solely on isVaultPathSafe (which only blocks via realpath
-					// of an existing ancestor — for an entirely new tree the
-					// not-yet-existing portion isn't checked).
-					if (pathHasParentSegment(path) || path.startsWith("/") || path.startsWith("\\"))
-						return error(
-							"Path may not contain a '..' segment or start with '/' or '\\'.",
-						);
-					// Reject Windows drive-letter / NTFS alt-data-stream paths. The
-					// realpath check catches escape, but `foo.md:bar` would write to
-					// an alternate stream invisible in the file tree.
-					if (/^[A-Za-z]:/.test(path) || path.includes(":"))
-						return error(
-							"Path may not contain drive letters or ':' (alt-data-stream).",
-						);
+					// Run writeDir gate first so a writeScoped caller hits its tier
+					// boundary before any further shape validation — the gate's
+					// error is the most actionable signal in that case.
 					const guard = guardPath(path);
 					if (guard) return guard;
-					// Honour pathFilter for creation paths too — without this, a
-					// blocklisted folder (`secrets/`) could be created-into by an
-					// agent that has writeScoped or writeVault but not read access
-					// there. Symmetric with how vault_modify resolves existing files.
-					if (
-						pathFilter &&
-						!isPathAllowed(path, pathFilter.allowlist, pathFilter.blocklist)
-					)
-						return error("Path is blocked by allow/block list.");
-					if (!isVaultPathSafe(app, path))
-						return error("Path resolves outside the vault (symlink).");
+					// Shape + pathFilter + symlink-realpath checks live in the
+					// shared helper so vault_create, vault_create_folder,
+					// vault_templater_create and vault_periodic_note can't drift
+					// apart on which defense-in-depth checks they apply.
+					const pathError = validateNewVaultPath(app, path, pathFilter);
+					if (pathError) return pathError;
 					if (app.vault.getFileByPath(path))
 						return error("File already exists. Use vault_modify to update it.");
 					const content = contentArg ?? "";
@@ -1974,10 +1993,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				const newPath = dir ? `${dir}/${trimmed}${ext}` : `${trimmed}${ext}`;
 				if (!isVaultPathSafe(app, newPath))
 					return error("Destination resolves outside the vault.");
-				if (
-					pathFilter &&
-					!isPathAllowed(newPath, pathFilter.allowlist, pathFilter.blocklist)
-				)
+				if (!isPathAllowedByFilter(newPath, pathFilter))
 					return error("Destination path is blocked by allow/block list.");
 				if (newPath !== f.path && app.vault.getFileByPath(newPath))
 					return error(`Destination already exists: ${newPath}`);
@@ -2023,10 +2039,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				const newPath = cleanDest ? `${cleanDest}/${f.name}` : f.name;
 				if (!isVaultPathSafe(app, newPath))
 					return error("Destination resolves outside the vault.");
-				if (
-					pathFilter &&
-					!isPathAllowed(newPath, pathFilter.allowlist, pathFilter.blocklist)
-				)
+				if (!isPathAllowedByFilter(newPath, pathFilter))
 					return error("Destination path is blocked by allow/block list.");
 				// Pre-check destination collision so the failure surfaces as a
 				// clean MCP error instead of the renameFile rejection bubbling
@@ -2111,25 +2124,12 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			},
 
 			handler: async ({ path }) => {
-				// Mirror vault_create's defense-in-depth: reject traversal up-front
-				// instead of relying solely on isVaultPathSafe, whose realpath walk
-				// passes for entirely-new trees where no ancestor exists yet.
-				if (pathHasParentSegment(path) || path.startsWith("/") || path.startsWith("\\"))
-					return error("Path may not contain a '..' segment or start with '/' or '\\'.");
-				// Reject Windows drive-letter / NTFS alt-data-stream paths. The
-				// realpath check catches escape, but `foo:bar` would create an
-				// alternate stream invisible in the file tree.
-				if (/^[A-Za-z]:/.test(path) || path.includes(":"))
-					return error("Path may not contain drive letters or ':' (alt-data-stream).");
-				if (!isVaultPathSafe(app, path))
-					return error("Path resolves outside the vault (symlink).");
-				// Honour pathFilter for folder creation. Without this, a `manage`
-				// agent with a blocklist could materialise folders inside
-				// blocklisted regions (and the empty folder then anchors future
-				// writes via `vault_create` once writeVault is granted). Mirrors
-				// the vault_create check earlier in this file.
-				if (pathFilter && !isPathAllowed(path, pathFilter.allowlist, pathFilter.blocklist))
-					return error("Path is blocked by allow/block list.");
+				// Shape + pathFilter + symlink-realpath checks live in the shared
+				// helper. Without pathFilter, a `manage` agent with a blocklist
+				// could materialise folders inside blocklisted regions (anchoring
+				// future writes via `vault_create` once writeVault is granted).
+				const pathError = validateNewVaultPath(app, path, pathFilter);
+				if (pathError) return pathError;
 				return gateVaultWrite({
 					destPath: path,
 					operation: "create",
@@ -2182,11 +2182,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					// preview. Every other write tool in this file applies
 					// `isPathAllowed`; this loop previously walked
 					// `getMarkdownFiles()` blind.
-					if (
-						pathFilter &&
-						!isPathAllowed(file.path, pathFilter.allowlist, pathFilter.blocklist)
-					)
-						return;
+					if (!isPathAllowedByFilter(file.path, pathFilter)) return;
 					if (!search(content)) return;
 					totalMatched++;
 					if (matched.length < BATCH_MATCH_CAP) matched.push(file);
