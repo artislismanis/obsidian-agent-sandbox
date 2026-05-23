@@ -431,9 +431,12 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
 		this.firewallBar?.destroy();
 
-		if (this.settings.autoStopContainer) {
-			this.docker?.stopDetached();
-		}
+		// Plugin disable always stops the container — `autoStopContainer`
+		// only controls the Obsidian-exit ("quit") path above. Disable is an
+		// explicit user action that should leave no background container
+		// running; leaving it up surprises users who reach for the toggle to
+		// release docker resources.
+		this.docker?.stopDetached();
 	}
 
 	async loadSettings() {

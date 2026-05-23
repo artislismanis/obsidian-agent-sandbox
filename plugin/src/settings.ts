@@ -468,8 +468,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		this.addToggleSetting(el, {
 			name: "Auto-stop on exit",
 			desc:
-				"Off (default): keep the container running between Obsidian sessions " +
-				"so the next open is instant and any background work continues. " +
+				"Controls behaviour when Obsidian itself exits (disabling the plugin always stops the container). " +
+				"Off (default): keep the container running between Obsidian sessions so the next open is instant " +
+				"and any background work continues. " +
 				"On: stop the container on Obsidian exit to free memory and CPU; next open starts it fresh.",
 			key: "autoStopContainer",
 		});
