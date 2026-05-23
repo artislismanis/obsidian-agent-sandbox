@@ -109,23 +109,36 @@ export async function showSessionCleanup(
 			btn.addEventListener("click", () => modal.close());
 		});
 		div.createEl("button", { text: "Kill selected", cls: "mod-cta" }, (btn) => {
-			btn.addEventListener("click", async () => {
-				modal.close();
-				const toKill = [...selected];
-				const results = await Promise.allSettled(toKill.map((n) => api.killSession(n)));
-				let killed = 0;
-				results.forEach((r, i) => {
-					if (r.status === "fulfilled") {
-						killed++;
-					} else {
-						logger.warn(
-							"sessions",
-							`failed to kill tmux session '${toKill[i]}':`,
-							r.reason,
-						);
-					}
+			// addEventListener accepts a callback returning void, but the
+			// inner body is async — the returned Promise is discarded by
+			// addEventListener. We use Promise.allSettled to swallow per-
+			// session failures inside, but a synchronous throw BEFORE that
+			// (e.g. `[...selected]` on a corrupted Set, or modal.close()
+			// throwing during teardown) would surface only as an unhandled
+			// rejection in the dev console. Wrap the whole body so any
+			// outer rejection becomes a Notice.
+			btn.addEventListener("click", () => {
+				void (async () => {
+					modal.close();
+					const toKill = [...selected];
+					const results = await Promise.allSettled(toKill.map((n) => api.killSession(n)));
+					let killed = 0;
+					results.forEach((r, i) => {
+						if (r.status === "fulfilled") {
+							killed++;
+						} else {
+							logger.warn(
+								"sessions",
+								`failed to kill tmux session '${toKill[i]}':`,
+								r.reason,
+							);
+						}
+					});
+					new Notice(`Killed ${killed}/${toKill.length} session(s).`);
+				})().catch((err: unknown) => {
+					const msg = err instanceof Error ? err.message : String(err);
+					new Notice(`Kill sessions failed: ${msg}`);
 				});
-				new Notice(`Killed ${killed}/${toKill.length} session(s).`);
 			});
 		});
 	});
