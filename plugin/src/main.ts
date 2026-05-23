@@ -178,9 +178,10 @@ export default class AgentSandboxPlugin extends Plugin {
 			void this.backgroundStartup();
 		});
 
-		// Match the icon TerminalView.getIcon() returns so the ribbon, tab
-		// header, and command-palette entries all show the same glyph.
-		this.addRibbonIcon("terminal", "Open Sandbox Terminal", () => {
+		// "box" represents the sandbox concept; the terminal tab and
+		// command-palette entry use TerminalView.getIcon()'s "terminal" glyph
+		// for the action itself.
+		this.addRibbonIcon("box", "Open Sandbox Terminal", () => {
 			void this.openTerminalOrPromptStart();
 		});
 
