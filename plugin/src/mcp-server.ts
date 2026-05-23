@@ -162,6 +162,20 @@ const AUDIT_FILE = ".oas/mcp-audit.jsonl";
 const AUDIT_FILE_MAX_BYTES = 1_024_000;
 const AUDIT_FILE_ARCHIVE = ".oas/mcp-audit.1.jsonl";
 
+// Rate-limited warn helper so a persistent audit failure (disk full,
+// permission denied) reports once per minute instead of flooding the console
+// on every tool call. The audit log is a security feature; silent failure of
+// the SINK was a real gap — the previous code logged at `debug` level
+// (default-hidden behind the `info` minimum), so operators only saw it after
+// deliberately flipping log levels.
+let lastAuditWarnAt = 0;
+function warnAuditFailureRateLimited(err: unknown): void {
+	const now = Date.now();
+	if (now - lastAuditWarnAt < 60_000) return;
+	lastAuditWarnAt = now;
+	logger.warn("MCP", "Audit append failed (rate-limited; further failures suppressed)", err);
+}
+
 function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
 	const adapter = app.vault.adapter;
 	let ensuredDir = false;
@@ -214,10 +228,13 @@ function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
 			// unbounded after the first rename failure.
 			if (estimatedBytes >= 0) estimatedBytes += Buffer.byteLength(line);
 		} catch (e) {
-			// Log at debug level so a persistent failure (disk full, permission
-			// denied) is observable in the developer console instead of vanishing.
-			// Never re-throw — audit writes must not block tool execution.
-			logger.debug("MCP", "Audit append failed", e);
+			// Promote to `warn` so disk-full / permission-denied surfaces at
+			// the default log level (the audit log is a security feature; its
+			// breakage must be observable without the user toggling debug
+			// logging). Rate-limited to one entry per minute so a persistent
+			// failure doesn't flood the console on every tool call. Never
+			// re-throw — audit writes must not block tool execution.
+			warnAuditFailureRateLimited(e);
 		}
 	};
 }
@@ -240,6 +257,11 @@ export class ObsidianMcpServer {
 	private auditLog = new AuditLog(AUDIT_MAX_ENTRIES);
 	private cache: VaultCache | null = null;
 	private activity = new Map<string, ActivityEntry>();
+	// Saved listener reference so stop() can detach it explicitly. Without
+	// this, the listener's closure pins `this` (and the whole tools/audit/
+	// cache tree) to the still-attached HTTP server until GC catches up —
+	// across plugin enable/disable cycles that produces a slow leak.
+	private clientErrorListener: ((err: Error) => void) | null = null;
 
 	constructor(app: App, config: McpServerConfig) {
 		this.app = app;
@@ -275,9 +297,10 @@ export class ObsidianMcpServer {
 			});
 		});
 
-		httpServer.on("clientError", (err) => {
+		const clientErrorListener = (err: Error): void => {
 			logger.warn("MCP", "Client error", err.message);
-		});
+		};
+		httpServer.on("clientError", clientErrorListener);
 
 		// Default 127.0.0.1 — host-only. Production uses the user-configured
 		// value via plugin settings; users who need container-side access must
@@ -309,6 +332,7 @@ export class ObsidianMcpServer {
 		this.cache = cache;
 		this.tools = tools;
 		this.httpServer = httpServer;
+		this.clientErrorListener = clientErrorListener;
 		this.startTime = Date.now();
 		this.auditLog.setSink(createFileAuditSink(this.app));
 
@@ -335,8 +359,43 @@ export class ObsidianMcpServer {
 		await Promise.all(closes);
 		this.transports.clear();
 
+		// Explicitly close any per-session McpServer instances still in the
+		// map. The transport.close() chain above is expected to fire onclose
+		// → cleanupSession, which removes the McpServer from mcpServers — but
+		// the SDK doesn't strictly guarantee the ordering. If close() resolves
+		// before onclose fires (a documented edge in some SDK transports), the
+		// map keeps a stale reference that's never released. Walk what's left
+		// and close it directly so stop() really does release everything.
+		const serverCloses = Array.from(this.mcpServers.entries()).map(async ([sid, server]) => {
+			try {
+				await server.close?.();
+			} catch (err) {
+				logger.warn("MCP", `Error closing McpServer ${sid.slice(0, 8)}…`, err);
+			}
+		});
+		await Promise.all(serverCloses);
+		this.mcpServers.clear();
+
 		if (this.httpServer) {
 			const server = this.httpServer;
+			// Detach the saved clientError listener BEFORE close() so the
+			// closure stops pinning `this` through the listener registry.
+			// Without this, the listener (and its captured `this`) lives on
+			// the still-referenced Server instance until GC; across plugin
+			// enable/disable cycles that grows.
+			if (this.clientErrorListener) {
+				server.off("clientError", this.clientErrorListener);
+				this.clientErrorListener = null;
+			}
+			// Force-close any active connections (incl. lingering SSE
+			// keepalives) before close() resolves. Without this, the previous
+			// 2 s Promise.race fallback could let the timer win on a busy
+			// server — `this.httpServer = null` then ran while the OS socket
+			// was still bound, and the next start() hit EADDRINUSE. The
+			// failure path in main.ts then auto-disables `mcpEnabled` and
+			// the user sees "MCP turned itself off" with no actionable error.
+			// closeAllConnections is Node ≥ 18.2.
+			server.closeAllConnections?.();
 			let closeTimer: ReturnType<typeof setTimeout> | undefined;
 			await Promise.race([
 				new Promise<void>((resolve) =>
@@ -843,11 +902,21 @@ export class ObsidianMcpServer {
 			return;
 		}
 
+		const server = this.createMcpServer();
 		const transport = new StreamableHTTPServerTransport({
 			sessionIdGenerator: () => randomUUID(),
 			onsessioninitialized: (sid: string) => {
 				logger.info("MCP", `New session ${sid.slice(0, 8)}…`);
 				this.transports.set(sid, transport);
+				// Register the McpServer here, INSIDE onsessioninitialized,
+				// rather than after handleRequest below. The previous order
+				// had a narrow race: if the client disconnected between
+				// onsessioninitialized firing and the post-handleRequest
+				// `mcpServers.set`, the entry was never set — and
+				// cleanupSession had already run via onclose, so the
+				// McpServer was leaked permanently. Setting it inside the
+				// initialization callback closes the window.
+				this.mcpServers.set(sid, server);
 				this.resetSessionTimeout(sid);
 			},
 		});
@@ -864,18 +933,13 @@ export class ObsidianMcpServer {
 			// do here, but keep the branch explicit so future readers see it.
 		};
 
-		const server = this.createMcpServer();
 		try {
 			await server.connect(transport);
-			// `transport.sessionId` is set inside the SDK's onsessioninitialized
-			// callback, which fires from `transport.handleRequest()` — NOT from
-			// `server.connect()`. Reading the sid before handleRequest always
-			// returned undefined, so cleanupSession could never close the SDK
-			// instance and every session leaked an McpServer. Register after
-			// handleRequest so the sid is populated.
+			// onsessioninitialized fires from inside handleRequest and now
+			// also registers the server in this.mcpServers, so cleanupSession
+			// can find it via the onclose chain. Keep handleRequest after
+			// connect so the SDK sets up its routing before the first request.
 			await transport.handleRequest(req, res, body);
-			const sid = transport.sessionId;
-			if (sid) this.mcpServers.set(sid, server);
 		} catch (err) {
 			logger.error("MCP", "Failed to initialize MCP session", err);
 			const sid = transport.sessionId;

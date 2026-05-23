@@ -456,6 +456,56 @@ describe("ObsidianMcpServer", () => {
 			await tempServer.stop();
 			expect(tempServer.isRunning()).toBe(false);
 		});
+
+		it("clears the clientError listener and the mcpServers map after stop", async () => {
+			// Internal-state probes — pre-fix, neither was cleared on stop(),
+			// which produced a slow leak across plugin enable/disable cycles
+			// (each cycle's listener + tools tree pinned by the closure).
+			const tempServer = new ObsidianMcpServer(app as never, {
+				port: TEST_PORT + 2,
+				token: "temp2",
+				enabledTiers: new Set(["read"]),
+				getWriteDir: () => "agent-workspace",
+				toolTimeoutMs: 10_000,
+				reviewTimeoutMs: 180_000,
+			});
+			await tempServer.start();
+			const internals = tempServer as unknown as {
+				clientErrorListener: ((err: Error) => void) | null;
+				mcpServers: Map<string, unknown>;
+			};
+			expect(internals.clientErrorListener).not.toBeNull();
+			await tempServer.stop();
+			expect(internals.clientErrorListener).toBeNull();
+			expect(internals.mcpServers.size).toBe(0);
+		});
+
+		it("supports rapid start→stop→start without EADDRINUSE", async () => {
+			// Pre-fix, the 2 s close-timer race could let the timer win on
+			// busy / SSE-keepalive sessions, returning from stop() while the
+			// OS socket was still bound. The next start() would then hit
+			// EADDRINUSE and main.ts would auto-disable mcpEnabled. With
+			// closeAllConnections() before close(), the socket releases
+			// promptly even with lingering connections. We can't directly
+			// reproduce the SSE-keepalive scenario in a unit test, but a
+			// rapid restart on the same port still exercises the close-then-
+			// reopen path and catches outright regressions.
+			const port = TEST_PORT + 3;
+			for (let i = 0; i < 3; i++) {
+				const s = new ObsidianMcpServer(app as never, {
+					port,
+					token: "temp3",
+					enabledTiers: new Set(["read"]),
+					getWriteDir: () => "agent-workspace",
+					toolTimeoutMs: 10_000,
+					reviewTimeoutMs: 180_000,
+				});
+				await s.start();
+				expect(s.isRunning()).toBe(true);
+				await s.stop();
+				expect(s.isRunning()).toBe(false);
+			}
+		});
 	});
 });
 
