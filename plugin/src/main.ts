@@ -1001,8 +1001,11 @@ export default class AgentSandboxPlugin extends Plugin {
 	}
 
 	private async checkStartupPortConflicts(): Promise<number[]> {
+		// Only probe ports the container will bind. The MCP server is hosted
+		// by the plugin (this process), so its port is always "in use" from
+		// the OS's perspective — including it here makes the pre-flight
+		// always abort container start when MCP is enabled.
 		const ports = [this.settings.ttydPort];
-		if (this.settings.mcpEnabled) ports.push(this.settings.mcpPort);
 		return this.docker.checkPortConflicts(ports, this.settings.ttydBindAddress || "127.0.0.1");
 	}
 
