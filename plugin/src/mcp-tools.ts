@@ -2070,6 +2070,13 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					return error("Path may not contain a '..' segment or start with '/' or '\\'.");
 				if (!isVaultPathSafe(app, path))
 					return error("Path resolves outside the vault (symlink).");
+				// Honour pathFilter for folder creation. Without this, a `manage`
+				// agent with a blocklist could materialise folders inside
+				// blocklisted regions (and the empty folder then anchors future
+				// writes via `vault_create` once writeVault is granted). Mirrors
+				// the vault_create check earlier in this file.
+				if (pathFilter && !isPathAllowed(path, pathFilter.allowlist, pathFilter.blocklist))
+					return error("Path is blocked by allow/block list.");
 				return gateVaultWrite({
 					destPath: path,
 					operation: "create",
@@ -2117,6 +2124,16 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				const matched: TFile[] = [];
 				let totalMatched = 0;
 				await forEachMarkdown((file, content) => {
+					// Honour pathFilter at the iteration boundary so blocklisted
+					// regions are neither modified nor surfaced in the dry-run
+					// preview. Every other write tool in this file applies
+					// `isPathAllowed`; this loop previously walked
+					// `getMarkdownFiles()` blind.
+					if (
+						pathFilter &&
+						!isPathAllowed(file.path, pathFilter.allowlist, pathFilter.blocklist)
+					)
+						return;
 					if (!search(content)) return;
 					totalMatched++;
 					if (matched.length < BATCH_MATCH_CAP) matched.push(file);
@@ -2212,7 +2229,14 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 
 	// ── Extensions tier (plugin integrations) ─────────
 
-	registerExtensionTools(app, (tool) => tools.push(tool), getWriteDir, enabledTiers, reviewFn);
+	registerExtensionTools(
+		app,
+		(tool) => tools.push(tool),
+		getWriteDir,
+		enabledTiers,
+		reviewFn,
+		pathFilter,
+	);
 
 	// ── Agent tier ────────────────────────────────────
 

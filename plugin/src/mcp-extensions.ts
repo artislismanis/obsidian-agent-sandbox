@@ -11,11 +11,16 @@
 import type { App, TFile } from "obsidian";
 import { TFile as TFileClass, moment } from "obsidian";
 import { z } from "zod/v4";
-import type { McpToolDef, PermissionTier, ReviewFn } from "./mcp-tools";
+import type { McpToolDef, PathFilter, PermissionTier, ReviewFn } from "./mcp-tools";
 import { defineTool, text, error, gateVaultWrite, forEachMarkdownChunked } from "./mcp-tools";
 import { logger, errMsg } from "./logger";
 import { getInstalledPlugin } from "./obsidian-internals";
-import { isPathWithinDir, isRealPathWithinBase, pathHasParentSegment } from "./validation";
+import {
+	isPathAllowed,
+	isPathWithinDir,
+	isRealPathWithinBase,
+	pathHasParentSegment,
+} from "./validation";
 import { getVaultBasePath, getVaultFullPath } from "./obsidian-internals";
 
 /**
@@ -37,12 +42,25 @@ export interface WriteGate {
 	getWriteDir: () => string;
 	enabledTiers: ReadonlySet<PermissionTier>;
 	review: ReviewFn | undefined;
+	/** Optional allow/block filter mirroring the read/write tools in
+	 *  mcp-tools.ts. When unset, no filtering happens — preserving the
+	 *  existing behaviour for installs without `mcpPathAllowlist` /
+	 *  `mcpPathBlocklist`. Each extension tool that takes a path argument
+	 *  must consult this gate before reading or writing. */
+	pathFilter?: PathFilter;
 }
 
-function resolveCanvasFile(app: App, path: string): TFile | null {
+/** True when the gate's path filter (if any) allows this path. */
+function gateAllowsPath(gate: WriteGate, vaultPath: string): boolean {
+	if (!gate.pathFilter) return true;
+	return isPathAllowed(vaultPath, gate.pathFilter.allowlist, gate.pathFilter.blocklist);
+}
+
+function resolveCanvasFile(app: App, path: string, gate: WriteGate): TFile | null {
 	const f = app.vault.getFileByPath(path);
 	if (!f || f.extension !== "canvas") return null;
 	if (!isVaultPathSafe(app, f.path)) return null;
+	if (!gateAllowsPath(gate, f.path)) return null;
 	return f;
 }
 
@@ -107,7 +125,7 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 			},
 
 			handler: async ({ path }) => {
-				const f = resolveCanvasFile(app, path);
+				const f = resolveCanvasFile(app, path, gate);
 				if (!f) return error("Canvas file not found (must end in .canvas).");
 				const raw = await app.vault.cachedRead(f);
 				const parsed = parseJsonLabelled(raw, "Canvas JSON parse failed");
@@ -134,7 +152,7 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 			},
 
 			handler: async ({ path, changes: changesRaw }) => {
-				const f = resolveCanvasFile(app, path);
+				const f = resolveCanvasFile(app, path, gate);
 				if (!f) return error("Canvas file not found (must end in .canvas).");
 
 				const parsedChanges = parseJsonLabelled(changesRaw, "Invalid JSON in 'changes'");
@@ -246,7 +264,7 @@ function getDataview(app: App): DataviewPlugin | null {
 	return plugin;
 }
 
-export function registerDataviewTools(app: App, push: ToolPusher): void {
+export function registerDataviewTools(app: App, push: ToolPusher, gate: WriteGate): void {
 	if (!getDataview(app)) return;
 	push(
 		defineTool({
@@ -264,6 +282,21 @@ export function registerDataviewTools(app: App, push: ToolPusher): void {
 			handler: async ({ query }) => {
 				const dv = getDataview(app);
 				if (!dv?.api?.query) return error("Dataview is not available.");
+				// DQL queries return arbitrary nested structures (Links, dates,
+				// tagged values, computed columns). We can't reliably walk the
+				// result to redact blocklisted paths without breaking valid
+				// shapes, and DQL itself can synthesize paths into strings via
+				// expressions. When the user has narrowed the agent's surface
+				// with `mcpPathAllowlist`/`mcpPathBlocklist`, refuse the query
+				// rather than risk leaking blocklisted regions through the
+				// result tree. Read tools elsewhere (vault_search, vault_list)
+				// already enforce the filter; this tool's tier is "extensions"
+				// and the safe fallback is to disable it under the filter.
+				if (gate.pathFilter) {
+					return error(
+						"vault_dataview_query is disabled while an MCP path allow/block list is configured (the result tree may surface paths from blocklisted regions). Use vault_search / vault_search_fuzzy instead, which respect the filter.",
+					);
+				}
 				try {
 					const result = await dv.api.query(query);
 					if (!result.successful) {
@@ -405,9 +438,15 @@ export function registerTasksTools(app: App, push: ToolPusher, gate: WriteGate):
 				const priorityOrder = ["lowest", "low", "medium", "high", "highest"] as const;
 				const minIdx = minPriority ? priorityOrder.indexOf(minPriority) : -1;
 
+				// Apply pathFilter at the file-iteration boundary so blocklisted
+				// regions don't leak task contents (mirrors vault_search / vault_list
+				// patterns in mcp-tools.ts). Without this, a `manage`+`extensions`
+				// agent with a blocklist could enumerate task lines from any
+				// blocked folder.
 				const files = app.vault
 					.getMarkdownFiles()
-					.filter((f) => !folder || isPathWithinDir(f.path, folder));
+					.filter((f) => !folder || isPathWithinDir(f.path, folder))
+					.filter((f) => gateAllowsPath(gate, f.path));
 
 				const results: TaskEntry[] = [];
 				await forEachMarkdownChunked(
@@ -471,6 +510,8 @@ export function registerTasksTools(app: App, push: ToolPusher, gate: WriteGate):
 				if (!f) return error(`File not found: ${path}`);
 				if (!isVaultPathSafe(app, f.path))
 					return error("Path resolves outside the vault (symlink).");
+				if (!gateAllowsPath(gate, f.path))
+					return error("Path is blocked by allow/block list.");
 				const content = await app.vault.read(f);
 				const lines = content.split("\n");
 				const targetIdx = line - 1;
@@ -616,6 +657,8 @@ export function registerTemplaterTools(app: App, push: ToolPusher, gate: WriteGa
 				const destFolder = (folder ?? "").replace(/^\/+|\/+$/g, "");
 				const destName = filename ?? (templateFile as TFile).basename;
 				const destPath = destFolder ? `${destFolder}/${destName}.md` : `${destName}.md`;
+				if (!gateAllowsPath(gate, destPath))
+					return error("Path is blocked by allow/block list.");
 				return gateVaultWrite({
 					destPath,
 					operation: "create",
@@ -749,6 +792,11 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 						`Periodic note path '${path}' resolves outside the vault. Check the Periodic Notes format setting for path-traversal characters.`,
 					);
 				}
+				if (!gateAllowsPath(gate, path)) {
+					return error(
+						`Periodic note path '${path}' is blocked by allow/block list. Adjust the Periodic Notes folder setting or the MCP path filter.`,
+					);
+				}
 
 				const existing = app.vault.getFileByPath(path);
 				if (existing) return text(`Exists: ${path}`);
@@ -880,10 +928,11 @@ export function registerExtensionTools(
 	getWriteDir: () => string,
 	enabledTiers: ReadonlySet<PermissionTier>,
 	review: ReviewFn | undefined,
+	pathFilter: PathFilter | undefined,
 ): void {
-	const gate: WriteGate = { getWriteDir, enabledTiers, review };
+	const gate: WriteGate = { getWriteDir, enabledTiers, review, pathFilter };
 	registerCanvasTools(app, push, gate);
-	registerDataviewTools(app, push);
+	registerDataviewTools(app, push, gate);
 	registerTasksTools(app, push, gate);
 	registerTemplaterTools(app, push, gate);
 	registerPeriodicNotesTools(app, push, gate);

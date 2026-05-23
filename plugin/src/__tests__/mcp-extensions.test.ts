@@ -779,3 +779,364 @@ describe("plugin_extensions_list", () => {
 		expect(body).toContain("tasks: not available");
 	});
 });
+
+describe("Extensions tier — pathFilter coverage (info-leak boundary)", () => {
+	// Pre-fix, registerExtensionTools was called without `pathFilter`, so
+	// every extension-tier tool was blind to the user's mcpPathAllowlist /
+	// mcpPathBlocklist setting. An agent with the `extensions` tier could
+	// then read or mutate blocklisted regions via canvas / dataview / tasks
+	// / templater / periodic-notes paths even though the equivalent
+	// vault_* tools refused the same path. Each test here pins one tool
+	// against the filter.
+
+	function canvasAt(path: string): TFile {
+		return {
+			path,
+			name: path.split("/").pop(),
+			basename: path
+				.replace(/\.canvas$/, "")
+				.split("/")
+				.pop(),
+			extension: "canvas",
+			stat: { ctime: 1, mtime: 2, size: 100 },
+			vault: {} as never,
+			parent: null as never,
+		} as unknown as TFile;
+	}
+
+	function mdAt(path: string): TFile {
+		return {
+			path,
+			name: path.split("/").pop(),
+			basename: path.replace(/\.md$/, "").split("/").pop(),
+			extension: "md",
+			stat: { ctime: 1, mtime: 2, size: 100 },
+			vault: {} as never,
+			parent: null as never,
+		} as unknown as TFile;
+	}
+
+	it("vault_canvas_read refuses paths blocked by the filter", async () => {
+		const file = canvasAt("secrets/board.canvas");
+		const { app } = mockApp("{}");
+		app.vault.getFileByPath = vi.fn((p: string) => (p === file.path ? file : null));
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			pathFilter: { allowlist: [], blocklist: ["secrets/"] },
+		});
+		const r = await getTool(tools, "vault_canvas_read").handler({
+			path: "secrets/board.canvas",
+		});
+		expect(r.isError).toBe(true);
+		// Reuse the existing "Canvas file not found" sentinel — same shape as
+		// resolveCanvasFile returning null. The point of the assertion is that
+		// the read DOES NOT succeed; the wording is incidental.
+		expect((r.content[0] as { text: string }).text.toLowerCase()).toMatch(
+			/(?:not found|blocked|allow)/,
+		);
+	});
+
+	it("vault_canvas_modify refuses paths blocked by the filter", async () => {
+		const file = canvasAt("secrets/board.canvas");
+		const { app, modify } = mockApp(JSON.stringify({ nodes: [], edges: [] }));
+		app.vault.getFileByPath = vi.fn((p: string) => (p === file.path ? file : null));
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			pathFilter: { allowlist: [], blocklist: ["secrets/"] },
+		});
+		const r = await getTool(tools, "vault_canvas_modify").handler({
+			path: "secrets/board.canvas",
+			changes: JSON.stringify({ addNodes: [{ id: "x", type: "text" }] }),
+		});
+		expect(r.isError).toBe(true);
+		expect(modify).not.toHaveBeenCalled();
+	});
+
+	it("vault_dataview_query is refused outright when a path filter is set", async () => {
+		const { app } = mockApp("{}");
+		const query = vi.fn(() => ({ successful: true, value: { headers: [], values: [] } }));
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) => (id === "dataview" ? { api: { query } } : null),
+			enabledPlugins: new Set(["dataview"]),
+		};
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			// Either an allowlist or a blocklist counts as "filter set" — using
+			// blocklist here matches the canvas tests above.
+			pathFilter: { allowlist: [], blocklist: ["secrets/"] },
+		});
+		const r = await getTool(tools, "vault_dataview_query").handler({
+			query: 'LIST FROM "secrets"',
+		});
+		expect(r.isError).toBe(true);
+		expect((r.content[0] as { text: string }).text).toMatch(/disabled|allow|block/);
+		expect(query).not.toHaveBeenCalled();
+	});
+
+	it("vault_tasks_query filters blocklisted files out of the scan", async () => {
+		const visible = mdAt("notes/visible.md");
+		const hidden = mdAt("secrets/hidden.md");
+		const files = [visible, hidden];
+		const fileContent: Record<string, string> = {
+			"notes/visible.md": "- [ ] visible work",
+			"secrets/hidden.md": "- [ ] hidden secret",
+		};
+		const app = {
+			vault: {
+				getFiles: vi.fn(() => files),
+				getMarkdownFiles: vi.fn(() => files),
+				getFileByPath: vi.fn((p: string) => files.find((f) => f.path === p) ?? null),
+				read: vi.fn(async (f: TFile) => fileContent[f.path]),
+				cachedRead: vi.fn(async (f: TFile) => fileContent[f.path]),
+				modify: vi.fn(async () => {}),
+				create: vi.fn(async () => {}),
+				append: vi.fn(async () => {}),
+				trash: vi.fn(async () => {}),
+				createFolder: vi.fn(async () => {}),
+			},
+			metadataCache: {
+				getFileCache: vi.fn(() => null),
+				getFirstLinkpathDest: vi.fn(() => null),
+				resolvedLinks: {},
+				unresolvedLinks: {},
+			},
+			fileManager: {
+				renameFile: vi.fn(async () => {}),
+				processFrontMatter: vi.fn(async () => {}),
+			},
+			workspace: { getLeaf: vi.fn(() => ({ openFile: vi.fn(async () => {}) })) },
+			plugins: {
+				getPlugin: (id: string) =>
+					id === "obsidian-tasks-plugin"
+						? { apiV1: { executeToggleTaskDoneCommand: () => "" } }
+						: null,
+				enabledPlugins: new Set(["obsidian-tasks-plugin"]),
+			},
+		};
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			pathFilter: { allowlist: [], blocklist: ["secrets/"] },
+		});
+		const r = await getTool(tools, "vault_tasks_query").handler({});
+		const body = (r.content[0] as { text: string }).text;
+		expect(body).toContain("visible work");
+		expect(body).not.toContain("hidden secret");
+	});
+
+	it("vault_tasks_toggle refuses paths blocked by the filter", async () => {
+		const file = mdAt("secrets/notes.md");
+		const toggle = vi.fn();
+		const modify = vi.fn(async () => {});
+		const app = {
+			vault: {
+				getFiles: vi.fn(() => [file]),
+				getMarkdownFiles: vi.fn(() => [file]),
+				getFileByPath: vi.fn((p: string) => (p === file.path ? file : null)),
+				read: vi.fn(async () => "- [ ] hidden\n"),
+				cachedRead: vi.fn(async () => "- [ ] hidden\n"),
+				modify,
+				create: vi.fn(),
+				append: vi.fn(),
+				trash: vi.fn(),
+				createFolder: vi.fn(),
+			},
+			metadataCache: {
+				getFileCache: vi.fn(() => null),
+				getFirstLinkpathDest: vi.fn(() => null),
+				resolvedLinks: {},
+				unresolvedLinks: {},
+			},
+			fileManager: { renameFile: vi.fn(), processFrontMatter: vi.fn() },
+			workspace: { getLeaf: vi.fn(() => ({ openFile: vi.fn() })) },
+			plugins: {
+				getPlugin: (id: string) =>
+					id === "obsidian-tasks-plugin"
+						? { apiV1: { executeToggleTaskDoneCommand: toggle } }
+						: null,
+				enabledPlugins: new Set(["obsidian-tasks-plugin"]),
+			},
+		};
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			pathFilter: { allowlist: [], blocklist: ["secrets/"] },
+		});
+		const r = await getTool(tools, "vault_tasks_toggle").handler({
+			path: "secrets/notes.md",
+			line: 1,
+		});
+		expect(r.isError).toBe(true);
+		expect(toggle).not.toHaveBeenCalled();
+		expect(modify).not.toHaveBeenCalled();
+	});
+
+	it("vault_templater_create refuses destinations blocked by the filter", async () => {
+		const { TFile: TFileClass } = await import("obsidian");
+		const templateFile = Object.assign(new (TFileClass as new () => object)(), {
+			path: "Templates/daily.md",
+			name: "daily.md",
+			basename: "daily",
+			extension: "md",
+		}) as unknown as TFile;
+		const create = vi.fn();
+		const { app } = mockApp("{}");
+		(
+			app.vault as unknown as { getAbstractFileByPath: (p: string) => unknown }
+		).getAbstractFileByPath = vi.fn((p: string) =>
+			p === "Templates/daily.md" ? templateFile : null,
+		);
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) =>
+				id === "templater-obsidian"
+					? {
+							settings: { templates_folder: "Templates" },
+							templater: { create_new_note_from_template: create },
+						}
+					: null,
+			enabledPlugins: new Set(["templater-obsidian"]),
+		};
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			pathFilter: { allowlist: [], blocklist: ["secrets/"] },
+			// Grant a write tier wide enough to reach the destPath check —
+			// without writeVault, gateVaultWrite would reject for being
+			// outside the write directory before the pathFilter check fires.
+			enabledTiers: new Set(["read", "writeScoped", "writeVault", "extensions"]),
+		});
+		const r = await getTool(tools, "vault_templater_create").handler({
+			template: "Templates/daily.md",
+			folder: "secrets",
+			filename: "x",
+		});
+		expect(r.isError).toBe(true);
+		expect(create).not.toHaveBeenCalled();
+	});
+
+	it("vault_periodic_note refuses computed paths blocked by the filter", async () => {
+		const { app } = mockApp("{}");
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) =>
+				id === "periodic-notes"
+					? {
+							instance: {
+								settings: {
+									daily: {
+										enabled: true,
+										folder: "secrets/journal",
+										format: "YYYY-MM-DD",
+									},
+								},
+							},
+						}
+					: null,
+			enabledPlugins: new Set(["periodic-notes"]),
+		};
+		app.vault.getFileByPath = vi.fn((_p: string) => null);
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			pathFilter: { allowlist: [], blocklist: ["secrets/"] },
+			enabledTiers: new Set(["read", "writeScoped", "writeVault", "extensions"]),
+		});
+		const r = await getTool(tools, "vault_periodic_note").handler({
+			periodicity: "daily",
+			date: "2026-04-19",
+			create: true,
+		});
+		expect(r.isError).toBe(true);
+		expect((r.content[0] as { text: string }).text).toMatch(/blocked|allow/);
+	});
+
+	it("vault_create_folder refuses paths blocked by the filter", async () => {
+		const { app } = mockApp("{}");
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			pathFilter: { allowlist: [], blocklist: ["secrets/"] },
+			enabledTiers: new Set(["read", "writeScoped", "writeVault", "manage"]),
+		});
+		const r = await getTool(tools, "vault_create_folder").handler({
+			path: "secrets/exfil",
+		});
+		expect(r.isError).toBe(true);
+		expect((r.content[0] as { text: string }).text).toMatch(/blocked|allow/);
+		expect(app.vault.createFolder).not.toHaveBeenCalled();
+	});
+
+	it("vault_batch_frontmatter excludes blocklisted files from dry-run and apply", async () => {
+		const visible = mdAt("notes/visible.md");
+		const hidden = mdAt("secrets/hidden.md");
+		const files = [visible, hidden];
+		const fileContent: Record<string, string> = {
+			"notes/visible.md": "match",
+			"secrets/hidden.md": "match",
+		};
+		const processFrontMatter = vi.fn(
+			async (_file: TFile, _fn: (fm: Record<string, unknown>) => void) => {},
+		);
+		const { prepareSimpleSearch } = await import("obsidian");
+		// Override the default search mock from the top-level vi.mock block:
+		// the default returns null for everything, which would short-circuit
+		// the iteration before we can verify filtering.
+		(
+			prepareSimpleSearch as unknown as { mockImplementation: (impl: unknown) => void }
+		).mockImplementation(
+			() => (content: string) =>
+				content.includes("match") ? { score: 1, matches: [] } : null,
+		);
+		const app = {
+			vault: {
+				getFiles: vi.fn(() => files),
+				getMarkdownFiles: vi.fn(() => files),
+				getFileByPath: vi.fn((p: string) => files.find((f) => f.path === p) ?? null),
+				read: vi.fn(async (f: TFile) => fileContent[f.path]),
+				cachedRead: vi.fn(async (f: TFile) => fileContent[f.path]),
+				modify: vi.fn(async () => {}),
+				create: vi.fn(),
+				append: vi.fn(),
+				trash: vi.fn(),
+				createFolder: vi.fn(),
+			},
+			metadataCache: {
+				getFileCache: vi.fn(() => null),
+				getFirstLinkpathDest: vi.fn(() => null),
+				resolvedLinks: {},
+				unresolvedLinks: {},
+			},
+			fileManager: { renameFile: vi.fn(), processFrontMatter },
+			workspace: { getLeaf: vi.fn(() => ({ openFile: vi.fn() })) },
+		};
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			pathFilter: { allowlist: [], blocklist: ["secrets/"] },
+			enabledTiers: new Set(["read", "writeScoped", "writeVault", "manage"]),
+		});
+		// Dry-run: must NOT list secrets/hidden.md
+		const dry = await getTool(tools, "vault_batch_frontmatter").handler({
+			query: "match",
+			property: "tag",
+			value: "x",
+			dryRun: true,
+		});
+		const dryText = (dry.content[0] as { text: string }).text;
+		expect(dryText).toContain("notes/visible.md");
+		expect(dryText).not.toContain("secrets/hidden.md");
+		// Apply: must not invoke processFrontMatter on secrets/hidden.md
+		const apply = await getTool(tools, "vault_batch_frontmatter").handler({
+			query: "match",
+			property: "tag",
+			value: "x",
+			dryRun: false,
+		});
+		expect(apply.isError ?? false).toBe(false);
+		const touched = processFrontMatter.mock.calls.map((c) => (c[0] as TFile).path);
+		expect(touched).toContain("notes/visible.md");
+		expect(touched).not.toContain("secrets/hidden.md");
+	});
+});
