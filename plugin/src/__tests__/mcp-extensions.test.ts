@@ -780,6 +780,302 @@ describe("plugin_extensions_list", () => {
 	});
 });
 
+describe("Extensions tier — write-boundary asymmetry fixes", () => {
+	// Tests for the PR2 cluster: drive-letter rejection on templater,
+	// vault_periodic_note using Templater's returned TFile (no collateral
+	// basename-matching trash), vault_periodic_note enforcing the
+	// templates-folder restriction, and CAS via gateVaultWrite's new
+	// recheckFile option (vault_tasks_toggle).
+
+	function mdAtForCas(path: string): TFile {
+		return {
+			path,
+			name: path.split("/").pop(),
+			basename: path.replace(/\.md$/, "").split("/").pop(),
+			extension: "md",
+			stat: { ctime: 1, mtime: 2, size: 100 },
+			vault: {} as never,
+			parent: null as never,
+		} as unknown as TFile;
+	}
+
+	it("vault_templater_create rejects ':' in folder (NTFS alt-data-stream)", async () => {
+		const { TFile: TFileClass } = await import("obsidian");
+		const templateFile = Object.assign(new (TFileClass as new () => object)(), {
+			path: "Templates/daily.md",
+			name: "daily.md",
+			basename: "daily",
+			extension: "md",
+		}) as unknown as TFile;
+		const create = vi.fn();
+		const { app } = mockApp("{}");
+		(
+			app.vault as unknown as { getAbstractFileByPath: (p: string) => unknown }
+		).getAbstractFileByPath = vi.fn((p: string) =>
+			p === "Templates/daily.md" ? templateFile : null,
+		);
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) =>
+				id === "templater-obsidian"
+					? {
+							settings: { templates_folder: "Templates" },
+							templater: { create_new_note_from_template: create },
+						}
+					: null,
+			enabledPlugins: new Set(["templater-obsidian"]),
+		};
+		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
+		const r = await getTool(tools, "vault_templater_create").handler({
+			template: "Templates/daily.md",
+			folder: "notes:hidden",
+			filename: "x",
+		});
+		expect(r.isError).toBe(true);
+		expect((r.content[0] as { text: string }).text).toMatch(/drive letter|alt-data-stream/);
+		expect(create).not.toHaveBeenCalled();
+	});
+
+	it("vault_templater_create rejects ':' in filename (NTFS alt-data-stream)", async () => {
+		const { TFile: TFileClass } = await import("obsidian");
+		const templateFile = Object.assign(new (TFileClass as new () => object)(), {
+			path: "Templates/daily.md",
+			name: "daily.md",
+			basename: "daily",
+			extension: "md",
+		}) as unknown as TFile;
+		const create = vi.fn();
+		const { app } = mockApp("{}");
+		(
+			app.vault as unknown as { getAbstractFileByPath: (p: string) => unknown }
+		).getAbstractFileByPath = vi.fn((p: string) =>
+			p === "Templates/daily.md" ? templateFile : null,
+		);
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) =>
+				id === "templater-obsidian"
+					? {
+							settings: { templates_folder: "Templates" },
+							templater: { create_new_note_from_template: create },
+						}
+					: null,
+			enabledPlugins: new Set(["templater-obsidian"]),
+		};
+		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
+		const r = await getTool(tools, "vault_templater_create").handler({
+			template: "Templates/daily.md",
+			filename: "foo:bar",
+		});
+		expect(r.isError).toBe(true);
+		expect((r.content[0] as { text: string }).text).toMatch(/alt-data-stream/);
+		expect(create).not.toHaveBeenCalled();
+	});
+
+	it("vault_periodic_note uses Templater's returned TFile to detect relocation", async () => {
+		// Pre-fix, on `tp.file.move`, vault_periodic_note fell back to
+		// `getMarkdownFiles().find(f => f.basename === noteName)` — which would
+		// match (and trash) an UNRELATED file sharing the basename. The fix
+		// uses Templater's returned TFile directly.
+		const { TFile: TFileClass } = await import("obsidian");
+		const templateFile = Object.assign(new (TFileClass as new () => object)(), {
+			path: "Templates/daily-template.md",
+			name: "daily-template.md",
+			basename: "daily-template",
+			extension: "md",
+		}) as unknown as TFile;
+		// The created note ends up at "Elsewhere/relocated.md" — distinct from
+		// the gated path. Also place an unrelated file with the same basename
+		// the bug would have trashed.
+		const unrelatedSameBasename = Object.assign(new (TFileClass as new () => object)(), {
+			path: "completely-unrelated/2026-04-19.md",
+			name: "2026-04-19.md",
+			basename: "2026-04-19",
+			extension: "md",
+		}) as unknown as TFile;
+		const createdFile = Object.assign(new (TFileClass as new () => object)(), {
+			path: "Elsewhere/relocated.md",
+			name: "relocated.md",
+			basename: "relocated",
+			extension: "md",
+		}) as unknown as TFile;
+		const create = vi.fn(async () => createdFile);
+		const trash = vi.fn(async () => undefined);
+		const { app } = mockApp("{}");
+		app.vault.trash = trash;
+		app.vault.getFileByPath = vi.fn((p: string) =>
+			p === "Templates/daily-template.md" ? templateFile : null,
+		);
+		(app.vault as unknown as { getMarkdownFiles: () => TFile[] }).getMarkdownFiles = () => [
+			unrelatedSameBasename,
+			templateFile,
+		];
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) => {
+				if (id === "templater-obsidian") {
+					return {
+						settings: { templates_folder: "Templates" },
+						templater: { create_new_note_from_template: create },
+					};
+				}
+				if (id === "periodic-notes") {
+					return {
+						instance: {
+							settings: {
+								daily: {
+									enabled: true,
+									folder: "Daily",
+									format: "YYYY-MM-DD",
+									template: "Templates/daily-template.md",
+								},
+							},
+						},
+					};
+				}
+				return null;
+			},
+			enabledPlugins: new Set(["templater-obsidian", "periodic-notes"]),
+		};
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			review: undefined,
+			enabledTiers: new Set(["read", "writeScoped", "writeVault", "extensions"]),
+		});
+		const r = await getTool(tools, "vault_periodic_note").handler({
+			periodicity: "daily",
+			date: "2026-04-19",
+			create: true,
+		});
+		expect(r.isError).toBe(true);
+		expect((r.content[0] as { text: string }).text).toMatch(/relocated/);
+		// Only the file Templater returned was trashed; the unrelated
+		// same-basename file MUST NOT have been touched.
+		expect(trash).toHaveBeenCalledTimes(1);
+		expect(trash).toHaveBeenCalledWith(createdFile, true);
+		expect(trash).not.toHaveBeenCalledWith(unrelatedSameBasename, true);
+	});
+
+	it("vault_periodic_note refuses Templater templates outside the templates folder", async () => {
+		const { TFile: TFileClass } = await import("obsidian");
+		// Template lives OUTSIDE Templater's configured templates folder.
+		// Pre-fix this was applied without question; post-fix it's rejected
+		// so a writeable malicious template can't smuggle script execution
+		// past the templates-folder boundary.
+		const templateFile = Object.assign(new (TFileClass as new () => object)(), {
+			path: "agent-workspace/maybe-malicious.md",
+			name: "maybe-malicious.md",
+			basename: "maybe-malicious",
+			extension: "md",
+		}) as unknown as TFile;
+		const create = vi.fn();
+		const { app } = mockApp("{}");
+		app.vault.getFileByPath = vi.fn((p: string) =>
+			p === "agent-workspace/maybe-malicious.md" ? templateFile : null,
+		);
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) => {
+				if (id === "templater-obsidian") {
+					return {
+						settings: { templates_folder: "Templates" },
+						templater: { create_new_note_from_template: create },
+					};
+				}
+				if (id === "periodic-notes") {
+					return {
+						instance: {
+							settings: {
+								daily: {
+									enabled: true,
+									folder: "Daily",
+									format: "YYYY-MM-DD",
+									template: "agent-workspace/maybe-malicious.md",
+								},
+							},
+						},
+					};
+				}
+				return null;
+			},
+			enabledPlugins: new Set(["templater-obsidian", "periodic-notes"]),
+		};
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			review: undefined,
+			enabledTiers: new Set(["read", "writeScoped", "writeVault", "extensions"]),
+		});
+		const r = await getTool(tools, "vault_periodic_note").handler({
+			periodicity: "daily",
+			date: "2026-04-19",
+			create: true,
+		});
+		expect(r.isError).toBe(true);
+		expect((r.content[0] as { text: string }).text).toMatch(/templates folder/);
+		expect(create).not.toHaveBeenCalled();
+	});
+
+	it("vault_tasks_toggle aborts on concurrent edit during review (CAS)", async () => {
+		// gateVaultWrite was missing the recheckFile mechanism that runWrite
+		// has for vault_modify et al. After PR2, toggle goes through the
+		// shared CAS check: if the file changes during the review window,
+		// the apply is aborted instead of clobbering the editor edit.
+		const file = mdAtForCas("notes/tasks.md");
+		const original = "- [ ] thing\n";
+		const concurrentEdit = "- [ ] thing — edited mid-review\n";
+		const reads = [original, concurrentEdit];
+		let readIdx = 0;
+		const toggle = vi.fn((line: string) => line.replace("[ ]", "[x]"));
+		const modify = vi.fn(async () => {});
+		const app = {
+			vault: {
+				getFiles: vi.fn(() => [file]),
+				getMarkdownFiles: vi.fn(() => [file]),
+				getFileByPath: vi.fn((p: string) => (p === file.path ? file : null)),
+				// First read: the snapshot used to build the preview.
+				// Second read: the CAS recheck after the user approves.
+				read: vi.fn(async () => reads[Math.min(readIdx++, reads.length - 1)]),
+				cachedRead: vi.fn(async () => reads[0]),
+				modify,
+				create: vi.fn(),
+				append: vi.fn(),
+				trash: vi.fn(),
+				createFolder: vi.fn(),
+			},
+			metadataCache: {
+				getFileCache: vi.fn(() => null),
+				getFirstLinkpathDest: vi.fn(() => null),
+				resolvedLinks: {},
+				unresolvedLinks: {},
+			},
+			fileManager: { renameFile: vi.fn(), processFrontMatter: vi.fn() },
+			workspace: { getLeaf: vi.fn(() => ({ openFile: vi.fn() })) },
+			plugins: {
+				getPlugin: (id: string) =>
+					id === "obsidian-tasks-plugin"
+						? { apiV1: { executeToggleTaskDoneCommand: toggle } }
+						: null,
+				enabledPlugins: new Set(["obsidian-tasks-plugin"]),
+			},
+		};
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			review: async () => ({ approved: true }),
+			// Use writeReviewed so the gate goes through the review path
+			// (only that path runs the CAS check; direct writes have no race
+			// window). The file path is OUTSIDE writeDir to force the
+			// reviewed branch.
+			enabledTiers: new Set(["read", "writeScoped", "writeReviewed", "extensions"]),
+		});
+		const r = await getTool(tools, "vault_tasks_toggle").handler({
+			path: "notes/tasks.md",
+			line: 1,
+		});
+		expect(r.isError).toBe(true);
+		expect((r.content[0] as { text: string }).text).toMatch(/changed during review/);
+		expect(modify).not.toHaveBeenCalled();
+	});
+});
+
 describe("Extensions tier — pathFilter coverage (info-leak boundary)", () => {
 	// Pre-fix, registerExtensionTools was called without `pathFilter`, so
 	// every extension-tier tool was blind to the user's mcpPathAllowlist /

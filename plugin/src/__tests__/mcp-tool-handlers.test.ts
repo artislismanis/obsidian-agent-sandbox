@@ -1269,6 +1269,116 @@ describe("MCP tool handlers", () => {
 			expect(r.isError).toBe(true);
 			expect(r.text).toMatch(/may not contain a '\.\.'/);
 		});
+
+		it("rejects Windows drive-letter paths", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_create_folder").handler({ path: "C:foo" }),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toMatch(/drive letter|alt-data-stream/);
+		});
+
+		it("rejects paths containing ':' (NTFS alt-data-stream)", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_create_folder").handler({ path: "notes:hidden" }),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toMatch(/drive letter|alt-data-stream/);
+		});
+	});
+
+	describe("vault_move destination gating (writeDir escape boundary)", () => {
+		// Pre-fix, vault_move passed the SOURCE path to gateVaultWrite. A
+		// writeScoped+manage agent could then lift a file from inside writeDir
+		// to ANY destination — gate accepted because source-in-writeDir, and
+		// pathFilter (allowlist/blocklist) only checks the destination against
+		// allow/block lists, not against writeDir scoping.
+
+		it("scoped-only mode rejects moves whose destination escapes writeDir", async () => {
+			const localApp = createMockApp(
+				[makeTFile("agent-workspace/draft.md"), makeTFile("notes/hello.md")],
+				{ caches: {} },
+			);
+			const localTools = buildTools({
+				app: localApp as never,
+				getWriteDir: () => "agent-workspace",
+				review: undefined,
+				enabledTiers: new Set(["read", "writeScoped", "manage"]),
+			});
+			const r = getResult(
+				await getTool(localTools, "vault_move").handler({
+					path: "agent-workspace/draft.md",
+					to: "notes",
+				}),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toMatch(/outside the write directory|reviewed writes/);
+			expect(localApp.fileManager.renameFile).not.toHaveBeenCalled();
+		});
+
+		it("scoped-only mode rejects moves whose source is outside writeDir", async () => {
+			const localApp = createMockApp(
+				[makeTFile("notes/hello.md"), makeTFile("agent-workspace/draft.md")],
+				{ caches: {} },
+			);
+			const localTools = buildTools({
+				app: localApp as never,
+				getWriteDir: () => "agent-workspace",
+				review: undefined,
+				enabledTiers: new Set(["read", "writeScoped", "manage"]),
+			});
+			const r = getResult(
+				await getTool(localTools, "vault_move").handler({
+					path: "notes/hello.md",
+					to: "agent-workspace",
+				}),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toMatch(/Source.*outside the write directory/);
+			expect(localApp.fileManager.renameFile).not.toHaveBeenCalled();
+		});
+
+		it("scoped-only mode allows moves where BOTH endpoints sit inside writeDir", async () => {
+			const localApp = createMockApp(
+				[makeTFile("agent-workspace/a.md"), makeTFile("agent-workspace/sub/.keep")],
+				{ caches: {} },
+			);
+			const localTools = buildTools({
+				app: localApp as never,
+				getWriteDir: () => "agent-workspace",
+				review: undefined,
+				enabledTiers: new Set(["read", "writeScoped", "manage"]),
+			});
+			const r = getResult(
+				await getTool(localTools, "vault_move").handler({
+					path: "agent-workspace/a.md",
+					to: "agent-workspace/sub",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			expect(localApp.fileManager.renameFile).toHaveBeenCalled();
+		});
+
+		it("full vault-write mode allows moves anywhere", async () => {
+			const localApp = createMockApp(
+				[makeTFile("agent-workspace/draft.md"), makeTFile("notes/hello.md")],
+				{ caches: {} },
+			);
+			const localTools = buildTools({
+				app: localApp as never,
+				getWriteDir: () => "agent-workspace",
+				review: undefined,
+				enabledTiers: new Set(["read", "writeScoped", "writeVault", "manage"]),
+			});
+			const r = getResult(
+				await getTool(localTools, "vault_move").handler({
+					path: "agent-workspace/draft.md",
+					to: "notes",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			expect(localApp.fileManager.renameFile).toHaveBeenCalled();
+		});
 	});
 
 	describe("frontmatter property safety", () => {
