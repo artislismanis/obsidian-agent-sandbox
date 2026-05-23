@@ -333,6 +333,63 @@ describe("buildLocalWindowsCommand", () => {
 	});
 });
 
+describe("control-byte rejection across env vars (CRLF + NUL)", () => {
+	// Previously assertNoCrlf only ran for SENSITIVE_ENV_KEYS (OAS_SUDO_PASSWORD,
+	// OAS_MCP_TOKEN). After PR3, every env var rejects CR/LF/NUL — protecting
+	// against hand-edited data.json that injects a newline into, e.g.,
+	// OAS_MEMORY_FILE_NAME or OAS_VAULT_PATH. On Windows cmd.exe, an LF would
+	// terminate the `set "KEY=..."` statement and let the rest run as a fresh
+	// command after the next `&&`.
+
+	it("buildLocalCommand rejects newlines in non-sensitive env vars", () => {
+		expect(() =>
+			buildLocalCommand("/opt/project", "docker compose up -d", {
+				OAS_MEMORY_FILE_NAME: "memory.json\nrm -rf /",
+			}),
+		).toThrow(/OAS_MEMORY_FILE_NAME/);
+	});
+
+	it("buildWslCommand rejects newlines in non-sensitive env vars", () => {
+		expect(() =>
+			buildWslCommand("/home/user", "Ubuntu", "docker compose up -d", {
+				OAS_VAULT_PATH: "/mnt/c/vault\nevil",
+			}),
+		).toThrow(/OAS_VAULT_PATH/);
+	});
+
+	it("buildLocalWindowsCommand rejects newlines in non-sensitive env vars", () => {
+		expect(() =>
+			buildLocalWindowsCommand("C:\\project", "docker compose up -d", {
+				OAS_TTYD_BIND: "127.0.0.1\nrm -rf C:",
+			}),
+		).toThrow(/OAS_TTYD_BIND/);
+	});
+
+	it("buildWslCommand rejects carriage returns", () => {
+		expect(() =>
+			buildWslCommand("/home/user", "Ubuntu", "docker compose up -d", {
+				OAS_VAULT_WRITE_DIR: "agent\r-workspace",
+			}),
+		).toThrow(/OAS_VAULT_WRITE_DIR/);
+	});
+
+	it("buildWslCommand rejects NUL bytes", () => {
+		expect(() =>
+			buildWslCommand("/home/user", "Ubuntu", "docker compose up -d", {
+				OAS_SUDO_PASSWORD: "pa\0ssword",
+			}),
+		).toThrow(/OAS_SUDO_PASSWORD.*NUL/);
+	});
+
+	it("buildLocalWindowsCommand rejects NUL bytes", () => {
+		expect(() =>
+			buildLocalWindowsCommand("C:\\project", "docker compose up -d", {
+				OAS_MCP_TOKEN: "tok\0en",
+			}),
+		).toThrow(/OAS_MCP_TOKEN.*NUL/);
+	});
+});
+
 describe("windowsToWslPath", () => {
 	it("converts a standard Windows path", () => {
 		expect(windowsToWslPath("C:\\Users\\foo\\vault")).toBe("/mnt/c/Users/foo/vault");

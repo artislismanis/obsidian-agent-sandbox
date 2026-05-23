@@ -20,7 +20,7 @@ import {
 	getTerminalConnectionLog,
 	resetTerminalConnectionLog,
 } from "./terminal-view";
-import { isValidWriteDir, splitCsv } from "./validation";
+import { isValidPathPrefixList, isValidWriteDir, splitCsv } from "./validation";
 import { setLogLevel, logger, errMsg } from "./logger";
 import { ObsidianMcpServer, generateToken } from "./mcp-server";
 import { reviewsRequired } from "./permission-tiers";
@@ -691,6 +691,22 @@ export default class AgentSandboxPlugin extends Plugin {
 	private async startMcpServer(): Promise<void> {
 		if (this.mcpServer?.isRunning()) return;
 		try {
+			// Re-validate the path-prefix lists at server start. The settings UI
+			// rejects bad inputs at save time, but a hand-edited data.json
+			// could carry an invalid value through. Without this re-check, an
+			// unparseable list (e.g. embedded '..') would flow into pathFilter
+			// and silently degrade to "matches nothing" — making the filter
+			// inert without surfacing the misconfiguration.
+			if (!isValidPathPrefixList(this.settings.mcpPathAllowlist ?? "")) {
+				throw new Error(
+					"Invalid mcpPathAllowlist in settings. Use comma-separated path prefixes (e.g. 'notes/, archive/').",
+				);
+			}
+			if (!isValidPathPrefixList(this.settings.mcpPathBlocklist ?? "")) {
+				throw new Error(
+					"Invalid mcpPathBlocklist in settings. Use comma-separated path prefixes.",
+				);
+			}
 			const allowlist = splitCsv(this.settings.mcpPathAllowlist);
 			const blocklist = splitCsv(this.settings.mcpPathBlocklist);
 			this.mcpServer = new ObsidianMcpServer(this.app, {
