@@ -35,6 +35,8 @@ import {
 	isValidMemory,
 	isValidCpus,
 	isValidSessionName,
+	isValidMemoryFileName,
+	isValidBindAddress,
 } from "./validation";
 
 export interface DockerManagerSettings {
@@ -70,16 +72,30 @@ export function windowsToWslPath(windowsPath: string): string {
  * Builds the inner shell command string with env vars and cd.
  * `dockerCmd` must be a trusted literal — it is NOT escaped.
  */
-/** Sensitive env-var keys that must never carry a literal newline; a CR/LF
- *  inside the secret would let an attacker who controls the value inject an
- *  extra command into the bash export prefix (e.g. `'\nrm -rf /\n'`). The
- *  shell-escape pass quotes single-quotes but happily passes through newlines,
- *  which `bash -c` treats as command separators. We reject early instead. */
-const SENSITIVE_ENV_KEYS = new Set(["OAS_SUDO_PASSWORD", "OAS_MCP_TOKEN"]);
-
-function assertNoCrlf(key: string, value: string): void {
+/** Reject control characters in any env-var value. Originally only sensitive
+ *  keys (OAS_SUDO_PASSWORD / OAS_MCP_TOKEN) were checked, but EVERY value
+ *  flows through the same `bash -c export KEY='value' && ...` envelope (or
+ *  the cmd.exe `set "KEY=value" && ...` envelope on Windows). A CR/LF in
+ *  any value can terminate the export/set statement and let the rest run
+ *  as a fresh command:
+ *   - bash: single-quotes preserve newlines literally, so `'foo\nrm -rf /'`
+ *           stays inside the quotes for export, but the subsequent && chain
+ *           treats the LF as a statement separator anyway via shell parsing
+ *           of the outer command after our escaping.
+ *   - cmd.exe: `set "KEY=foo\nbar"` ends at the LF and `bar` runs as a new
+ *              command after the next &&.
+ *   - NUL: bash silently truncates at \0, so a NUL inside a password
+ *          produces "wrong password" with no clear cause.
+ *  Validation here is defense in depth on top of the per-setting validators
+ *  applied in the envSpec — those are field-shape checks; this is a sanity
+ *  rail that runs even for shapes (like file paths) whose validator doesn't
+ *  inherently reject control bytes. */
+function assertNoControlBytes(key: string, value: string): void {
 	if (value.includes("\n") || value.includes("\r")) {
 		throw new Error(`Invalid value for ${key}: must not contain newlines or carriage returns.`);
+	}
+	if (value.includes("\0")) {
+		throw new Error(`Invalid value for ${key}: must not contain NUL bytes.`);
 	}
 }
 
@@ -92,7 +108,7 @@ function buildInnerCommand(
 
 	const envPrefix = Object.entries(envVars)
 		.map(([key, value]) => {
-			if (SENSITIVE_ENV_KEYS.has(key)) assertNoCrlf(key, value);
+			assertNoControlBytes(key, value);
 			const escapedValue = value.replace(/'/g, "'\\''");
 			return `${key}='${escapedValue}'`;
 		})
@@ -151,11 +167,13 @@ export function buildLocalWindowsCommand(
 	const escapedPath = composePath.replace(/"/g, '""');
 
 	const envParts = Object.entries(envVars).map(([key, value]) => {
-		// Symmetric with buildInnerCommand (bash path): a CR/LF inside a
-		// sensitive value would terminate the `set "KEY=..."` statement and
-		// let the rest of the value be interpreted as a fresh cmd.exe command
-		// after the `&&`. Reject before quoting.
-		if (SENSITIVE_ENV_KEYS.has(key)) assertNoCrlf(key, value);
+		// Symmetric with buildInnerCommand (bash path): a CR/LF or NUL in
+		// any value can terminate the `set "KEY=..."` statement and let the
+		// rest of the value run as a fresh cmd.exe command after the &&.
+		// Apply to ALL keys, not just SENSITIVE ones (any of OAS_VAULT_PATH,
+		// OAS_MEMORY_FILE_NAME, etc. can carry an injected newline if
+		// hand-edited in data.json).
+		assertNoControlBytes(key, value);
 		const escapedValue = value.replace(/"/g, '""');
 		return `set "${key}=${escapedValue}"`;
 	});
@@ -306,6 +324,15 @@ export class DockerManager {
 						? windowsToWslPath(vaultPath)
 						: vaultPath
 					: "",
+				// Vault paths are derived from Obsidian's getBasePath and can
+				// legitimately contain spaces and other path-safe characters
+				// (e.g. `C:\Users\Foo\My Vault`). Dangerous bytes (CR/LF/NUL)
+				// are caught by assertNoControlBytes for ALL env vars. The
+				// validator here just enforces non-empty so the contract is
+				// explicit; the for-loop below also skips empty values, but
+				// being explicit documents the boundary.
+				validate: (v) => v.length > 0,
+				invalidMsg: "Invalid vault path: must not be empty.",
 			},
 			{
 				key: "OAS_VAULT_WRITE_DIR",
@@ -315,8 +342,20 @@ export class DockerManager {
 					"Invalid vault write directory. Must be a relative path without '..' components.",
 			},
 			{ key: "OAS_TTYD_PORT", value: ttydPort ? String(ttydPort) : "" },
-			{ key: "OAS_TTYD_BIND", value: ttydBindAddress },
-			{ key: "OAS_MEMORY_FILE_NAME", value: memoryFileName },
+			{
+				key: "OAS_TTYD_BIND",
+				value: ttydBindAddress,
+				validate: isValidBindAddress,
+				invalidMsg:
+					"Invalid ttyd bind address. Use an IPv4 address (e.g. 127.0.0.1 or 0.0.0.0).",
+			},
+			{
+				key: "OAS_MEMORY_FILE_NAME",
+				value: memoryFileName,
+				validate: isValidMemoryFileName,
+				invalidMsg:
+					"Invalid memory file name. Use a bare filename (letters/digits/./_/-, no slashes, no '..', no leading dot).",
+			},
 			{
 				key: "OAS_ALLOWED_PRIVATE_HOSTS",
 				value: allowedPrivateHosts,
