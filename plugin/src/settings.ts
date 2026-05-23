@@ -20,7 +20,7 @@ import {
 	isValidPrivateHosts,
 	isValidWriteDir,
 } from "./validation";
-import { access } from "fs/promises";
+import { promises as fsp } from "fs";
 import { join } from "path";
 
 export type TerminalThemeMode = "obsidian" | "dark" | "light";
@@ -401,7 +401,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				// general — switching tabs while a probe is in flight is fine
 				// because the answer is cached for the next render.
 				const activeAtProbe = this.activeTab;
-				access(yml)
+				fsp.access(yml)
 					.then(() => this.composePathExists.set(yml, true))
 					.catch(() => this.composePathExists.set(yml, false))
 					.finally(() => {
