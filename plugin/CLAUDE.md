@@ -67,22 +67,7 @@ Three automated layers — see `docs/testing.md` for full setup, prerequisites, 
 | Integration (`test/integration/`) | `npm run test:integration` | ~30s | Docker + built `oas-sandbox:latest` |
 | E2E (`test/e2e/specs/`) | `npm run test:e2e` / `test:e2e:headless` | ~25s | Obsidian (auto-downloaded); display or xvfb |
 
-Vitest unit test files (`npm run test`) live in `src/__tests__/`:
-- `docker.test.ts` / `docker-command.test.ts` — DockerManager status parsing + WSL/local command building, escaping, env-var injection
-- `status-bar.test.ts` — StatusBarManager state transitions, tooltip composition, FirewallStatusBar
-- `ttyd-client.test.ts` — Polling and URL construction (mocks `requestUrl`)
-- `validation.test.ts` — All input validators
-- `settings-tiers.test.ts` — Tier-toggle wiring through settings into the MCP server config
-- `mcp-server.test.ts` — Transport/auth/rate-limit/timeout integration; `mcp-symlink.test.ts` — symlink-traversal guard
-- `mcp-tool-handlers.test.ts` — Tool registration + per-handler behaviour
-- `mcp-review.test.ts` / `mcp-batch-review.test.ts` — Review-gating for writeReviewed and batch flows
-- `mcp-activity.test.ts` — `agent_status_set` and onActivity routing
-- `mcp-extensions.test.ts` — Dataview / Templater / Tasks / Canvas / Periodic Notes tools
-- `mcp-cache.test.ts` — VaultCache invalidation on `resolved`
-- `activity.test.ts` — ActivityUi attention propagation; AgentOutputNotifier debounce
-- `analyze.test.ts` / `prompt-templates.test.ts` — AnalyzeManager + the template interpolator
-- `diff-review-modal.test.ts` — Diff modal approval/rejection flow
-- `fixtures.ts` — Shared mock app / TFile builders (no tests of its own)
+Vitest unit test files (`npm run test`) live in `src/__tests__/` — one `*.test.ts` per module under test (`ls src/__tests__/`), plus `fixtures.ts` for shared mock app / TFile builders. Each test file mirrors its source module's name; add a new test by copying an adjacent file's setup.
 
 Integration tests share one `oas-test-sandbox` container via `globalSetup.ts`. The container is isolated from your live `oas-sandbox` via the `oas-test` compose project prefix. Claude-Code subsuite seeds auth from the live `oas_oas-claude-config` volume when present (see `docs/testing.md` for setup), otherwise skips.
 
