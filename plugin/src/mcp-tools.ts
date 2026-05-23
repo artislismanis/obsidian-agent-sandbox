@@ -1,12 +1,7 @@
 import type { App, TFile, CachedMetadata } from "obsidian";
 import { prepareSimpleSearch, prepareFuzzySearch } from "obsidian";
 import { z } from "zod/v4";
-import {
-	isPathWithinDir,
-	isPathAllowed,
-	isRealPathWithinBase,
-	pathHasParentSegment,
-} from "./validation";
+import { isPathWithinDir, isPathAllowed, pathHasParentSegment } from "./validation";
 import type { WriteOperation } from "./diff-review-modal";
 import { registerExtensionTools } from "./mcp-extensions";
 import {
@@ -15,7 +10,7 @@ import {
 	withTemplaterHookSuppressed,
 } from "./templater-adapter";
 import { errMsg, logger } from "./logger";
-import { getVaultBasePath, getVaultFullPath } from "./obsidian-internals";
+import { isVaultPathSafe } from "./obsidian-internals";
 
 export type { WriteOperation };
 
@@ -188,14 +183,8 @@ function isSafeFrontmatterProperty(name: string): boolean {
  * don't need to worry about backslashes appearing on Windows-shaped inputs.
  */
 // pathHasParentSegment is imported from validation.ts (single shared implementation).
-
-/** True when `vaultPath` resolves to a real filesystem path inside the vault base. */
-function isVaultPathSafe(app: App, vaultPath: string): boolean {
-	const base = getVaultBasePath(app);
-	const full = getVaultFullPath(app, vaultPath);
-	if (base === null || full === null) return true;
-	return isRealPathWithinBase(base, full);
-}
+// isVaultPathSafe is imported from obsidian-internals.ts — that single copy
+// also handles the FileSystemAdapter-fail-open warning.
 
 /** Parallel-chunked iteration over markdown files; handler returning true stops the walk.
  *
@@ -262,6 +251,20 @@ export async function gateVaultWrite(args: {
 	oldContent?: string;
 	newContent?: string;
 	affectedLinks?: string[];
+	/** When set alongside a writeReviewed review, after approval the file is
+	 *  re-read and the write is aborted if the contents changed out from
+	 *  under the modal. Mirrors runWrite's `recheckFile` semantics — the
+	 *  shared CAS contract for write tools that route through this gate
+	 *  (vault_tasks_toggle, vault_batch_frontmatter, etc.) rather than
+	 *  through runWrite. */
+	recheckFile?: TFile;
+	/** Override the CAS comparison target when `oldContent` is a derived
+	 *  representation (e.g. JSON-stringified frontmatter) rather than the
+	 *  raw file contents. When omitted, recheck falls back to `oldContent`. */
+	recheckExpected?: string;
+	/** App handle for the `recheckFile` re-read. Required when `recheckFile`
+	 *  is provided; without it, the gate has no way to call `vault.read`. */
+	app?: App;
 }): Promise<McpToolResult> {
 	// Errors thrown by apply() (e.g. the Templater post-validate guard
 	// rejecting a path-relocating template) need to surface as clean tool
@@ -290,6 +293,18 @@ export async function gateVaultWrite(args: {
 			affectedLinks: args.affectedLinks,
 		});
 		if (!result.approved) return error("Change rejected by user.");
+		// Compare-and-swap against editor edits between modal-show and
+		// modal-approve. Only applies on the reviewed path — direct writes
+		// (in-writeDir or writeVault) have no review window to race against.
+		const expected = args.recheckExpected ?? args.oldContent;
+		if (args.recheckFile && args.app && expected !== undefined) {
+			const current = await args.app.vault.read(args.recheckFile);
+			if (current !== expected) {
+				return error(
+					`File '${args.destPath}' changed during review — aborting to avoid clobbering an external edit. Re-run the tool to see the current contents.`,
+				);
+			}
+		}
 		return runApply();
 	}
 	return error(
@@ -1332,8 +1347,29 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						apply: () =>
 							withTemplaterHookSuppressed(app, async () => {
 								const created = await app.vault.create(path, content);
+								// Capture the path BEFORE Templater runs — when a
+								// template calls `tp.file.move(...)`, Obsidian mutates
+								// `created.path` in place. Comparing against this
+								// snapshot is how we detect the escape.
+								const expectedPath = created.path;
 								if (!tryTemplate) return "";
 								const result = await applyTemplaterFolderTemplate(app, created);
+								// Folder-template tp.file.move escape: a malicious
+								// template in Templater's templates folder can relocate
+								// the file outside the gated destPath. vault_create
+								// reviewed/approved the body on the assumption it lands
+								// at `path`; if it landed elsewhere, trash and surface.
+								// Mirrors the post-validate in vault_templater_create.
+								if (created.path !== expectedPath) {
+									try {
+										await app.vault.trash(created, true);
+									} catch {
+										/* surface the relocation error anyway */
+									}
+									throw new Error(
+										`Template relocated the file from '${expectedPath}' to '${created.path}' (likely via tp.file.move). Refusing to escape the gated path.`,
+									);
+								}
 								if (result.ok) return ` (applied template ${result.template})`;
 								if (result.reason === "failed") {
 									// File was created but the reviewed template body
@@ -1998,14 +2034,26 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// destination is the same path as the source (no actual move).
 				if (newPath !== f.path && app.vault.getFileByPath(newPath))
 					return error(`Destination already exists: ${newPath}`);
-				// Gate via writeDir/writeReviewed/writeVault — runWrite alone
-				// only checks `review`. With `manage` tier on + `mcpVaultWrites:
-				// "none"` (reviewFn undefined), runWrite would apply immediately
-				// against any vault file. Gate the SOURCE path (move semantically
-				// removes f from its current location); destination is constrained
-				// by isPathAllowed above.
+				// vault_move writes at TWO locations: the source becomes empty
+				// and the destination receives the file. vault_rename is
+				// structurally safe because source and destination share the
+				// parent directory; vault_move can lift a file OUT of writeDir
+				// (source-in-writeDir, dest-outside) or pull a file INTO it from
+				// outside. Both halves need to satisfy the same write-tier
+				// rules. We first check the source against the writeDir gate
+				// here, then route the destination through gateVaultWrite — so
+				// writeScoped-only callers can only move files where both
+				// endpoints sit inside writeDir.
+				const sourceWithin = isPathWithinDir(f.path, getWriteDir());
+				const writeVaultOk = enabledTiers.has("writeVault");
+				const writeReviewedOk = enabledTiers.has("writeReviewed") && reviewFn !== undefined;
+				if (!sourceWithin && !writeVaultOk && !writeReviewedOk) {
+					return error(
+						`Source '${f.path}' is outside the write directory '${getWriteDir()}'. Enable vault-wide writes (or reviewed writes) to move files from there.`,
+					);
+				}
 				return gateVaultWrite({
-					destPath: f.path,
+					destPath: newPath,
 					operation: "move",
 					description: `Move ${f.path} → ${newPath}`,
 					writeDir: getWriteDir(),
@@ -2068,6 +2116,11 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// passes for entirely-new trees where no ancestor exists yet.
 				if (pathHasParentSegment(path) || path.startsWith("/") || path.startsWith("\\"))
 					return error("Path may not contain a '..' segment or start with '/' or '\\'.");
+				// Reject Windows drive-letter / NTFS alt-data-stream paths. The
+				// realpath check catches escape, but `foo:bar` would create an
+				// alternate stream invisible in the file tree.
+				if (/^[A-Za-z]:/.test(path) || path.includes(":"))
+					return error("Path may not contain drive letters or ':' (alt-data-stream).");
 				if (!isVaultPathSafe(app, path))
 					return error("Path resolves outside the vault (symlink).");
 				// Honour pathFilter for folder creation. Without this, a `manage`
@@ -2171,9 +2224,20 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				const value = rawValue !== undefined ? parseJsonOrString(rawValue) : undefined;
 
 				let targets: TFile[] = matched;
+				// Snapshot the pre-review frontmatter for each file. We use these
+				// as the CAS comparison target in the apply phase so a file that
+				// changed between modal-show and modal-approve is skipped rather
+				// than blindly overwritten. The snapshot is keyed by file.path
+				// because TFile identity isn't a reliable key — Obsidian can
+				// recreate the wrapper across rename/move events.
+				const preReviewFm = new Map<string, Record<string, unknown>>();
+				for (const file of matched) {
+					preReviewFm.set(file.path, frontmatterSnapshot(file));
+				}
+				const reviewUsed = !!reviewBatchFn;
 				if (reviewBatchFn) {
 					const items = matched.map((file) => {
-						const oldFm = frontmatterSnapshot(file);
+						const oldFm = preReviewFm.get(file.path) ?? {};
 						let newFm: Record<string, unknown>;
 						if (rawValue !== undefined) {
 							newFm = { ...oldFm, [property]: value };
@@ -2202,6 +2266,13 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						return text("Batch approved with no files selected; nothing to do.");
 				}
 
+				// Per-file CAS skip list: when the batch went through a review,
+				// any file whose frontmatter changed during the review window is
+				// dropped from the apply set rather than clobbered. Without a
+				// review (writeVault direct-apply path), there's no race window
+				// to guard against — the snapshot and the write are back-to-back.
+				const skippedDueToConcurrentEdit: string[] = [];
+
 				// Process in chunks. Obsidian serialises per-file internally; modest
 				// concurrency across files cuts wall time for large batches without
 				// triggering the per-file race window.
@@ -2209,20 +2280,38 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				for (let i = 0; i < targets.length; i += FRONTMATTER_CHUNK) {
 					const chunk = targets.slice(i, i + FRONTMATTER_CHUNK);
 					await Promise.all(
-						chunk.map((file) =>
-							app.fileManager.processFrontMatter(file, (fm) => {
+						chunk.map(async (file) => {
+							if (reviewUsed) {
+								const preFm = preReviewFm.get(file.path);
+								const nowFm = frontmatterSnapshot(file);
+								if (
+									preFm !== undefined &&
+									JSON.stringify(preFm) !== JSON.stringify(nowFm)
+								) {
+									skippedDueToConcurrentEdit.push(file.path);
+									return;
+								}
+							}
+							await app.fileManager.processFrontMatter(file, (fm) => {
 								if (rawValue !== undefined) {
 									fm[property] = value;
 								} else {
 									delete fm[property];
 								}
-							}),
-						),
+							});
+						}),
 					);
+				}
+				if (skippedDueToConcurrentEdit.length > 0) {
+					targets = targets.filter((f) => !skippedDueToConcurrentEdit.includes(f.path));
 				}
 
 				const label = rawValue !== undefined ? `Set ${property}` : `Deleted ${property}`;
-				return text(`${label} on ${targets.length} file(s).${truncationNote}`);
+				const skipNote =
+					skippedDueToConcurrentEdit.length > 0
+						? `\n\nSkipped ${skippedDueToConcurrentEdit.length} file(s) that changed during review:\n${skippedDueToConcurrentEdit.join("\n")}`
+						: "";
+				return text(`${label} on ${targets.length} file(s).${truncationNote}${skipNote}`);
 			},
 		}),
 	);

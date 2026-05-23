@@ -10,6 +10,8 @@
 
 import type { App, Menu, MenuItem, WorkspaceLeaf } from "obsidian";
 import { FileSystemAdapter } from "obsidian";
+import { isRealPathWithinBase } from "./validation";
+import { logger } from "./logger";
 
 /** Vault filesystem base path on desktop, or null on mobile/test adapters. */
 export function getVaultBasePath(app: App): string | null {
@@ -21,6 +23,40 @@ export function getVaultBasePath(app: App): string | null {
 export function getVaultFullPath(app: App, vaultPath: string): string | null {
 	const adapter = app.vault.adapter;
 	return adapter instanceof FileSystemAdapter ? adapter.getFullPath(vaultPath) : null;
+}
+
+/** Module-level latch so the fail-open warning fires once per plugin load
+ *  rather than once per tool call. Resetting on plugin reload is fine because
+ *  the module is re-imported then. */
+let nonFileSystemAdapterWarned = false;
+
+/**
+ * True when `vaultPath` resolves to a real filesystem path inside the vault
+ * base. Returns `true` when the vault adapter isn't a `FileSystemAdapter`
+ * (mobile, in-memory test adapters, or any future Obsidian adapter that
+ * doesn't expose `getBasePath`/`getFullPath`) — so the symlink-traversal
+ * guard becomes a no-op there. The first such call also logs a warning so
+ * the dormant guard is at least observable in the dev console.
+ *
+ * Caller responsibility: this is defense-in-depth. The primary write-time
+ * checks (`pathHasParentSegment`, drive-letter rejection, etc.) still
+ * apply. Path components reaching here are expected to be already shape-
+ * validated.
+ */
+export function isVaultPathSafe(app: App, vaultPath: string): boolean {
+	const base = getVaultBasePath(app);
+	const full = getVaultFullPath(app, vaultPath);
+	if (base === null || full === null) {
+		if (!nonFileSystemAdapterWarned) {
+			nonFileSystemAdapterWarned = true;
+			logger.warn(
+				"Vault",
+				"isVaultPathSafe: vault adapter is not FileSystemAdapter; symlink-traversal guard is a no-op for this session.",
+			);
+		}
+		return true;
+	}
+	return isRealPathWithinBase(base, full);
 }
 
 /** The plugin host exposed on `app.plugins` (Obsidian doesn't type this). */

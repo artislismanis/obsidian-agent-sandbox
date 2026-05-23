@@ -14,27 +14,8 @@ import { z } from "zod/v4";
 import type { McpToolDef, PathFilter, PermissionTier, ReviewFn } from "./mcp-tools";
 import { defineTool, text, error, gateVaultWrite, forEachMarkdownChunked } from "./mcp-tools";
 import { logger, errMsg } from "./logger";
-import { getInstalledPlugin } from "./obsidian-internals";
-import {
-	isPathAllowed,
-	isPathWithinDir,
-	isRealPathWithinBase,
-	pathHasParentSegment,
-} from "./validation";
-import { getVaultBasePath, getVaultFullPath } from "./obsidian-internals";
-
-/**
- * True when `vaultPath` is contained inside the vault directory. Mirrors the
- * mcp-tools.ts isVaultPathSafe helper (which is not exported). Used to block
- * traversal in user-controlled `format` strings that the moment formatter
- * could otherwise use to construct `../escape/foo.md`.
- */
-function isVaultPathSafe(app: App, vaultPath: string): boolean {
-	const base = getVaultBasePath(app);
-	const full = getVaultFullPath(app, vaultPath);
-	if (base === null || full === null) return true;
-	return isRealPathWithinBase(base, full);
-}
+import { getInstalledPlugin, isVaultPathSafe } from "./obsidian-internals";
+import { isPathAllowed, isPathWithinDir, pathHasParentSegment } from "./validation";
 
 type ToolPusher = (tool: McpToolDef) => void;
 
@@ -552,6 +533,15 @@ export function registerTasksTools(app: App, push: ToolPusher, gate: WriteGate):
 					review: gate.review,
 					oldContent: content,
 					newContent: updated,
+					// CAS against editor edits during a long review. Without
+					// this, an approved toggle modal could clobber a concurrent
+					// editor edit at the same line (toggle is line-specific
+					// and `content` is the snapshot at preview time). Sibling
+					// vault_modify routes through runWrite which already does
+					// this — toggling went through gateVaultWrite, which
+					// didn't, until the CAS option was added here.
+					app,
+					recheckFile: f,
 					apply: () => app.vault.modify(f, updated),
 					successMsg: `Toggled ${path}:${line}.`,
 				});
@@ -650,6 +640,19 @@ export function registerTemplaterTools(app: App, push: ToolPusher, gate: WriteGa
 				if (filename !== undefined && pathHasParentSegment(filename)) {
 					return error("'filename' may not contain a '..' segment.");
 				}
+				// Reject Windows drive-letter / NTFS alt-data-stream characters
+				// in folder/filename. Mirrors vault_create's checks: the
+				// realpath guard below catches symlink escape, but the colon
+				// pattern would write to a hidden alternate stream that's
+				// invisible in the file tree.
+				if (folder !== undefined && (/^[A-Za-z]:/.test(folder) || folder.includes(":"))) {
+					return error(
+						"'folder' may not contain drive letters or ':' (alt-data-stream).",
+					);
+				}
+				if (filename !== undefined && filename.includes(":")) {
+					return error("'filename' may not contain ':' (alt-data-stream).");
+				}
 				// Predict Templater's destination path so we can gate before it writes.
 				// Templater itself provides no pre-flight API; replicate its naming:
 				// `<folder>/<filename>.md`, falling back to the template's basename and
@@ -657,6 +660,12 @@ export function registerTemplaterTools(app: App, push: ToolPusher, gate: WriteGa
 				const destFolder = (folder ?? "").replace(/^\/+|\/+$/g, "");
 				const destName = filename ?? (templateFile as TFile).basename;
 				const destPath = destFolder ? `${destFolder}/${destName}.md` : `${destName}.md`;
+				// Defense-in-depth symlink check on the computed destination —
+				// sibling write tools (vault_create, vault_create_folder,
+				// vault_rename, vault_move, vault_periodic_note) all call this;
+				// this path historically skipped it.
+				if (!isVaultPathSafe(app, destPath))
+					return error("Destination resolves outside the vault (symlink).");
 				if (!gateAllowsPath(gate, destPath))
 					return error("Path is blocked by allow/block list.");
 				return gateVaultWrite({
@@ -809,6 +818,21 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 				const tmplFile = tmplPath ? app.vault.getFileByPath(tmplPath) : null;
 
 				if (templater?.templater?.create_new_note_from_template && tmplFile) {
+					// Restrict template path to Templater's configured templates
+					// folder. Periodic Notes' `template` setting is plugin-
+					// controlled but a user can point it anywhere — including a
+					// vault-writable folder. If an agent has writeScoped, it
+					// could vault_create a malicious template there containing
+					// `<% tp.system.run_external_command(...) %>` and then
+					// invoke this tool to execute it (the same path
+					// vault_templater_create is hardened against at line 584).
+					// Failing closed here matches Templater's own template-
+					// resolution behaviour.
+					if (!isInsideTemplatesFolder(templater, tmplFile.path)) {
+						return error(
+							`Periodic Notes template '${tmplFile.path}' must live inside Templater's configured templates folder. Move it there or remove Templater from the Periodic Notes template setting.`,
+						);
+					}
 					const folderParts = path.split("/");
 					const noteName = folderParts.pop()!.replace(/\.md$/, "");
 					const noteFolder = folderParts.join("/") || "/";
@@ -826,33 +850,34 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 						review: gate.review,
 						newContent: rawSeed,
 						apply: async () => {
-							await templater.templater!.create_new_note_from_template!(
+							// Use Templater's returned TFile to detect tp.file.move
+							// relocations. The previous implementation fell back to
+							// `getMarkdownFiles().find(f => f.basename === noteName)`
+							// when the file wasn't at `path` — which (a) trashed
+							// UNRELATED files sharing the basename, and (b) missed
+							// templates that also renamed via `tp.file.rename`.
+							// Trusting the API's return value avoids both bugs.
+							const createdFile = await templater.templater!
+								.create_new_note_from_template!(
 								tmplFile,
 								noteFolder,
 								noteName,
 								false,
 							);
-							// Mirror vault_templater_create's post-validate: a template
-							// that calls `tp.file.move(...)` from its script section can
-							// relocate the file outside the gated destPath. Detect the
-							// mismatch, trash the escaped file, and surface an error so
-							// no template can side-channel writes past the review gate.
-							const created = app.vault.getFileByPath(path);
-							if (!created) {
-								const actual = app.vault
-									.getMarkdownFiles()
-									.find((f) => f.basename === noteName);
-								if (actual) {
-									try {
-										await app.vault.trash(actual, true);
-									} catch {
-										/* surface the relocation error anyway */
-									}
-									throw new Error(
-										`Template relocated the periodic note from '${path}' to '${actual.path}' (likely via tp.file.move). Refusing to escape the gated path.`,
-									);
+							if (!createdFile) {
+								throw new Error(
+									`Templater did not produce a file for periodic note '${path}'.`,
+								);
+							}
+							if (createdFile.path !== path) {
+								try {
+									await app.vault.trash(createdFile, true);
+								} catch {
+									/* surface the relocation error anyway */
 								}
-								throw new Error(`Templater did not produce a file at '${path}'.`);
+								throw new Error(
+									`Template relocated the periodic note from '${path}' to '${createdFile.path}' (likely via tp.file.move or tp.file.rename). Refusing to escape the gated path.`,
+								);
 							}
 						},
 						successMsg: `Created ${path} (Templater processed)`,
