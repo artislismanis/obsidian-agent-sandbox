@@ -36,3 +36,18 @@ All user-visible Docker resources use an `oas-` prefix (Obsidian Agent Sandbox):
 - Compose project: `oas`
 
 Quick check: `docker ps | grep oas-` and `docker volume ls | grep oas-`.
+
+## Host-side MCP servers
+
+`.mcp.json` at the repo root wires MCP servers into the **host** Claude Code session (separate from `workspace/.mcp.json`, which runs inside the container).
+
+| Server | Purpose | Prerequisite |
+|--------|---------|--------------|
+| `github` | Repo/PR/issue/CI operations via the official `ghcr.io/github/github-mcp-server` image | Docker on host; `GITHUB_PERSONAL_ACCESS_TOKEN` exported before launching `claude` |
+
+The simplest token bootstrap reuses the already-authenticated `gh` CLI:
+
+```bash
+export GITHUB_PERSONAL_ACCESS_TOKEN="$(gh auth token)"
+claude
+```
