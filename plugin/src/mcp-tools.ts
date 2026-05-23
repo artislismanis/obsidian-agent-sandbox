@@ -1331,17 +1331,19 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				},
 
 				handler: async ({ path, content: contentArg }) => {
-					// Run writeDir gate first so a writeScoped caller hits its tier
-					// boundary before any further shape validation — the gate's
-					// error is the most actionable signal in that case.
-					const guard = guardPath(path);
-					if (guard) return guard;
-					// Shape + pathFilter + symlink-realpath checks live in the
-					// shared helper so vault_create, vault_create_folder,
-					// vault_templater_create and vault_periodic_note can't drift
-					// apart on which defense-in-depth checks they apply.
+					// Order matters and is integration-test-locked: shape +
+					// pathFilter + symlink checks come FIRST so a `../escape.md`
+					// surfaces the precise "may not contain a '..'" error rather
+					// than the broader writeDir-gate error (an early shape
+					// rejection is more actionable for agents). The writeDir gate
+					// then fires as a second layer for shape-valid paths that
+					// sit outside the scoped write directory. See
+					// test/integration/mcp-integration.test.ts "first layer" /
+					// "second layer" cases.
 					const pathError = validateNewVaultPath(app, path, pathFilter);
 					if (pathError) return pathError;
+					const guard = guardPath(path);
+					if (guard) return guard;
 					if (app.vault.getFileByPath(path))
 						return error("File already exists. Use vault_modify to update it.");
 					const content = contentArg ?? "";

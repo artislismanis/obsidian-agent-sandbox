@@ -197,7 +197,11 @@ function makeMockApp() {
 			getFileByPath: () => null,
 			read: async () => "",
 			cachedRead: async () => "",
-			create: async () => {},
+			// vault_create's apply reads `created.path` to detect Templater
+			// `tp.file.move` relocations after the create. Return a stub TFile-
+			// shaped object so the post-validate doesn't TypeError under the
+			// mock (real Obsidian returns the freshly created TFile here).
+			create: async (path: string) => ({ path, basename: path, extension: "md" }),
 			modify: async () => {},
 			append: async () => {},
 			trash: async () => {},
