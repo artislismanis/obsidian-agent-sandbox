@@ -428,16 +428,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		await this.saveData(this.settings).catch((e) =>
 			logger.error("Plugin", "Save on unload failed", e),
 		);
-		// Defer the leaf detach to the next tick. Mutating workspace layout
-		// synchronously during onunload races against Obsidian's disable click
-		// handling — when the Settings modal is open and a terminal leaf
-		// exists, the focus/layout event leaks into the modal and closes it.
-		// By the time this fires, onunload has returned, the disable click is
-		// fully processed, and the modal stays put. TerminalView.onClose has
-		// no dependency on live plugin state, so deferral is safe.
-		window.setTimeout(() => {
-			this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
-		}, 0);
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
 		this.firewallBar?.destroy();
 
 		// Plugin disable always stops the container — `autoStopContainer`
