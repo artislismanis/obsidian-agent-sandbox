@@ -24,7 +24,7 @@ export interface AnalyzeHost {
 
 export class AnalyzeManager {
 	private cachedTemplates: PromptTemplate[] | null = null;
-	private lastRefreshAt = 0;
+	private lastRefreshAttemptAt = 0;
 
 	constructor(private host: AnalyzeHost) {}
 
@@ -138,15 +138,15 @@ export class AnalyzeManager {
 		// a fresh read via the explicit refresh path (plugin reload / setting).
 		const REFRESH_INTERVAL_MS = 30_000;
 		const now = Date.now();
-		if (now - this.lastRefreshAt > REFRESH_INTERVAL_MS) {
-			this.lastRefreshAt = now;
+		if (now - this.lastRefreshAttemptAt > REFRESH_INTERVAL_MS) {
+			this.lastRefreshAttemptAt = now;
 			void this.readTemplatesFromDisk()
 				.then((fresh) => (this.cachedTemplates = fresh))
 				.catch((err) => {
-					// On refresh failure, clear lastRefreshAt so the next
+					// On refresh failure, clear lastRefreshAttemptAt so the next
 					// right-click retries instead of being pinned to the
 					// rate-limit window for 30 seconds.
-					this.lastRefreshAt = 0;
+					this.lastRefreshAttemptAt = 0;
 					logger.warn("Analyze", "Template refresh failed", err);
 				});
 		}

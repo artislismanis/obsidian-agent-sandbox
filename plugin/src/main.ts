@@ -334,7 +334,12 @@ export default class AgentSandboxPlugin extends Plugin {
 		);
 
 		if (this.settings.mcpEnabled) {
-			void this.startMcpServer();
+			// Route through the lifecycle queue so a fast settings-tab toggle
+			// fired during onload can't race the initial start. Every other
+			// caller goes through queueMcpOp; the initial start used to bypass
+			// it, leaving a small window where the second start's commit could
+			// race the first start's failure-cleanup branch.
+			void this.queueMcpOp(() => this.startMcpServer());
 		}
 
 		this.registerEvent(

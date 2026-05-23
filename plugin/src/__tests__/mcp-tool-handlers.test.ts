@@ -976,6 +976,65 @@ describe("MCP tool handlers", () => {
 			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
 			expect(modified).toContain("---\ntitle: Test\n---\nINSERTED\nbody");
 		});
+
+		it("prepends after frontmatter when file has no body", async () => {
+			// Frontmatter-only file: closing `---` plus a trailing newline at EOF,
+			// no body content after. The newline-skip loop walks `insertPos` to
+			// existing.length; we must still produce a valid prepend that lands
+			// after the closing fence rather than splicing into it.
+			const existing = "---\ntitle: Test\n---\n";
+			app.vault.read.mockResolvedValueOnce(existing);
+			app.metadataCache.getFileCache.mockReturnValueOnce({
+				frontmatterPosition: {
+					start: { line: 0, col: 0, offset: 0 },
+					end: { line: 2, col: 3, offset: 19 },
+				},
+			});
+			const r = getResult(
+				await getTool(tools, "vault_prepend").handler({
+					path: "agent-workspace/draft.md",
+					content: "INSERTED",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
+			// Result must start with the original frontmatter block intact
+			// (closing fence not perturbed), then the inserted content.
+			expect(modified.startsWith("---\ntitle: Test\n---\n")).toBe(true);
+			expect(modified).toContain("INSERTED");
+			// The inserted content must come AFTER the closing fence, never
+			// spliced inside the YAML block.
+			const fenceEnd = modified.indexOf("---\n", 4);
+			expect(modified.indexOf("INSERTED")).toBeGreaterThan(fenceEnd);
+		});
+
+		it("prepends after frontmatter with no trailing newline", async () => {
+			// Edge case: closing `---` immediately at EOF (no terminator).
+			// insertPos lands at existing.length; the newline-skip loop is a
+			// no-op. The prepended content should still produce a well-formed
+			// file with the inserted content separated by a newline.
+			const existing = "---\ntitle: Test\n---";
+			app.vault.read.mockResolvedValueOnce(existing);
+			app.metadataCache.getFileCache.mockReturnValueOnce({
+				frontmatterPosition: {
+					start: { line: 0, col: 0, offset: 0 },
+					end: { line: 2, col: 3, offset: 19 },
+				},
+			});
+			const r = getResult(
+				await getTool(tools, "vault_prepend").handler({
+					path: "agent-workspace/draft.md",
+					content: "INSERTED",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
+			expect(modified.startsWith("---\ntitle: Test\n---")).toBe(true);
+			expect(modified).toContain("INSERTED");
+			// Inserted content must be separated from the closing fence by a
+			// newline so the YAML block doesn't visually merge with the body.
+			expect(modified).toMatch(/---\n+INSERTED/);
+		});
 	});
 
 	describe("vault_patch", () => {

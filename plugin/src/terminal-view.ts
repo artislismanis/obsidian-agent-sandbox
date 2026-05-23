@@ -684,6 +684,10 @@ export class TerminalView extends ItemView {
 			this.wsLastRxAt = Date.now();
 			this.wsRxBytes += rawData.byteLength;
 			this.wsRxMsgs++;
+			// Guard against empty frames before peeking at byte 0 — some
+			// proxies and ttyd debug builds emit zero-length data frames, and
+			// `new Uint8Array(rawData, 0, 1)` throws RangeError on those.
+			if (rawData.byteLength === 0) return;
 			// Only OUTPUT carries data we need; TITLE / PREFERENCES are ignored.
 			if (new Uint8Array(rawData, 0, 1)[0] === SERVER_MSG.OUTPUT) {
 				term.write(new Uint8Array(rawData, 1));
