@@ -563,7 +563,16 @@ export default class AgentSandboxPlugin extends Plugin {
 	}
 
 	private async postStartTasks(): Promise<void> {
-		this.lastKnownContainerId = await this.docker.getContainerId();
+		try {
+			this.lastKnownContainerId = await this.docker.getContainerId();
+		} catch (err) {
+			// A probe failure here doesn't block startup — we just lose the
+			// drift-detection baseline for this session. Logging makes it
+			// observable; the next checkContainerIdDrift call also handles
+			// its own probe failure (see below).
+			logger.warn("Plugin", "Initial container-id probe failed", err);
+			this.lastKnownContainerId = "";
+		}
 		await this.applyFirewallAfterStart();
 		this.startHealthPoll();
 	}
@@ -964,7 +973,18 @@ export default class AgentSandboxPlugin extends Plugin {
 	}
 
 	private async checkContainerIdDrift(): Promise<void> {
-		const current = await this.docker.getContainerId();
+		let current: string;
+		try {
+			current = await this.docker.getContainerId();
+		} catch (err) {
+			// Skip this drift check on probe failure — the next health poll
+			// retries. Pre-fix this returned "" silently and `!current`
+			// short-circuited the function, so a flaky probe permanently
+			// masked any real container recreation until the next probe
+			// happened to succeed. Logging the cause makes the gap visible.
+			logger.warn("Plugin", "Container-id drift probe failed; will retry on next poll", err);
+			return;
+		}
 		if (!current) return;
 		if (!this.lastKnownContainerId) {
 			this.lastKnownContainerId = current;

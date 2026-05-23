@@ -719,24 +719,39 @@ export class DockerManager {
 		return conflicts.sort((a, b) => a - b);
 	}
 
-	/** Returns the current container ID, or empty string if not running. */
+	/**
+	 * Returns the current container ID, or empty string if not running.
+	 * Throws on probe failure so callers can distinguish "no container" from
+	 * "couldn't ask docker" — previously both collapsed to "" and a flaky
+	 * probe silently masked container-recreation notices in
+	 * checkContainerIdDrift.
+	 */
 	async getContainerId(): Promise<string> {
-		try {
-			const output = await this.run(`docker compose ps -q ${SERVICE_NAME}`, PROBE_TIMEOUT);
-			return output.trim();
-		} catch {
-			return "";
-		}
+		const output = await this.run(`docker compose ps -q ${SERVICE_NAME}`, PROBE_TIMEOUT);
+		return output.trim();
 	}
 
-	/** True if compose has any container for this project, regardless of state.
-	 * Used to detect a half-stopped container still holding host port mappings. */
+	/**
+	 * True if compose has any container for this project, regardless of state.
+	 * Used to detect a half-stopped container still holding host port mappings.
+	 *
+	 * On probe failure, return `true` (and log) — failing safe means the
+	 * port-conflict recovery path in main.ts still attempts `docker compose
+	 * down`, giving the user a chance to recover. The previous `catch →
+	 * return false` made transient probe errors look identical to "no
+	 * container", silently skipping the recovery attempt while the user
+	 * stared at an unactionable port-conflict Notice.
+	 */
 	async hasAnyContainer(): Promise<boolean> {
 		try {
 			const output = await this.run(`docker compose ps -a -q ${SERVICE_NAME}`, PROBE_TIMEOUT);
 			return output.trim().length > 0;
-		} catch {
-			return false;
+		} catch (err) {
+			logger.warn(
+				"Docker",
+				`hasAnyContainer probe failed — assuming a container exists so cleanup can proceed: ${errMsg(err)}`,
+			);
+			return true;
 		}
 	}
 
@@ -756,7 +771,12 @@ export class DockerManager {
 			if (output === "disabled") return "disabled";
 			logger.warn("Docker", `Unexpected firewall --status output: ${output.slice(0, 200)}`);
 			return "unavailable";
-		} catch {
+		} catch (err) {
+			// Previously this swallow had no log line, so the firewall badge
+			// silently flipped to "hidden" on every transient exec failure
+			// (docker hang, WSL probe blip) with no diagnostic in the
+			// console. Surface the cause so flaky firewalls are debuggable.
+			logger.warn("Docker", `firewallStatus probe failed: ${errMsg(err)}`);
 			return "unavailable";
 		}
 	}
@@ -810,8 +830,22 @@ export class DockerManager {
 				.map((line) => line.trim())
 				.filter((line) => line.endsWith(":0"))
 				.map((line) => line.slice(0, -2));
-		} catch {
-			return [];
+		} catch (err) {
+			// Mirror listSessions's stderr-pattern detection: tmux's
+			// "no sessions" / "no server running" stderr fragments map to
+			// a legitimate empty list; anything else is a real failure
+			// that the user's session-cleanup picker should NOT see as
+			// "no sessions to clean up". The previous bare `catch → []`
+			// made a docker daemon outage indistinguishable from "all clean".
+			const stderr = (err as { stderr?: string }).stderr ?? "";
+			const haystack = stderr + " " + errMsg(err);
+			const tmuxLegitEmpty =
+				haystack.includes("No such file or directory") ||
+				haystack.includes("no server running") ||
+				haystack.includes("error connecting to");
+			if (tmuxLegitEmpty) return [];
+			logger.warn("Docker", `listEmptySessions failed: ${errMsg(err)}`);
+			throw err;
 		}
 	}
 
@@ -838,7 +872,19 @@ export class DockerManager {
 			try {
 				const arr = JSON.parse(trimmed);
 				if (Array.isArray(arr)) records.push(...arr);
-			} catch {
+			} catch (err) {
+				// Surface the parse failure: the previous silent `return false`
+				// made a malformed `docker compose ps --format json` envelope
+				// look identical to "no container running", so the plugin
+				// announced the container had stopped and detached terminals
+				// while the container was actually fine. Log first so the
+				// cause is debuggable, then keep the conservative "false"
+				// return so the caller's stopped-state UI still fires —
+				// better than crashing on a docker version drift.
+				logger.warn(
+					"Docker",
+					`parseIsRunning: malformed JSON-array status output: ${errMsg(err)}`,
+				);
 				return false;
 			}
 		} else {

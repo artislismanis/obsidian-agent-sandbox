@@ -81,6 +81,23 @@ describe("DockerManager", () => {
 		});
 	});
 
+	describe("parseIsRunning JSON error handling", () => {
+		// Pre-fix, a malformed JSON-array envelope returned false silently.
+		// Now it logs a warn and returns false — the test pins that the
+		// return contract is unchanged so callers downstream still treat
+		// drift as "stopped".
+
+		it("returns false for malformed JSON array (and now logs internally)", () => {
+			const output = '[{"Name":"oas-sandbox-1","State":"running"';
+			expect(DockerManager.parseIsRunning(output)).toBe(false);
+		});
+
+		it("still returns true for valid array form", () => {
+			const output = '[{"Name":"oas-sandbox-1","State":"running","Status":"Up"}]';
+			expect(DockerManager.parseIsRunning(output)).toBe(true);
+		});
+	});
+
 	describe("envSpec validators (hand-edited data.json defense)", () => {
 		// Settings UI validates each field at save time, but hand-edited
 		// data.json can carry invalid values through. The envSpec validators
