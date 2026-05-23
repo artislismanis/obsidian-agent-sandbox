@@ -72,7 +72,17 @@ export async function showSessionCleanup(
 		new Notice("Sandbox container is not running.");
 		return;
 	}
-	const candidates = await api.listEmptySessions();
+	let candidates: string[];
+	try {
+		candidates = await api.listEmptySessions();
+	} catch (err) {
+		// listEmptySessions now throws when docker/tmux probing fails (vs the
+		// previous silent `catch → []` that made a daemon outage look like
+		// "all clean"). Surface the cause so the user can act on it rather
+		// than wondering why the cleanup modal vanished.
+		new Notice(`Could not list sessions: ${err instanceof Error ? err.message : String(err)}`);
+		return;
+	}
 	if (candidates.length === 0) {
 		new Notice("No empty tmux sessions to clean up.");
 		return;
