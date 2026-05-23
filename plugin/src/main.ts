@@ -125,7 +125,10 @@ export default class AgentSandboxPlugin extends Plugin {
 			.catch((err) => logger.warn("Plugin", `Template prewarm failed: ${errMsg(err)}`));
 
 		const fwBarEl = this.addStatusBarItem();
-		this.firewallBar = new FirewallStatusBar(fwBarEl, () => this.toggleFirewall());
+		this.firewallBar = new FirewallStatusBar(
+			fwBarEl,
+			this.safeFire("Toggle firewall", () => this.toggleFirewall()),
+		);
 
 		this.registerDomEvent(fwBarEl, "mouseenter", () => this.maybeRefreshFirewall());
 		this.registerDomEvent(window, "focus", () => this.maybeRefreshFirewall());
@@ -192,31 +195,31 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.addCommand({
 			id: "sandbox-start-container",
 			name: "Sandbox: Start Container",
-			callback: () => this.startContainer(),
+			callback: this.safeFire("Start container", () => this.startContainer()),
 		});
 
 		this.addCommand({
 			id: "sandbox-stop-container",
 			name: "Sandbox: Stop Container",
-			callback: () => this.stopContainer(),
+			callback: this.safeFire("Stop container", () => this.stopContainer()),
 		});
 
 		this.addCommand({
 			id: "sandbox-container-status",
 			name: "Sandbox: Container Status",
-			callback: () => this.containerStatus(),
+			callback: this.safeFire("Container status", () => this.containerStatus()),
 		});
 
 		this.addCommand({
 			id: "sandbox-restart-container",
 			name: "Sandbox: Restart Container",
-			callback: () => this.restartContainer(),
+			callback: this.safeFire("Restart container", () => this.restartContainer()),
 		});
 
 		this.addCommand({
 			id: "sandbox-toggle-firewall",
 			name: "Sandbox: Toggle Firewall",
-			callback: () => this.toggleFirewall(),
+			callback: this.safeFire("Toggle firewall", () => this.toggleFirewall()),
 		});
 
 		this.addCommand({
@@ -246,7 +249,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.addCommand({
 			id: "sandbox-toggle-mcp",
 			name: "Sandbox: Toggle MCP Server",
-			callback: () => this.toggleMcpServer(),
+			callback: this.safeFire("Toggle MCP server", () => this.toggleMcpServer()),
 		});
 
 		this.addCommand({
@@ -457,6 +460,26 @@ export default class AgentSandboxPlugin extends Plugin {
 
 	async firewallSources(): Promise<string> {
 		return this.docker.firewallSources();
+	}
+
+	/**
+	 * Wrap an async handler so any unhandled rejection becomes a user-visible
+	 * Notice instead of a silent dev-console entry. Use this for command and
+	 * menu callbacks where the registration site only accepts `() => void`.
+	 *
+	 * Most action methods already wrap their work in try/catch + Notice, but
+	 * if a pre-condition (guardBusy, settings access) ever throws outside
+	 * those internal handlers, the rejection escapes — and Obsidian discards
+	 * it without surfacing anything to the user. This wrapper closes that
+	 * gap so failure modes always have a UI signal.
+	 */
+	private safeFire(label: string, fn: () => Promise<unknown>): () => void {
+		return () => {
+			void fn().catch((err: unknown) => {
+				logger.error("Plugin", `${label} failed`, err);
+				new Notice(`${label}: ${errMsg(err)}`);
+			});
+		};
 	}
 
 	private async openTerminalOrPromptStart(): Promise<void> {
@@ -803,21 +826,21 @@ export default class AgentSandboxPlugin extends Plugin {
 				.setTitle("Start Container")
 				.setIcon("play")
 				.setDisabled(busy || running)
-				.onClick(() => this.startContainer()),
+				.onClick(this.safeFire("Start container", () => this.startContainer())),
 		);
 		menu.addItem((item) =>
 			item
 				.setTitle("Stop Container")
 				.setIcon("square")
 				.setDisabled(busy || !running)
-				.onClick(() => this.stopContainer()),
+				.onClick(this.safeFire("Stop container", () => this.stopContainer())),
 		);
 		menu.addItem((item) =>
 			item
 				.setTitle("Restart Container")
 				.setIcon("refresh-cw")
 				.setDisabled(busy || !running)
-				.onClick(() => this.restartContainer()),
+				.onClick(this.safeFire("Restart container", () => this.restartContainer())),
 		);
 		menu.addSeparator();
 
@@ -827,7 +850,7 @@ export default class AgentSandboxPlugin extends Plugin {
 				.setTitle(fwEnabled ? "Disable Firewall" : "Enable Firewall")
 				.setIcon("shield")
 				.setDisabled(busy || !running)
-				.onClick(() => this.toggleFirewall()),
+				.onClick(this.safeFire("Toggle firewall", () => this.toggleFirewall())),
 		);
 
 		menu.addSeparator();
@@ -836,17 +859,19 @@ export default class AgentSandboxPlugin extends Plugin {
 				.setTitle("New Terminal")
 				.setIcon("terminal")
 				.setDisabled(!running)
-				.onClick(() => this.activateTerminalView()),
+				.onClick(this.safeFire("Open terminal", () => this.activateTerminalView())),
 		);
 		menu.addItem((item) =>
 			item
 				.setTitle("New Session...")
 				.setIcon("plus")
 				.setDisabled(!running)
-				.onClick(async () => {
-					const name = await this.promptSessionName("New Session");
-					if (name) void this.activateTerminalView(name);
-				}),
+				.onClick(
+					this.safeFire("Open new session", async () => {
+						const name = await this.promptSessionName("New Session");
+						if (name) await this.activateTerminalView(name);
+					}),
+				),
 		);
 
 		if (running) {
@@ -856,7 +881,11 @@ export default class AgentSandboxPlugin extends Plugin {
 					item
 						.setTitle(`Attach: ${name}`)
 						.setIcon("arrow-right")
-						.onClick(() => this.activateTerminalView(name)),
+						.onClick(
+							this.safeFire(`Attach to ${name}`, () =>
+								this.activateTerminalView(name),
+							),
+						),
 				);
 			}
 		}
@@ -873,7 +902,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			item
 				.setTitle("Check Status")
 				.setIcon("activity")
-				.onClick(() => this.containerStatus()),
+				.onClick(this.safeFire("Container status", () => this.containerStatus())),
 		);
 
 		menu.showAtMouseEvent(evt);

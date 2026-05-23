@@ -1,5 +1,5 @@
 import type { Menu, ViewStateResult, WorkspaceLeaf } from "obsidian";
-import { ItemView, Scope } from "obsidian";
+import { ItemView, Notice, Scope } from "obsidian";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import type { TerminalSettings, TerminalThemeMode } from "./settings";
@@ -160,7 +160,12 @@ export class TerminalView extends ItemView {
 	// can't fire them after the underlying ws/term refs are gone.
 	private injectionTimers: number[] = [];
 
-	onRenameSession: (() => void) | null = null;
+	// Typed as Promise-returning so the call site (the "Rename Session" menu
+	// item) can attach a `.catch` for visibility. Pre-fix, this was typed
+	// `() => void` but assigned an `async () => { … }`; the returned Promise
+	// was discarded at the call site, so a `setViewState` rejection after a
+	// successful tmux rename became an unhandled rejection with no UI signal.
+	onRenameSession: (() => Promise<void>) | null = null;
 	private initialPrompt: string | null = null;
 
 	constructor(leaf: WorkspaceLeaf, getSettings: () => TerminalSettings) {
@@ -241,7 +246,15 @@ export class TerminalView extends ItemView {
 					.setTitle("Rename Session")
 					.setIcon("pencil")
 					.onClick(() => {
-						this.onRenameSession?.();
+						const fn = this.onRenameSession;
+						if (!fn) return;
+						// Surface any error escaping the handler (e.g. the
+						// post-tmux `setViewState` rejecting on a workspace
+						// state race) instead of letting the rejection vanish.
+						void fn().catch((err: unknown) => {
+							const msg = err instanceof Error ? err.message : String(err);
+							new Notice(`Rename session failed: ${msg}`);
+						});
 					}),
 			);
 			menu.addItem((item) =>
