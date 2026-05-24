@@ -63,9 +63,9 @@ export function error(msg: string): McpToolResult {
 
 /**
  * Build a tool definition whose handler receives args typed to the inferred
- * zod schema. Runtime parsing runs before the handler fires; schema-mismatch
- * inputs return an error result instead of throwing or silently feeding
- * undefined into casts. Handlers can destructure directly:
+ * zod schema. Runtime parsing runs before the handler; schema-mismatch
+ * inputs return an error result instead of throwing or feeding undefined
+ * into casts.
  *
  *   defineTool({
  *     name: "vault_read",
@@ -79,6 +79,13 @@ export function defineTool<S extends Record<string, z.ZodType>>(def: {
 	title: string;
 	description: string;
 	inputSchema?: S;
+	/**
+	 * Post-parse validation across fields (e.g. "require either `file` or
+	 * `path`"). Return `null` when args are valid, or a message describing
+	 * the problem. Wrapped with the same `Invalid arguments:` prefix zod
+	 * uses so callers see a consistent error shape.
+	 */
+	refine?: (args: z.infer<z.ZodObject<S>>) => string | null;
 	handler: (args: z.infer<z.ZodObject<S>>) => Promise<McpToolResult>;
 }): McpToolDef {
 	const schema = def.inputSchema ? z.object(def.inputSchema) : z.object({});
@@ -95,10 +102,20 @@ export function defineTool<S extends Record<string, z.ZodType>>(def: {
 			if (!parsed.success) {
 				return error(`Invalid arguments: ${parsed.error.message}`);
 			}
-			return def.handler(parsed.data as z.infer<z.ZodObject<S>>);
+			const data = parsed.data as z.infer<z.ZodObject<S>>;
+			if (def.refine) {
+				const refineErr = def.refine(data);
+				if (refineErr) return error(`Invalid arguments: ${refineErr}`);
+			}
+			return def.handler(data);
 		},
 	};
 }
+
+/** Cross-field validator: require either `file` (wikilink) or `path` (exact).
+ *  `vault_tags` skips this — both omitted means "vault-wide listing". */
+const requireFileOrPath = (args: { file?: string; path?: string }): string | null =>
+	!args.file && !args.path ? "Provide either 'file' or 'path'." : null;
 
 /** Extract a 180-char window around the first match offset, with newlines flattened. */
 function extractSnippet(content: string, offset: number): string {
@@ -139,9 +156,7 @@ export interface PathFilter {
 	blocklist: string[];
 }
 
-/** True when `pathFilter` admits `path` (or no filter is configured). Centralises
- *  the `!pathFilter || isPathAllowed(...)` idiom that was repeated dozens of
- *  times across the read/write tools. */
+/** True when `pathFilter` admits `path` (or no filter is configured). */
 export function isPathAllowedByFilter(path: string, pathFilter: PathFilter | undefined): boolean {
 	if (!pathFilter) return true;
 	return isPathAllowed(path, pathFilter.allowlist, pathFilter.blocklist);
@@ -173,11 +188,9 @@ function filterPaths(paths: Iterable<string>, pathFilter?: PathFilter): string[]
 
 /**
  * Compare-and-swap helper for reviewed writes. After the user approves a diff
- * preview, an editor edit could have raced the modal — re-read the file and
- * abort if the contents diverged from what was reviewed. Used by both
- * `runWrite` (per-tool path) and `gateVaultWrite` (manage/extensions path);
- * keeping the comparison + error message in one place stops the two paths
- * from drifting apart.
+ * preview, re-read the file and abort if the contents diverged from what was
+ * reviewed. Used by both `runWrite` (per-tool path) and `gateVaultWrite`
+ * (manage/extensions path) so the two paths share the same message.
  *
  * Returns null when the file is unchanged (caller may proceed), or an error
  * result the caller should return as-is.
@@ -225,8 +238,8 @@ export function validateNewVaultPath(
 
 /**
  * Reject frontmatter property names that would mutate the prototype chain when
- * assigned via `fm[name] = value`. Also rejects empty names so we don't write
- * `''` into YAML. The denylist mirrors the standard prototype-pollution surface.
+ * assigned via `fm[name] = value`. Also rejects empty names. The denylist
+ * mirrors the standard prototype-pollution surface.
  */
 const FORBIDDEN_FM_PROPS = new Set(["__proto__", "constructor", "prototype"]);
 function isSafeFrontmatterProperty(name: string): boolean {
@@ -234,23 +247,18 @@ function isSafeFrontmatterProperty(name: string): boolean {
 	return !FORBIDDEN_FM_PROPS.has(name);
 }
 
-/**
- * Posix-segment check for `..` components. Replaces the coarse
- * `path.includes("..")` which would also reject legitimate names like
- * `notes/v1..2.md` or `..safe/foo.md`. We split on both `/` and `\` so callers
- * don't need to worry about backslashes appearing on Windows-shaped inputs.
- */
-// pathHasParentSegment is imported from validation.ts (single shared implementation).
-// isVaultPathSafe is imported from obsidian-internals.ts — that single copy
-// also handles the FileSystemAdapter-fail-open warning.
+// pathHasParentSegment lives in validation.ts; isVaultPathSafe lives in
+// obsidian-internals.ts (which also handles the FileSystemAdapter fail-open
+// warning). Both split on `/` and `\` so callers don't worry about Windows
+// inputs, and use posix-segment matching to allow legitimate names like
+// `notes/v1..2.md`.
 
 /** Parallel-chunked iteration over markdown files; handler returning true stops the walk.
  *
- * Returns the count of files that failed to read so callers can surface a
- * "scan skipped N files" hint in their response. A single unreadable file
- * (permission glitch, transient FS error) doesn't abort the scan, but the
- * count keeps the failure observable rather than disappearing into an empty
- * string substituted for the missing content. */
+ * Returns the read-failure count so callers can surface a "scan skipped N
+ * files" hint. A single unreadable file (permission glitch, transient FS
+ * error) doesn't abort the scan, but the count keeps the failure observable
+ * rather than disappearing into the empty-string substitute. */
 export async function forEachMarkdownChunked(
 	app: App,
 	handler: (file: TFile, content: string) => boolean | void | Promise<boolean | void>,
@@ -325,10 +333,10 @@ export async function gateVaultWrite(args: {
 	app?: App;
 }): Promise<McpToolResult> {
 	// Errors thrown by apply() (e.g. the Templater post-validate guard
-	// rejecting a path-relocating template) need to surface as clean tool
-	// errors. Without this, gateVaultWrite would propagate the throw and the
-	// MCP tool runner would either turn it into a generic 500 or return it
-	// untyped. Wrap apply() so callers always get a well-formed McpToolResult.
+	// rejecting a path-relocating template) must surface as clean tool
+	// errors. Propagating the throw would turn it into a generic 500 or
+	// return it untyped — wrap apply() so callers always get a well-formed
+	// McpToolResult.
 	const runApply = async (): Promise<McpToolResult> => {
 		try {
 			await args.apply();
@@ -427,9 +435,8 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 	function visibleMarkdownFiles(): TFile[] {
 		// Apply pathFilter at the iteration boundary so vault-wide tag /
 		// property counts don't leak the existence of tags or properties
-		// from blocklisted files. Without this, an agent with `blocklist:
-		// ["secrets/"]` could still see tag/property totals that included
-		// files it can't read.
+		// from blocklisted files — otherwise `blocklist: ["secrets/"]`
+		// still surfaces tag totals counting unreadable files.
 		const all = app.vault.getMarkdownFiles();
 		if (!pathFilter) return all;
 		return all.filter((f) => isPathAllowedByFilter(f.path, pathFilter));
@@ -472,6 +479,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				file: z.string().optional().describe("File name (wikilink-style resolution)"),
 				path: z.string().optional().describe("Exact path from vault root"),
 			},
+			refine: requireFileOrPath,
 			handler: async ({ file, path }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
@@ -496,9 +504,8 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				if (folder) files = files.filter((f) => isPathWithinDir(f.path, folder));
 				if (extension) files = files.filter((f) => f.extension === extension);
 				// Apply pathFilter so blocklisted regions don't leak file
-				// paths to the agent. Without this, `vault_list({folder:
-				// "secrets"})` returned the full path list for any folder
-				// regardless of the configured allow/block list.
+				// paths — otherwise `vault_list({folder: "secrets"})`
+				// returns the full list regardless of allow/block config.
 				const paths = filterPaths(
 					files.map((f) => f.path),
 					pathFilter,
@@ -537,11 +544,10 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					},
 					undefined,
 					// Chunk size = limit (capped 1..8). forEachMarkdownChunked
-					// awaits the whole chunk before checking `stop`, so a chunk
-					// of 20 reads 19 extra files when limit=1. Keep chunks tight
-					// for low limits and just pay extra round-trips on small
-					// vaults — full-batch concurrency only helps when limit is
-					// also high.
+					// awaits the whole chunk before checking `stop`, so a 20
+					// chunk reads 19 extra files when limit=1. Keep chunks
+					// tight for low limits — full-batch concurrency only helps
+					// when limit is also high.
 					Math.max(1, Math.min(limit, 8)),
 				);
 				return text(results.join("\n") || "No matches found.");
@@ -592,7 +598,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				file: z.string().optional().describe("File name"),
 				path: z.string().optional().describe("Exact path from vault root"),
 			},
-
+			refine: requireFileOrPath,
 			handler: async ({ file, path }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
@@ -607,10 +613,20 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			tier: "read",
 			title: "List tags",
 			description:
-				"List all tags in the vault with occurrence counts, or tags for a specific file.",
+				"List all tags in the vault with occurrence counts, or tags for a specific file when `file` or `path` is supplied.",
 			inputSchema: {
-				file: z.string().optional().describe("File name (omit for vault-wide)"),
-				path: z.string().optional().describe("Exact path from vault root"),
+				file: z
+					.string()
+					.optional()
+					.describe(
+						"File name (wikilink-style). Omit (together with `path`) for vault-wide listing.",
+					),
+				path: z
+					.string()
+					.optional()
+					.describe(
+						"Exact path from vault root. Omit (together with `file`) for vault-wide listing.",
+					),
 			},
 
 			handler: async ({ file, path }) => {
@@ -639,7 +655,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				path: z.string().optional().describe("Exact path from vault root"),
 				property: z.string().optional().describe("Specific property to read"),
 			},
-
+			refine: requireFileOrPath,
 			handler: async ({ file, path, property }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
@@ -669,7 +685,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				file: z.string().optional().describe("File name"),
 				path: z.string().optional().describe("Exact path from vault root"),
 			},
-
+			refine: requireFileOrPath,
 			handler: async ({ file, path }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
@@ -693,7 +709,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				file: z.string().optional().describe("File name"),
 				path: z.string().optional().describe("Exact path from vault root"),
 			},
-
+			refine: requireFileOrPath,
 			handler: async ({ file, path }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
@@ -713,7 +729,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				file: z.string().optional().describe("File name"),
 				path: z.string().optional().describe("Exact path from vault root"),
 			},
-
+			refine: requireFileOrPath,
 			handler: async ({ file, path }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
@@ -864,14 +880,13 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		const forward = new Map<string, Set<string>>();
 		const reverse = new Map<string, Set<string>>();
 		// When pathFilter is set, drop edges where either endpoint is
-		// out-of-allowlist BEFORE building forward/reverse. Without this:
-		//  - vault_orphans can be fooled: a visible file linked only by a
-		//    hidden file appears "not orphan" but should be, leaking the
-		//    hidden file's existence.
-		//  - vault_graph_clusters unions visible nodes through hidden hubs,
-		//    leaking which hidden bridges exist between visible regions.
-		//  - vault_graph_path traverses hidden intermediates and reports a
-		//    path that contains nodes the agent can't otherwise see.
+		// out-of-allowlist before building forward/reverse:
+		//  - vault_orphans: a visible file linked only by a hidden file
+		//    appears "not orphan", leaking the hidden file's existence.
+		//  - vault_graph_clusters: visible nodes unioned through hidden hubs
+		//    leak which hidden bridges exist between visible regions.
+		//  - vault_graph_path: traversing hidden intermediates reports a
+		//    path through nodes the agent can't otherwise see.
 		// Per-tool filterPaths-on-output doesn't recover this — the structure
 		// itself leaks. Filter at graph construction.
 		const allow = (p: string): boolean => isPathAllowedByFilter(p, pathFilter);
@@ -909,7 +924,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				path: z.string().optional().describe("Exact path from vault root"),
 				depth: z.number().optional().describe("Max hops (1-5, default 1)"),
 			},
-
+			refine: requireFileOrPath,
 			handler: async ({ file, path, depth: depthArg }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
@@ -990,16 +1005,12 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					return trail.join(" → ");
 				};
 
-				// Walk both forward and reverse edges. The "shortest link path"
-				// query is naturally undirected (link A→B implies "connected" in
-				// either direction from the user's mental model), and
-				// vault_graph_neighborhood already walks both directions. The
-				// previous forward-only walk reported "No path found" between
-				// notes that ARE connected through backlinks, surprising agents.
-				// Graph is already filtered at construction (computeLinkGraph),
-				// so the intermediate-filter check below is now redundant — kept
-				// for defense in depth in case the cached graph ever predates
-				// a filter change.
+				// Walk both forward and reverse edges. "Shortest link path" is
+				// naturally undirected (link A→B implies "connected" from the
+				// user's mental model), matching vault_graph_neighborhood.
+				// Graph is already filtered at construction (computeLinkGraph);
+				// the intermediate-filter check below is defense in depth in
+				// case the cached graph predates a filter change.
 				while (head < queue.length) {
 					const current = queue[head++];
 					const neighbors = [
@@ -1113,7 +1124,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				file: z.string().optional().describe("File name"),
 				path: z.string().optional().describe("Exact path from vault root"),
 			},
-
+			refine: requireFileOrPath,
 			handler: async ({ file, path }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
@@ -1156,7 +1167,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				path: z.string().optional().describe("Exact path from vault root"),
 				limit: z.number().optional().describe("Max suggestions (default 10)"),
 			},
-
+			refine: requireFileOrPath,
 			handler: async ({ file, path, limit = 10 }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
@@ -1269,28 +1280,18 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				if (conflict) return conflict;
 			}
 		}
-		// Catch apply errors and return them as clean tool errors instead of
-		// propagating throws. Without this, an apply() rejection (e.g. the
-		// template-application-failed throw inside vault_create) bubbles out
-		// of runWrite and tests that call handlers directly see an exception
-		// instead of a result with isError. The MCP server runtime wraps
-		// throws too, but mirroring gateVaultWrite's structure keeps both
-		// paths returning well-formed McpToolResult.
+		// Catch apply errors and return them as clean tool errors. Propagating
+		// throws bubbles apply() rejections (e.g. template-application-failed
+		// from vault_create) out of runWrite, so tests calling handlers
+		// directly see an exception instead of a result with isError. The MCP
+		// server runtime also wraps throws, but mirroring gateVaultWrite's
+		// structure keeps both paths returning well-formed McpToolResult.
 		try {
 			const applyResult = await op.apply();
 			const msg = op.successMsg.replace("{result}", applyResult ?? "");
 			return text(msg);
 		} catch (e) {
 			return error(errMsg(e));
-		}
-	}
-
-	/** Parse `raw` as JSON; fall back to the raw string if it isn't valid JSON. */
-	function parseJsonOrString(raw: string): unknown {
-		try {
-			return JSON.parse(raw);
-		} catch {
-			return raw;
 		}
 	}
 
@@ -1332,12 +1333,12 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 
 				handler: async ({ path, content: contentArg }) => {
 					// Order matters and is integration-test-locked: shape +
-					// pathFilter + symlink checks come FIRST so a `../escape.md`
+					// pathFilter + symlink checks come first so `../escape.md`
 					// surfaces the precise "may not contain a '..'" error rather
 					// than the broader writeDir-gate error (an early shape
-					// rejection is more actionable for agents). The writeDir gate
-					// then fires as a second layer for shape-valid paths that
-					// sit outside the scoped write directory. See
+					// rejection is more actionable for agents). The writeDir
+					// gate then fires as a second layer for shape-valid paths
+					// outside the scoped write directory. See
 					// test/integration/mcp-integration.test.ts "first layer" /
 					// "second layer" cases.
 					const pathError = validateNewVaultPath(app, path, pathFilter);
@@ -1347,13 +1348,14 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					if (app.vault.getFileByPath(path))
 						return error("File already exists. Use vault_modify to update it.");
 					const content = contentArg ?? "";
-					// Only auto-apply the folder template when the caller didn't supply
-					// content; otherwise we'd silently clobber the agent's intended payload.
+					// Only auto-apply the folder template when the caller
+					// didn't supply content; otherwise it would silently
+					// clobber the agent's intended payload.
 					const tryTemplate = content === "" && path.endsWith(".md");
-					// Render the template body for the review modal so what's shown ==
-					// what's written. We show the raw template (placeholders intact)
-					// because rendering them requires the file to exist; the review
-					// gate must happen before file creation.
+					// Render the template body for the review modal so shown ==
+					// written. The raw template (placeholders intact) is shown
+					// because rendering them requires the file to exist, and the
+					// review gate must happen before file creation.
 					let previewContent = content;
 					if (review && tryTemplate) {
 						const tmplBody = await previewTemplaterFolderTemplate(app, path);
@@ -1368,10 +1370,10 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						apply: () =>
 							withTemplaterHookSuppressed(app, async () => {
 								const created = await app.vault.create(path, content);
-								// Capture the path BEFORE Templater runs — when a
+								// Capture the path before Templater runs — when a
 								// template calls `tp.file.move(...)`, Obsidian mutates
-								// `created.path` in place. Comparing against this
-								// snapshot is how we detect the escape.
+								// `created.path` in place. Comparing against the
+								// snapshot detects the escape.
 								const expectedPath = created.path;
 								if (!tryTemplate) return "";
 								const result = await applyTemplaterFolderTemplate(app, created);
@@ -1395,9 +1397,8 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 								if (result.reason === "failed") {
 									// File was created but the reviewed template body
 									// failed to land. Surface as a hard error so the
-									// agent (and user) know the on-disk state doesn't
-									// match what was approved — previously this
-									// disappeared into a generic "Created" success.
+									// agent and user know the on-disk state doesn't
+									// match what was approved.
 									throw new Error(
 										`File created but template application failed: ${result.error}. The file is empty; the reviewed template body did NOT land.`,
 									);
@@ -1421,7 +1422,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					path: z.string().optional().describe("Exact path from vault root"),
 					content: z.string().describe("New file content"),
 				},
-
+				refine: requireFileOrPath,
 				handler: async ({ file, path, content }) => {
 					const result = resolveForWrite({ file, path });
 					if (!result.ok) return result.error;
@@ -1452,7 +1453,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					path: z.string().optional().describe("Exact path from vault root"),
 					content: z.string().describe("Content to append"),
 				},
-
+				refine: requireFileOrPath,
 				handler: async ({ file, path, content: addition }) => {
 					const result = resolveForWrite({ file, path });
 					if (!result.ok) return result.error;
@@ -1484,10 +1485,12 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),
 					property: z.string().describe("Property name"),
-					value: z.string().describe("Property value (JSON-encoded for objects/arrays)"),
+					value: z
+						.unknown()
+						.describe("Property value — string, number, boolean, array, or object"),
 				},
-
-				handler: async ({ file, path, property, value: raw }) => {
+				refine: requireFileOrPath,
+				handler: async ({ file, path, property, value }) => {
 					if (!isSafeFrontmatterProperty(property))
 						return error(
 							`Property name '${property}' is not allowed (reserved or invalid).`,
@@ -1495,7 +1498,6 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					const result = resolveForWrite({ file, path });
 					if (!result.ok) return result.error;
 					const f = result.file;
-					const value = parseJsonOrString(raw);
 					const oldFm = frontmatterSnapshot(f);
 					// Capture full file content for CAS recheck — frontmatter alone
 					// isn't enough because editor edits could change body content
@@ -1538,7 +1540,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					path: z.string().optional().describe("Exact path from vault root"),
 					property: z.string().describe("Property name to delete"),
 				},
-
+				refine: requireFileOrPath,
 				handler: async ({ file, path, property }) => {
 					if (!isSafeFrontmatterProperty(property))
 						return error(
@@ -1552,7 +1554,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						return error(`Property '${property}' not found in frontmatter.`);
 					const { [property]: _dropped, ...newFm } = oldFm;
 					// CAS recheck against editor edits during long reviews —
-					// mirrors vault_frontmatter_set above. Without this, an
+					// mirrors vault_frontmatter_set above. Otherwise an
 					// approved delete races silently against the user's
 					// concurrent FM edits.
 					const oldFullContent = review ? await app.vault.read(f) : undefined;
@@ -1592,7 +1594,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						.optional()
 						.describe("Case-sensitive match (default true)"),
 				},
-
+				refine: requireFileOrPath,
 				handler: async ({
 					file,
 					path,
@@ -1722,7 +1724,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					path: z.string().optional().describe("Exact path from vault root"),
 					content: z.string().describe("Content to prepend"),
 				},
-
+				refine: requireFileOrPath,
 				handler: async ({ file, path, content }) => {
 					const result = resolveForWrite({ file, path });
 					if (!result.ok) return result.error;
@@ -1780,7 +1782,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						.optional()
 						.describe("Where to insert relative to target (default 'after')"),
 				},
-
+				refine: requireFileOrPath,
 				handler: async ({
 					file,
 					path,
@@ -1936,7 +1938,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				path: z.string().optional().describe("Exact path from vault root"),
 				newTab: z.boolean().optional().describe("Open in a new tab"),
 			},
-
+			refine: requireFileOrPath,
 			handler: async ({ file, path, newTab }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
@@ -1964,7 +1966,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				path: z.string().optional().describe("Exact path from vault root"),
 				name: z.string().describe("New file name (extension preserved if omitted)"),
 			},
-
+			refine: requireFileOrPath,
 			handler: async ({ file, path, name: newName }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
@@ -1985,10 +1987,10 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// the file's current extension EXACTLY (case-sensitive). Names like
 				// `v1.2`, `Mr.Smith`, or `notes.tech` keep `.${f.extension}`
 				// appended; explicit `name: "foo.md"` round-trips unchanged. The
-				// case-sensitive comparison is load-bearing on Linux: `foo.MD` and
-				// `foo.md` are different files, so case-folding the suffix would
-				// either silently change the casing during rename or treat a user's
-				// intentional `.MD` as already-extensioned and skip our `.md` append.
+				// Case-sensitive comparison is load-bearing on Linux: `foo.MD`
+				// and `foo.md` are different files, so case-folding would
+				// either silently change the casing during rename or treat an
+				// intentional `.MD` as already-extensioned and skip the append.
 				const hasTrailingExt = f.extension !== "" && trimmed.endsWith(`.${f.extension}`);
 				const ext = hasTrailingExt ? "" : f.extension ? `.${f.extension}` : "";
 				const dir = f.parent?.path ?? "";
@@ -2031,7 +2033,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				path: z.string().optional().describe("Exact path from vault root"),
 				to: z.string().describe("Destination folder path"),
 			},
-
+			refine: requireFileOrPath,
 			handler: async ({ file, path, to: dest }) => {
 				const f = resolveFile(app, { file, path }, pathFilter);
 				if (!f) return error("File not found.");
@@ -2049,16 +2051,15 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// destination is the same path as the source (no actual move).
 				if (newPath !== f.path && app.vault.getFileByPath(newPath))
 					return error(`Destination already exists: ${newPath}`);
-				// vault_move writes at TWO locations: the source becomes empty
-				// and the destination receives the file. vault_rename is
-				// structurally safe because source and destination share the
-				// parent directory; vault_move can lift a file OUT of writeDir
-				// (source-in-writeDir, dest-outside) or pull a file INTO it from
-				// outside. Both halves need to satisfy the same write-tier
-				// rules. We first check the source against the writeDir gate
-				// here, then route the destination through gateVaultWrite — so
-				// writeScoped-only callers can only move files where both
-				// endpoints sit inside writeDir.
+				// vault_move writes at two locations: source becomes empty and
+				// destination receives the file. vault_rename is structurally
+				// safe because source and dest share the parent directory;
+				// vault_move can lift a file out of writeDir or pull one in
+				// from outside. Both halves need the same write-tier rules:
+				// check source against the writeDir gate here, then route the
+				// destination through gateVaultWrite so writeScoped-only
+				// callers can only move files where both endpoints sit inside
+				// writeDir.
 				const sourceWithin = isPathWithinDir(f.path, getWriteDir());
 				const writeVaultOk = enabledTiers.has("writeVault");
 				const writeReviewedOk = enabledTiers.has("writeReviewed") && reviewFn !== undefined;
@@ -2086,30 +2087,45 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		defineTool({
 			name: "vault_delete",
 			tier: "manage",
-			title: "Delete file",
-			description: "Move a file to trash.",
+			title: "Delete file or folder",
+			description:
+				"Move a file or folder to trash. Folder deletion is recursive — children are trashed with the parent.",
 			inputSchema: {
-				file: z.string().optional().describe("File name"),
-				path: z.string().optional().describe("Exact path from vault root"),
+				file: z.string().optional().describe("File name (files only)"),
+				path: z.string().optional().describe("Exact path from vault root (file or folder)"),
 			},
-
+			refine: requireFileOrPath,
 			handler: async ({ file, path }) => {
-				const f = resolveFile(app, { file, path }, pathFilter);
-				if (!f) return error("File not found.");
-				// Gate via writeDir/writeReviewed/writeVault — runWrite alone
-				// only checks `review`. With `manage` tier on + `mcpVaultWrites:
-				// "none"` (reviewFn undefined), runWrite would trash any vault
-				// file with no boundary enforcement.
+				// `path` resolves to a file or folder; `file` is wikilink-style
+				// and so only resolves files.
+				const target = path
+					? app.vault.getAbstractFileByPath(path)
+					: file
+						? (app.metadataCache.getFirstLinkpathDest(file, "") ?? null)
+						: null;
+				if (!target) return error("Path not found.");
+				if (!isPathAllowedByFilter(target.path, pathFilter))
+					return error("Path not found.");
+				if (!isVaultPathSafe(app, target.path)) return error("Path not found.");
+				const isFolder = "children" in target;
+				// gateVaultWrite enforces writeDir/writeReviewed/writeVault.
+				// Without it, `manage` tier with `mcpVaultWrites: "none"` would
+				// let any agent trash any file or folder.
 				return gateVaultWrite({
-					destPath: f.path,
+					destPath: target.path,
 					operation: "delete",
-					description: `Delete ${f.path}`,
+					description: isFolder
+						? `Delete folder ${target.path} (recursive)`
+						: `Delete ${target.path}`,
 					writeDir: getWriteDir(),
 					enabledTiers,
 					review: reviewFn,
-					affectedLinks: collectBacklinks(f.path),
-					apply: () => app.vault.trash(f, true),
-					successMsg: `Deleted ${f.path}`,
+					// Folders carry no link metadata of their own.
+					affectedLinks: isFolder ? undefined : collectBacklinks(target.path),
+					apply: () => app.vault.trash(target, true),
+					successMsg: isFolder
+						? `Deleted folder ${target.path}`
+						: `Deleted ${target.path}`,
 				});
 			},
 		}),
@@ -2120,7 +2136,8 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			name: "vault_create_folder",
 			tier: "manage",
 			title: "Create folder",
-			description: "Create a new folder in the vault.",
+			description:
+				"Create a new folder in the vault. No-op if the folder already exists; errors if a file already occupies the path.",
 			inputSchema: {
 				path: z.string().describe("Folder path from vault root"),
 			},
@@ -2132,6 +2149,13 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// future writes via `vault_create` once writeVault is granted).
 				const pathError = validateNewVaultPath(app, path, pathFilter);
 				if (pathError) return pathError;
+				// `mkdir -p` semantics. File collisions still error to avoid
+				// silently shadowing a same-named note.
+				const existing = app.vault.getAbstractFileByPath(path);
+				if (existing) {
+					if ("children" in existing) return text(`Folder already exists at ${path}`);
+					return error(`Path ${path} exists as a file; refusing to create folder.`);
+				}
 				return gateVaultWrite({
 					destPath: path,
 					operation: "create",
@@ -2154,38 +2178,50 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			tier: "manage",
 			title: "Batch frontmatter update",
 			description:
-				"Set or delete a frontmatter property across all files matching a search query. Use dryRun to preview changes.",
+				"Set or delete a frontmatter property across files matching a folder prefix and/or a content search query. At least one of `folder` or `query` is required. Use dryRun to preview changes.",
 			inputSchema: {
-				query: z.string().describe("Search query to match files"),
-				property: z.string().describe("Frontmatter property name"),
-				value: z
+				query: z
 					.string()
 					.optional()
-					.describe("Value to set (JSON-encoded for objects/arrays). Omit to delete."),
+					.describe(
+						"Full-text content search to match files. Optional when `folder` is supplied.",
+					),
+				folder: z
+					.string()
+					.optional()
+					.describe(
+						"Vault path prefix to restrict matches. Optional when `query` is supplied.",
+					),
+				property: z.string().describe("Frontmatter property name"),
+				value: z
+					.unknown()
+					.optional()
+					.describe(
+						"Value to set — string, number, boolean, array, or object. Omit to delete.",
+					),
 				dryRun: z.boolean().optional().describe("Preview only, no changes (default true)"),
 			},
-
-			handler: async ({ query, property, value: rawValue, dryRun = true }) => {
+			refine: (args) =>
+				!args.query && !args.folder ? "Provide at least one of 'query' or 'folder'." : null,
+			handler: async ({ query, folder, property, value, dryRun = true }) => {
+				// `hasValue` distinguishes set vs delete; the value itself can
+				// legitimately be `null` or `false`.
+				const hasValue = value !== undefined;
 				if (!isSafeFrontmatterProperty(property))
 					return error(
 						`Property name '${property}' is not allowed (reserved or invalid).`,
 					);
-				const search = prepareSimpleSearch(query);
+				const search = query ? prepareSimpleSearch(query) : null;
 				// Cap matches so a broad query (`"the"`) doesn't load the entire
-				// vault into memory and synchronously rewrite every frontmatter
-				// block. The dry-run preview still prints the truncated list and
-				// callers see the "showing first N of M" tail.
+				// vault into memory. The dry-run preview prints the truncated
+				// list with a "showing first N of M" tail.
 				const BATCH_MATCH_CAP = 500;
 				const matched: TFile[] = [];
 				let totalMatched = 0;
 				await forEachMarkdown((file, content) => {
-					// Honour pathFilter at the iteration boundary so blocklisted
-					// regions are neither modified nor surfaced in the dry-run
-					// preview. Every other write tool in this file applies
-					// `isPathAllowed`; this loop previously walked
-					// `getMarkdownFiles()` blind.
 					if (!isPathAllowedByFilter(file.path, pathFilter)) return;
-					if (!search(content)) return;
+					if (folder && !isPathWithinDir(file.path, folder)) return;
+					if (search && !search(content)) return;
 					totalMatched++;
 					if (matched.length < BATCH_MATCH_CAP) matched.push(file);
 				});
@@ -2197,18 +2233,18 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						: "";
 
 				if (dryRun) {
-					const label = rawValue !== undefined ? `set ${property}` : `delete ${property}`;
+					const label = hasValue ? `set ${property}` : `delete ${property}`;
 					return text(
 						`Dry run — would ${label} on ${matched.length} file(s):\n${matched.map((f) => f.path).join("\n")}${truncationNote}`,
 					);
 				}
 
-				// Gate writes outside the configured write directory the same way
-				// vault_modify does: writeVault → apply directly; writeReviewed →
-				// hand to the batch-review modal; otherwise, if any target sits
-				// outside the write dir, reject. Without this gate, `manage` users
-				// with `mcpVaultWrites: "none"` could mutate frontmatter anywhere
-				// in the vault via search query.
+				// Gate writes outside the configured write directory the same
+				// way vault_modify does: writeVault → apply; writeReviewed →
+				// batch-review modal; otherwise reject if any target sits
+				// outside. Without this gate, `manage` users with
+				// `mcpVaultWrites: "none"` could mutate frontmatter anywhere
+				// in the vault via a search query.
 				const writeDir = getWriteDir();
 				const outOfScope = matched.filter((f) => !isPathWithinDir(f.path, writeDir));
 				if (outOfScope.length > 0) {
@@ -2219,15 +2255,13 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					}
 				}
 
-				const value = rawValue !== undefined ? parseJsonOrString(rawValue) : undefined;
-
 				let targets: TFile[] = matched;
-				// Snapshot the pre-review frontmatter for each file. We use these
-				// as the CAS comparison target in the apply phase so a file that
-				// changed between modal-show and modal-approve is skipped rather
-				// than blindly overwritten. The snapshot is keyed by file.path
-				// because TFile identity isn't a reliable key — Obsidian can
-				// recreate the wrapper across rename/move events.
+				// Snapshot the pre-review frontmatter per file as the CAS
+				// comparison target in the apply phase, so a file that changed
+				// between modal-show and modal-approve is skipped rather than
+				// blindly overwritten. Keyed by file.path because TFile
+				// identity isn't reliable — Obsidian recreates the wrapper
+				// across rename/move events.
 				const preReviewFm = new Map<string, Record<string, unknown>>();
 				for (const file of matched) {
 					preReviewFm.set(file.path, frontmatterSnapshot(file));
@@ -2237,7 +2271,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					const items = matched.map((file) => {
 						const oldFm = preReviewFm.get(file.path) ?? {};
 						let newFm: Record<string, unknown>;
-						if (rawValue !== undefined) {
+						if (hasValue) {
 							newFm = { ...oldFm, [property]: value };
 						} else {
 							const { [property]: _dropped, ...rest } = oldFm;
@@ -2249,12 +2283,17 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 							newContent: JSON.stringify(newFm, null, 2),
 						};
 					});
-					const op: WriteOperation =
-						rawValue !== undefined ? "frontmatter_set" : "frontmatter_delete";
-					const verb = rawValue !== undefined ? `Set ${property}` : `Delete ${property}`;
+					const op: WriteOperation = hasValue ? "frontmatter_set" : "frontmatter_delete";
+					const verb = hasValue ? `Set ${property}` : `Delete ${property}`;
+					const scopeDesc = [
+						folder ? `folder '${folder}'` : null,
+						query ? `query "${query}"` : null,
+					]
+						.filter(Boolean)
+						.join(" + ");
 					const result = await reviewBatchFn({
 						operation: op,
-						description: `${verb} on ${matched.length} file(s) matching "${query}"`,
+						description: `${verb} on ${matched.length} file(s) matching ${scopeDesc}`,
 						items,
 					});
 					if (!result.approved) return error("Change rejected by user.");
@@ -2291,7 +2330,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 								}
 							}
 							await app.fileManager.processFrontMatter(file, (fm) => {
-								if (rawValue !== undefined) {
+								if (hasValue) {
 									fm[property] = value;
 								} else {
 									delete fm[property];
@@ -2304,7 +2343,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					targets = targets.filter((f) => !skippedDueToConcurrentEdit.includes(f.path));
 				}
 
-				const label = rawValue !== undefined ? `Set ${property}` : `Deleted ${property}`;
+				const label = hasValue ? `Set ${property}` : `Deleted ${property}`;
 				const skipNote =
 					skippedDueToConcurrentEdit.length > 0
 						? `\n\nSkipped ${skippedDueToConcurrentEdit.length} file(s) that changed during review:\n${skippedDueToConcurrentEdit.join("\n")}`

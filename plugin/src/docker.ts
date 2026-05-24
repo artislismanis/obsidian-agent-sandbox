@@ -72,24 +72,17 @@ export function windowsToWslPath(windowsPath: string): string {
  * Builds the inner shell command string with env vars and cd.
  * `dockerCmd` must be a trusted literal — it is NOT escaped.
  */
-/** Reject control characters in any env-var value. Originally only sensitive
- *  keys (OAS_SUDO_PASSWORD / OAS_MCP_TOKEN) were checked, but EVERY value
- *  flows through the same `bash -c export KEY='value' && ...` envelope (or
- *  the cmd.exe `set "KEY=value" && ...` envelope on Windows). A CR/LF in
- *  any value can terminate the export/set statement and let the rest run
- *  as a fresh command:
- *   - bash: single-quotes preserve newlines literally, so `'foo\nrm -rf /'`
- *           stays inside the quotes for export, but the subsequent && chain
- *           treats the LF as a statement separator anyway via shell parsing
- *           of the outer command after our escaping.
- *   - cmd.exe: `set "KEY=foo\nbar"` ends at the LF and `bar` runs as a new
- *              command after the next &&.
- *   - NUL: bash silently truncates at \0, so a NUL inside a password
- *          produces "wrong password" with no clear cause.
- *  Validation here is defense in depth on top of the per-setting validators
- *  applied in the envSpec — those are field-shape checks; this is a sanity
- *  rail that runs even for shapes (like file paths) whose validator doesn't
- *  inherently reject control bytes. */
+/** Reject control characters in any env-var value. Every value flows through
+ *  the same `bash -c export KEY='value' && ...` envelope (or the cmd.exe
+ *  `set "KEY=value" && ...` envelope on Windows). CR/LF can terminate the
+ *  export/set statement so the rest runs as a fresh command:
+ *   - bash: single-quotes preserve newlines literally, but the outer
+ *           double-quoted bash -c "..." reparses LF as a statement separator.
+ *   - cmd.exe: `set "KEY=foo\nbar"` ends at the LF and `bar` runs after &&.
+ *   - NUL: bash silently truncates at \0, producing "wrong password" with no
+ *          clear cause when present in OAS_SUDO_PASSWORD.
+ *  Defense in depth on top of per-setting validators in the envSpec, which
+ *  are field-shape checks and don't all reject control bytes. */
 function assertNoControlBytes(key: string, value: string): void {
 	if (value.includes("\n") || value.includes("\r")) {
 		throw new Error(`Invalid value for ${key}: must not contain newlines or carriage returns.`);
@@ -121,7 +114,7 @@ function buildInnerCommand(
 // Escape a string so it round-trips unchanged through `bash -c "..."`. The
 // single-quoted inner command does NOT shield `$` or backtick from the outer
 // double-quoted context — bash still expands them. Order matters: backslash
-// first, otherwise later passes would re-escape our own escapes.
+// first, otherwise later passes would re-escape the escapes.
 function escapeForOuterDoubleQuote(s: string): string {
 	return s.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$").replace(/"/g, '\\"');
 }
@@ -167,12 +160,10 @@ export function buildLocalWindowsCommand(
 	const escapedPath = composePath.replace(/"/g, '""');
 
 	const envParts = Object.entries(envVars).map(([key, value]) => {
-		// Symmetric with buildInnerCommand (bash path): a CR/LF or NUL in
-		// any value can terminate the `set "KEY=..."` statement and let the
-		// rest of the value run as a fresh cmd.exe command after the &&.
-		// Apply to ALL keys, not just SENSITIVE ones (any of OAS_VAULT_PATH,
-		// OAS_MEMORY_FILE_NAME, etc. can carry an injected newline if
-		// hand-edited in data.json).
+		// Symmetric with buildInnerCommand (bash path): CR/LF or NUL in any
+		// value can terminate the `set "KEY=..."` statement and let the rest
+		// run as a fresh cmd.exe command after the &&. Apply to all keys —
+		// hand-edited data.json can carry an injected newline in any of them.
 		assertNoControlBytes(key, value);
 		const escapedValue = value.replace(/"/g, '""');
 		return `set "${key}=${escapedValue}"`;
@@ -188,9 +179,8 @@ export function buildLocalWindowsCommand(
 export async function getWslNetworkingMode(wslDistro: string): Promise<string | undefined> {
 	if (process.platform !== "win32") return undefined;
 	if (!VALID_DISTRO_NAME.test(wslDistro)) return undefined;
-	// spawn rather than exec: passes args as an array so the distro name
-	// (already regex-validated above) cannot be reinterpreted by a shell
-	// even if validation ever regresses. No shell, no quoting surface.
+	// spawn rather than exec: args as an array means the distro name cannot
+	// be reinterpreted by a shell. No shell, no quoting surface.
 	return new Promise<string | undefined>((resolve) => {
 		const child = spawn("wsl.exe", ["-d", wslDistro, "--", "wslinfo", "--networking-mode"], {
 			windowsHide: true,
@@ -239,10 +229,10 @@ export function getWslHostIp(mode: string | undefined): string | undefined {
 export class DockerManager {
 	private getSettings: () => DockerManagerSettings;
 	private busy = false;
-	// WSL networking mode and host IP rarely change, but VPN connect, suspend/
-	// resume, or `wsl --shutdown` can shift the host IP under us. Cache per
-	// (wslDistro) but expire after WSL_PROBE_TTL_MS so stale entries don't pin
-	// a wrong IP for hours. Also cleared on restart() and firewall toggles.
+	// WSL networking mode and host IP rarely change, but VPN connect,
+	// suspend/resume, or `wsl --shutdown` can shift the host IP. Cache per
+	// (wslDistro) and expire after WSL_PROBE_TTL_MS so stale entries don't
+	// pin a wrong IP for hours. Also cleared on restart() and firewall toggles.
 	private wslProbeCache: {
 		distro: string;
 		mode: string | undefined;
@@ -252,7 +242,7 @@ export class DockerManager {
 	private static readonly WSL_PROBE_TTL_MS = 5 * 60_000;
 
 	/** Clear the WSL probe cache so the next docker call re-detects host IP / mode.
-	 *  Useful when the network changed under us (VPN, suspend/resume). */
+	 *  Useful after a network change (VPN, suspend/resume). */
 	invalidateWslProbe(): void {
 		this.wslProbeCache = null;
 	}
@@ -324,13 +314,10 @@ export class DockerManager {
 						? windowsToWslPath(vaultPath)
 						: vaultPath
 					: "",
-				// Vault paths are derived from Obsidian's getBasePath and can
-				// legitimately contain spaces and other path-safe characters
-				// (e.g. `C:\Users\Foo\My Vault`). Dangerous bytes (CR/LF/NUL)
-				// are caught by assertNoControlBytes for ALL env vars. The
-				// validator here just enforces non-empty so the contract is
-				// explicit; the for-loop below also skips empty values, but
-				// being explicit documents the boundary.
+				// Vault paths come from Obsidian's getBasePath and can contain
+				// spaces (`C:\Users\Foo\My Vault`); dangerous bytes are caught
+				// by assertNoControlBytes. The validator only enforces
+				// non-empty to make the contract explicit.
 				validate: (v) => v.length > 0,
 				invalidMsg: "Invalid vault path: must not be empty.",
 			},
@@ -383,16 +370,12 @@ export class DockerManager {
 				validate: isValidCpus,
 				invalidMsg: "Invalid CPU limit. Use a number (e.g. 4, 2.5).",
 			},
-			// OAS_SUDO_PASSWORD and OAS_MCP_TOKEN are validated for CR/LF in
-			// buildInnerCommand (SENSITIVE_ENV_KEYS). Caveat: these values
-			// appear on the bash command line as `export OAS_SUDO_PASSWORD='…'`,
-			// which is briefly visible to other host users via `ps -ef` while
-			// docker compose is invoked. Switching to stdin / `--env-file` for
-			// these would require splitting the WSL / local-Windows / local
-			// invocation paths and rewriting the dockerCmd assembly; tracked
-			// as a known limitation. Mitigations: (a) MCP token rotation via
-			// settings, (b) sudoPassword is the user's own password on their
-			// own machine, (c) the validator above prevents shell injection.
+			// Caveat: these values appear on the bash command line as
+			// `export OAS_SUDO_PASSWORD='…'`, briefly visible to other host
+			// users via `ps -ef` while docker compose runs. Mitigations:
+			// MCP token rotation via settings; sudoPassword is the user's
+			// own password on their own machine; validators prevent shell
+			// injection.
 			{ key: "OAS_SUDO_PASSWORD", value: sudoPassword },
 			{ key: "OAS_MCP_TOKEN", value: mcpToken },
 			{ key: "OAS_MCP_PORT", value: mcpPort ? String(mcpPort) : "" },
@@ -400,11 +383,25 @@ export class DockerManager {
 
 		const envVars: Record<string, string> = {};
 		for (const { key, value, validate, invalidMsg } of envSpec) {
-			if (value === undefined || value === "") continue;
-			const v = String(value);
+			const v = value === undefined ? "" : String(value);
+			// Validate before the empty-skip — a validator that rejects empty
+			// (e.g. OAS_VAULT_PATH) must surface as an error instead of
+			// silently falling through to compose's `${VAR:-fallback}`.
 			if (validate && !validate(v)) throw new Error(invalidMsg!);
+			if (v === "") continue;
 			envVars[key] = v;
 		}
+		logger.info(
+			"Docker",
+			`envVars assembled for "${dockerCmd}": ${JSON.stringify(
+				Object.fromEntries(
+					Object.entries(envVars).map(([k, v]) => [
+						k,
+						k === "OAS_SUDO_PASSWORD" || k === "OAS_MCP_TOKEN" ? "<redacted>" : v,
+					]),
+				),
+			)}`,
+		);
 		// On Windows, inject the actual Windows host IP so containers can reach
 		// the host: the docker-bridge / Rancher DNS that host-gateway resolves
 		// to inside WSL2 is not reachable from the container. In mirrored mode
@@ -434,11 +431,10 @@ export class DockerManager {
 
 			if (!quiet) logger.error("Docker", `Command failed: ${detail}`);
 
-			// When the caller passed suppressErrors=true, they want to make their
-			// own decision based on stderr content (e.g. listSessions distinguishing
-			// "no tmux server" from a real Docker failure). Throw a structured error
-			// that preserves stderr; otherwise the wrapped "Unexpected Docker error"
-			// below would hide the original output and break their substring checks.
+			// suppressErrors=true callers decide based on stderr content
+			// (e.g. listSessions distinguishing "no tmux server" from a real
+			// Docker failure). Throw a structured error preserving stderr;
+			// the wrapped "Unexpected Docker error" below would hide it.
 			if (quiet) {
 				throw Object.assign(new Error(err.message || detail), {
 					stderr: err.stderr ?? "",
@@ -468,10 +464,10 @@ export class DockerManager {
 					combined.includes("no configuration file provided"),
 					"docker-compose.yml not found. Check Settings > Docker Compose path.",
 				],
-				// Only rewrite when the ENOENT is at the Node spawn level (cwd missing →
-				// phrase appears in err.message, stderr empty). When a downstream tool
-				// like tmux reports "No such file or directory" via stderr, leave the
-				// original error so callers can recognise it.
+				// Only rewrite ENOENT at the Node spawn level (cwd missing →
+				// phrase in err.message, empty stderr). A downstream tool like
+				// tmux reporting "No such file or directory" via stderr keeps
+				// its original error so callers can recognise it.
 				[
 					!err.stderr && (err.message?.includes("No such file or directory") ?? false),
 					"Docker Compose directory not found. Check Settings > Docker Compose path.",
@@ -520,12 +516,10 @@ export class DockerManager {
 		const { dockerMode, composePath, wslDistro } = settings;
 		if (!composePath) return;
 
-		// docker-compose down doesn't need OAS_VAULT_PATH/OAS_VAULT_WRITE_DIR
+		// `docker compose down` doesn't need OAS_VAULT_PATH/OAS_VAULT_WRITE_DIR
 		// to find the project (the `name: oas` field pins it), but compose
-		// still substitutes ${VAR} in the YAML and warns to stderr when
-		// unset. The detached spawn discards stderr, but providing the
-		// values keeps behaviour symmetric with run() for any compose
-		// feature that does require them at down time.
+		// still substitutes ${VAR} in the YAML and warns to stderr when unset.
+		// Providing the values keeps behaviour symmetric with run().
 		const downEnv: Record<string, string> = {};
 		if (settings.vaultPath) {
 			downEnv.OAS_VAULT_PATH =
@@ -537,10 +531,8 @@ export class DockerManager {
 		let args: string[];
 		// Symmetric with run(): reject control bytes in every env value before
 		// any shell envelope so a hand-edited data.json with CR/LF/NUL in
-		// vaultPath/writeDir can't terminate the export/set statement and let
-		// the rest run as a fresh command. The interactive path is hardened in
-		// buildInnerCommand/buildLocalWindowsCommand; mirror it here so detached
-		// stop on plugin unload doesn't carve a defense-in-depth hole.
+		// vaultPath/writeDir can't terminate the export/set statement. Mirrors
+		// buildInnerCommand/buildLocalWindowsCommand on the interactive path.
 		try {
 			for (const [k, v] of Object.entries(downEnv)) assertNoControlBytes(k, v);
 		} catch {
@@ -548,11 +540,10 @@ export class DockerManager {
 		}
 
 		if (dockerMode === "wsl") {
-			// On Windows, spawn wsl.exe directly (no bash available on host).
-			// Validate the distro name even on this detached path — spawn passes
-			// args as an array (no shell injection surface), but a malformed
-			// name lets wsl.exe error in unhelpful ways. Same regex used in
-			// the interactive path's assertValidDistro.
+			// On Windows, spawn wsl.exe directly (no bash on host). Validate
+			// the distro name even on this detached path — args go as an array
+			// (no shell injection), but a malformed name lets wsl.exe error in
+			// unhelpful ways.
 			if (!VALID_DISTRO_NAME.test(wslDistro)) return;
 			const wslPath = windowsToWslPath(composePath);
 			const innerCmd = buildInnerCommand(wslPath, "docker compose down", downEnv);
@@ -572,9 +563,9 @@ export class DockerManager {
 
 		// detached:true on Linux/Mac puts the child into its own process group
 		// so it survives Obsidian's exit (otherwise SIGTERM-on-parent-exit
-		// would propagate). On Windows, children survive parent exit naturally
-		// and detached:true would pop a visible console window — so we leave
-		// it false there. stdio:"ignore" + unref() complete the detachment.
+		// propagates). On Windows, children survive parent exit naturally and
+		// detached:true would pop a visible console window — leave it false
+		// there. stdio:"ignore" + unref() complete the detachment.
 		const child = spawn(shell, args, {
 			detached: process.platform !== "win32",
 			stdio: "ignore",
@@ -642,8 +633,8 @@ export class DockerManager {
 			try {
 				await this.run("docker compose down");
 			} catch (err) {
-				// Restart with no prior container running is the common case for
-				// the "force recreate" flow — debug-level only, not a warning.
+				// No prior container running is the common case for the
+				// "force recreate" flow — debug-level only, not a warning.
 				logger.debug(
 					"Docker",
 					"compose down failed during restart (may not be running)",
@@ -671,18 +662,15 @@ export class DockerManager {
 	}
 
 	/**
-	 * Probe host-local ports for availability. Returns an array of ports
-	 * already bound by a non-compose process. Used as a pre-flight check
-	 * before `docker compose up -d`.
+	 * Probe host-local ports for availability. Returns ports already bound
+	 * by a non-compose process; pre-flight before `docker compose up -d`.
 	 *
-	 * Treats every non-`listening` outcome as a conflict so a clean
-	 * port-in-use message surfaces instead of letting compose fail with an
-	 * opaque "address in use" later. EADDRINUSE → conflict (the typical
-	 * case); EACCES (privileged port), EADDRNOTAVAIL (invalid bind host),
-	 * etc. → also conflict, logged so the dev console has the actual
-	 * errno. A 2s timeout per probe guards against rare cases where neither
-	 * event fires (kernel state quirk) and the original Promise hung
-	 * forever, freezing the start flow.
+	 * Every non-`listening` outcome counts as a conflict so a clean
+	 * port-in-use message surfaces instead of compose's opaque "address in
+	 * use" later. EADDRINUSE → conflict (typical); EACCES (privileged port),
+	 * EADDRNOTAVAIL (invalid bind host) → also conflict, logged with errno.
+	 * A 2s per-probe timeout guards against the rare kernel quirk where
+	 * neither event fires and the Promise would hang.
 	 */
 	async checkPortConflicts(ports: number[], host = "127.0.0.1"): Promise<number[]> {
 		const conflicts: number[] = [];
@@ -709,10 +697,9 @@ export class DockerManager {
 									`Port probe ${host}:${port} error ${err.code}: ${err.message}`,
 								);
 							}
-							// Conservative: any error means the port can't be
-							// listened on, which compose will also fail at.
-							// Surfacing as a conflict gives the user a clean
-							// pre-flight message.
+							// Any error means the port can't be listened on; compose
+							// would also fail. Reporting as a conflict gives the user
+							// a clean pre-flight message.
 							conflicts.push(port);
 							resolve();
 						});
@@ -730,9 +717,8 @@ export class DockerManager {
 	/**
 	 * Returns the current container ID, or empty string if not running.
 	 * Throws on probe failure so callers can distinguish "no container" from
-	 * "couldn't ask docker" — previously both collapsed to "" and a flaky
-	 * probe silently masked container-recreation notices in
-	 * checkContainerIdDrift.
+	 * "couldn't ask docker" — collapsing both to "" lets a flaky probe mask
+	 * container-recreation notices in checkContainerIdDrift.
 	 */
 	async getContainerId(): Promise<string> {
 		const output = await this.run(`docker compose ps -q ${SERVICE_NAME}`, PROBE_TIMEOUT);
@@ -741,14 +727,11 @@ export class DockerManager {
 
 	/**
 	 * True if compose has any container for this project, regardless of state.
-	 * Used to detect a half-stopped container still holding host port mappings.
+	 * Detects a half-stopped container still holding host port mappings.
 	 *
-	 * On probe failure, return `true` (and log) — failing safe means the
-	 * port-conflict recovery path in main.ts still attempts `docker compose
-	 * down`, giving the user a chance to recover. The previous `catch →
-	 * return false` made transient probe errors look identical to "no
-	 * container", silently skipping the recovery attempt while the user
-	 * stared at an unactionable port-conflict Notice.
+	 * On probe failure, return `true` (and log) so the port-conflict recovery
+	 * path still attempts `docker compose down` — collapsing to `false` would
+	 * make transient probe errors silently skip recovery.
 	 */
 	async hasAnyContainer(): Promise<boolean> {
 		try {
@@ -767,10 +750,9 @@ export class DockerManager {
 	 * Resolve the firewall state with three outcomes:
 	 *  - "enabled" / "disabled": container responded with the exact word
 	 *  - "unavailable": container missing, exec failed, or the script printed
-	 *    something unexpected (script broken). Caller should hide UI, not
-	 *    display as "disabled" — the previous behaviour collapsed "broken
-	 *    script" into "disabled", misleading the user into thinking they
-	 *    just needed to enable it.
+	 *    something unexpected. Caller should hide UI, not display as
+	 *    "disabled" — collapsing "broken script" into "disabled" misleads
+	 *    the user into thinking they just need to enable it.
 	 */
 	async firewallStatus(): Promise<"enabled" | "disabled" | "unavailable"> {
 		try {
@@ -780,10 +762,8 @@ export class DockerManager {
 			logger.warn("Docker", `Unexpected firewall --status output: ${output.slice(0, 200)}`);
 			return "unavailable";
 		} catch (err) {
-			// Previously this swallow had no log line, so the firewall badge
-			// silently flipped to "hidden" on every transient exec failure
-			// (docker hang, WSL probe blip) with no diagnostic in the
-			// console. Surface the cause so flaky firewalls are debuggable.
+			// Log the cause — otherwise the firewall badge silently flips to
+			// "hidden" on transient exec failures (docker hang, WSL blip).
 			logger.warn("Docker", `firewallStatus probe failed: ${errMsg(err)}`);
 			return "unavailable";
 		}
@@ -809,10 +789,10 @@ export class DockerManager {
 				.map((s) => s.trim())
 				.filter(Boolean);
 		} catch (err) {
-			// run() with suppressErrors=true preserves the original stderr on the
-			// thrown Error so we can recognise tmux's "no sessions" valid-empty
-			// state vs a real Docker failure. errMsg() alone would only see the
-			// wrapped message and miss every match here.
+			// run() with suppressErrors=true preserves the original stderr on
+			// the thrown Error so tmux's "no sessions" valid-empty state can
+			// be distinguished from a real Docker failure. errMsg() would only
+			// see the wrapped message and miss the match.
 			const stderr = (err as { stderr?: string }).stderr ?? "";
 			const haystack = stderr + " " + errMsg(err);
 			if (
@@ -840,11 +820,11 @@ export class DockerManager {
 				.map((line) => line.slice(0, -2));
 		} catch (err) {
 			// Mirror listSessions's stderr-pattern detection: tmux's
-			// "no sessions" / "no server running" stderr fragments map to
-			// a legitimate empty list; anything else is a real failure
-			// that the user's session-cleanup picker should NOT see as
-			// "no sessions to clean up". The previous bare `catch → []`
-			// made a docker daemon outage indistinguishable from "all clean".
+			// "no sessions" / "no server running" stderr fragments map to a
+			// legitimate empty list; anything else is a real failure that the
+			// session-cleanup picker must not see as "no sessions to clean up"
+			// (a bare `catch → []` would make a docker daemon outage look
+			// identical to "all clean").
 			const stderr = (err as { stderr?: string }).stderr ?? "";
 			const haystack = stderr + " " + errMsg(err);
 			const tmuxLegitEmpty =
@@ -881,14 +861,11 @@ export class DockerManager {
 				const arr = JSON.parse(trimmed);
 				if (Array.isArray(arr)) records.push(...arr);
 			} catch (err) {
-				// Surface the parse failure: the previous silent `return false`
-				// made a malformed `docker compose ps --format json` envelope
-				// look identical to "no container running", so the plugin
-				// announced the container had stopped and detached terminals
-				// while the container was actually fine. Log first so the
-				// cause is debuggable, then keep the conservative "false"
-				// return so the caller's stopped-state UI still fires —
-				// better than crashing on a docker version drift.
+				// Log the parse failure so a malformed status envelope is
+				// debuggable instead of silently looking like "no container
+				// running". Still return false conservatively so the caller's
+				// stopped-state UI fires — better than crashing on a docker
+				// version drift.
 				logger.warn(
 					"Docker",
 					`parseIsRunning: malformed JSON-array status output: ${errMsg(err)}`,

@@ -32,10 +32,9 @@ export interface WriteGate {
 	enabledTiers: ReadonlySet<PermissionTier>;
 	review: ReviewFn | undefined;
 	/** Optional allow/block filter mirroring the read/write tools in
-	 *  mcp-tools.ts. When unset, no filtering happens — preserving the
-	 *  existing behaviour for installs without `mcpPathAllowlist` /
-	 *  `mcpPathBlocklist`. Each extension tool that takes a path argument
-	 *  must consult this gate before reading or writing. */
+	 *  mcp-tools.ts. When unset, no filtering happens. Each extension tool
+	 *  that takes a path argument must consult this gate before reading or
+	 *  writing. */
 	pathFilter?: PathFilter;
 }
 
@@ -46,12 +45,86 @@ function gateAllowsPath(gate: WriteGate, vaultPath: string): boolean {
 	return isPathAllowedByFilter(vaultPath, gate.pathFilter);
 }
 
-function resolveCanvasFile(app: App, path: string, gate: WriteGate): TFile | null {
+/** Tagged result so callers can surface a distinct message per failure mode —
+ *  collapsing all four reasons into `null` misleads agents who hit a symlink
+ *  or filter block. */
+type CanvasResolve =
+	| { ok: true; file: TFile }
+	| { ok: false; reason: "missing" | "wrong-extension" | "unsafe" | "blocked" };
+
+function resolveCanvasFile(app: App, path: string, gate: WriteGate): CanvasResolve {
+	if (!path.endsWith(".canvas")) return { ok: false, reason: "wrong-extension" };
 	const f = app.vault.getFileByPath(path);
-	if (!f || f.extension !== "canvas") return null;
-	if (!isVaultPathSafe(app, f.path)) return null;
-	if (!gateAllowsPath(gate, f.path)) return null;
-	return f;
+	if (!f) return { ok: false, reason: "missing" };
+	if (f.extension !== "canvas") return { ok: false, reason: "wrong-extension" };
+	if (!isVaultPathSafe(app, f.path)) return { ok: false, reason: "unsafe" };
+	if (!gateAllowsPath(gate, f.path)) return { ok: false, reason: "blocked" };
+	return { ok: true, file: f };
+}
+
+/** Human-readable error per resolve failure. Shared so the read and modify
+ *  handlers stay in sync as reasons evolve. */
+function canvasErrorFor(reason: Exclude<CanvasResolve, { ok: true }>["reason"]): string {
+	switch (reason) {
+		case "missing":
+			return "Canvas file not found.";
+		case "wrong-extension":
+			return "Path is not a .canvas file.";
+		case "unsafe":
+			return "Canvas path resolves outside the vault (symlink).";
+		case "blocked":
+			return "Canvas path is blocked by allow/block list.";
+	}
+}
+
+type CanvasDoc = {
+	nodes: z.infer<typeof CanvasNodeSchema>[];
+	edges: z.infer<typeof CanvasEdgeSchema>[];
+};
+type CanvasChanges = z.infer<typeof CanvasChangesSchema>;
+
+/** Apply add/remove changes to an in-memory canvas doc. Shared between the
+ *  modify-existing and create-when-missing flows so the cascade rules and
+ *  summary formatting stay identical. */
+function applyCanvasChanges(
+	startDoc: CanvasDoc,
+	changes: CanvasChanges,
+): { value: CanvasDoc; summary: string } {
+	const stringId = (v: unknown): string | null => (typeof v === "string" ? v : null);
+	const doc: CanvasDoc = { nodes: startDoc.nodes, edges: startDoc.edges };
+	const removeNodeIds = new Set(changes.removeNodeIds ?? []);
+	if (removeNodeIds.size > 0) {
+		doc.nodes = doc.nodes.filter((n) => {
+			const id = stringId(n.id);
+			return id === null || !removeNodeIds.has(id);
+		});
+		// Cascade: drop edges touching removed nodes
+		doc.edges = doc.edges.filter((e) => {
+			const from = stringId(e.fromNode);
+			const to = stringId(e.toNode);
+			if (from !== null && removeNodeIds.has(from)) return false;
+			if (to !== null && removeNodeIds.has(to)) return false;
+			return true;
+		});
+	}
+	const removeEdgeIds = new Set(changes.removeEdgeIds ?? []);
+	if (removeEdgeIds.size > 0) {
+		doc.edges = doc.edges.filter((e) => {
+			const id = stringId(e.id);
+			return id === null || !removeEdgeIds.has(id);
+		});
+	}
+	if (changes.addNodes) doc.nodes.push(...changes.addNodes);
+	if (changes.addEdges) doc.edges.push(...changes.addEdges);
+	const summary = [
+		changes.addNodes?.length ? `+${changes.addNodes.length} nodes` : null,
+		removeNodeIds.size ? `-${removeNodeIds.size} nodes` : null,
+		changes.addEdges?.length ? `+${changes.addEdges.length} edges` : null,
+		removeEdgeIds.size ? `-${removeEdgeIds.size} edges` : null,
+	]
+		.filter(Boolean)
+		.join(", ");
+	return { value: doc, summary };
 }
 
 /** Parse JSON with a label-prefixed error message; on success returns the value. */
@@ -69,11 +142,10 @@ function parseJsonLabelled<T = unknown>(
 // ── Canvas ──────────────────────────────────────────
 
 // Canvas nodes / edges keep extra keys passthrough (Obsidian's canvas
-// renderer carries plugin-private fields), but the *required* fields for
-// a renderable node/edge are checked here. Without them the renderer
-// either silently drops the node or shows a corrupt canvas. An empty
-// object would have passed the previous `z.record(...)` schema; that's
-// the case this guard closes.
+// renderer carries plugin-private fields), but the required fields for a
+// renderable node/edge are checked here. Without them the renderer either
+// silently drops the node or shows a corrupt canvas; a permissive
+// `z.record(...)` would let an empty object through.
 const CanvasNodeSchema = z
 	.object({
 		id: z.string().min(1),
@@ -115,9 +187,9 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 			},
 
 			handler: async ({ path }) => {
-				const f = resolveCanvasFile(app, path, gate);
-				if (!f) return error("Canvas file not found (must end in .canvas).");
-				const raw = await app.vault.cachedRead(f);
+				const resolved = resolveCanvasFile(app, path, gate);
+				if (!resolved.ok) return error(canvasErrorFor(resolved.reason));
+				const raw = await app.vault.cachedRead(resolved.file);
 				const parsed = parseJsonLabelled(raw, "Canvas JSON parse failed");
 				if (!parsed.ok) return error(parsed.error);
 				return text(JSON.stringify(parsed.value, null, 2));
@@ -131,7 +203,7 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 			tier: "extensions",
 			title: "Modify canvas",
 			description:
-				"Apply changes to a .canvas file. Supports adding or removing nodes and edges. The `changes` payload is a JSON object with optional `addNodes`, `removeNodeIds`, `addEdges`, `removeEdgeIds` arrays.",
+				"Apply changes to a .canvas file. Supports adding or removing nodes and edges. The `changes` payload is a JSON object with optional `addNodes`, `removeNodeIds`, `addEdges`, `removeEdgeIds` arrays. Set `create: true` to materialise the canvas (with the requested nodes/edges) when it doesn't yet exist.",
 			inputSchema: {
 				path: z.string().describe("Canvas file path from vault root"),
 				changes: z
@@ -139,12 +211,15 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 					.describe(
 						"JSON: { addNodes?: CanvasNode[]; removeNodeIds?: string[]; addEdges?: CanvasEdge[]; removeEdgeIds?: string[] }",
 					),
+				create: z
+					.boolean()
+					.optional()
+					.describe(
+						"Create the canvas if it doesn't exist, seeded with the requested changes (default false).",
+					),
 			},
 
-			handler: async ({ path, changes: changesRaw }) => {
-				const f = resolveCanvasFile(app, path, gate);
-				if (!f) return error("Canvas file not found (must end in .canvas).");
-
+			handler: async ({ path, changes: changesRaw, create = false }) => {
 				const parsedChanges = parseJsonLabelled(changesRaw, "Invalid JSON in 'changes'");
 				if (!parsedChanges.ok) return error(parsedChanges.error);
 				const validatedChanges = CanvasChangesSchema.safeParse(parsedChanges.value);
@@ -153,6 +228,31 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 				}
 				const changes = validatedChanges.data;
 
+				const resolved = resolveCanvasFile(app, path, gate);
+
+				// Opt-in create path; wrong-extension/unsafe/blocked still error
+				// (no silent path rewriting or filter bypass).
+				if (!resolved.ok && resolved.reason === "missing" && create) {
+					const pathError = validateNewVaultPath(app, path, gate.pathFilter);
+					if (pathError) return pathError;
+					const doc = applyCanvasChanges({ nodes: [], edges: [] }, changes);
+					const updated = JSON.stringify(doc.value, null, 2);
+					return gateVaultWrite({
+						destPath: path,
+						operation: "create",
+						description: `Create canvas ${path} (${doc.summary || "empty"})`,
+						writeDir: gate.getWriteDir(),
+						enabledTiers: gate.enabledTiers,
+						review: gate.review,
+						newContent: updated,
+						apply: () => app.vault.create(path, updated),
+						successMsg: `Created ${path} (${doc.summary || "empty"}).`,
+					});
+				}
+
+				if (!resolved.ok) return error(canvasErrorFor(resolved.reason));
+				const f = resolved.file;
+
 				const raw = await app.vault.read(f);
 				const parsedDoc = parseJsonLabelled(raw, "Existing canvas JSON parse failed");
 				if (!parsedDoc.ok) return error(parsedDoc.error);
@@ -160,51 +260,18 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 				if (!validatedDoc.success) {
 					return error(`Canvas file has invalid shape: ${validatedDoc.error.message}`);
 				}
-				const doc = {
-					nodes: validatedDoc.data.nodes ?? [],
-					edges: validatedDoc.data.edges ?? [],
-				};
-
-				const stringId = (v: unknown): string | null => (typeof v === "string" ? v : null);
-
-				const removeNodeIds = new Set(changes.removeNodeIds ?? []);
-				if (removeNodeIds.size > 0) {
-					doc.nodes = doc.nodes.filter((n) => {
-						const id = stringId(n.id);
-						return id === null || !removeNodeIds.has(id);
-					});
-					// Cascade: drop edges touching removed nodes
-					doc.edges = doc.edges.filter((e) => {
-						const from = stringId(e.fromNode);
-						const to = stringId(e.toNode);
-						if (from !== null && removeNodeIds.has(from)) return false;
-						if (to !== null && removeNodeIds.has(to)) return false;
-						return true;
-					});
-				}
-				const removeEdgeIds = new Set(changes.removeEdgeIds ?? []);
-				if (removeEdgeIds.size > 0) {
-					doc.edges = doc.edges.filter((e) => {
-						const id = stringId(e.id);
-						return id === null || !removeEdgeIds.has(id);
-					});
-				}
-				if (changes.addNodes) doc.nodes.push(...changes.addNodes);
-				if (changes.addEdges) doc.edges.push(...changes.addEdges);
-
-				const updated = JSON.stringify(doc, null, 2);
-				const summary = [
-					changes.addNodes?.length ? `+${changes.addNodes.length} nodes` : null,
-					removeNodeIds.size ? `-${removeNodeIds.size} nodes` : null,
-					changes.addEdges?.length ? `+${changes.addEdges.length} edges` : null,
-					removeEdgeIds.size ? `-${removeEdgeIds.size} edges` : null,
-				]
-					.filter(Boolean)
-					.join(", ");
+				const doc = applyCanvasChanges(
+					{
+						nodes: validatedDoc.data.nodes ?? [],
+						edges: validatedDoc.data.edges ?? [],
+					},
+					changes,
+				);
+				const updated = JSON.stringify(doc.value, null, 2);
 				return gateVaultWrite({
 					destPath: f.path,
 					operation: "modify",
-					description: `Modify canvas ${f.path} (${summary || "no-op"})`,
+					description: `Modify canvas ${f.path} (${doc.summary || "no-op"})`,
 					writeDir: gate.getWriteDir(),
 					enabledTiers: gate.enabledTiers,
 					review: gate.review,
@@ -226,7 +293,7 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 						}
 						await app.vault.modify(f, updated);
 					},
-					successMsg: `Modified ${f.path} (${summary || "no-op"}).`,
+					successMsg: `Modified ${f.path} (${doc.summary || "no-op"}).`,
 				});
 			},
 		}),
@@ -272,16 +339,14 @@ export function registerDataviewTools(app: App, push: ToolPusher, gate: WriteGat
 			handler: async ({ query }) => {
 				const dv = getDataview(app);
 				if (!dv?.api?.query) return error("Dataview is not available.");
-				// DQL queries return arbitrary nested structures (Links, dates,
-				// tagged values, computed columns). We can't reliably walk the
-				// result to redact blocklisted paths without breaking valid
-				// shapes, and DQL itself can synthesize paths into strings via
-				// expressions. When the user has narrowed the agent's surface
-				// with `mcpPathAllowlist`/`mcpPathBlocklist`, refuse the query
-				// rather than risk leaking blocklisted regions through the
-				// result tree. Read tools elsewhere (vault_search, vault_list)
-				// already enforce the filter; this tool's tier is "extensions"
-				// and the safe fallback is to disable it under the filter.
+				// DQL returns arbitrary nested structures (Links, dates,
+				// tagged values, computed columns) that can't reliably be
+				// walked to redact blocklisted paths without breaking valid
+				// shapes. DQL can also synthesize paths into strings via
+				// expressions. Under `mcpPathAllowlist`/`mcpPathBlocklist`,
+				// refuse the query rather than risk leaking through the
+				// result tree — other read tools enforce the filter and the
+				// safe fallback here is to disable.
 				if (gate.pathFilter) {
 					return error(
 						"vault_dataview_query is disabled while an MCP path allow/block list is configured (the result tree may surface paths from blocklisted regions). Use vault_search / vault_search_fuzzy instead, which respect the filter.",
@@ -363,8 +428,7 @@ function parseTaskLine(rawLine: string): Omit<TaskEntry, "path" | "line"> | null
 	// don't include the carriage return. Also accept zero whitespace after `]`
 	// so empty checklist items (`- [ ]`) without a body still parse.
 	// Accept `*` and `+` list markers in addition to `-` (CommonMark-valid;
-	// Obsidian renders all three; the Tasks plugin accepts all three) —
-	// previously we silently ignored checklists written with `*`/`+`.
+	// Obsidian and the Tasks plugin render all three).
 	const line = rawLine.replace(/\r$/, "");
 	const m = /^\s*[-*+]\s*\[( |x|X)\]\s*(.*)$/.exec(line);
 	if (!m) return null;
@@ -511,8 +575,8 @@ export function registerTasksTools(app: App, push: ToolPusher, gate: WriteGate):
 				if (!/^\s*-\s*\[.\]/.test(originalLine))
 					return error(`Line ${line} is not a checklist item.`);
 				// Pre-compute the updated content for the review preview. Tasks
-				// plugin's API is synchronous, so calling it here doesn't side-
-				// effect; we just discard the result on rejection inside apply().
+				// plugin's API is synchronous and free of side effects, so the
+				// result can be discarded on rejection inside apply().
 				let updated: string;
 				try {
 					const tasksOut = plugin.apiV1.executeToggleTaskDoneCommand(originalLine, path);
@@ -529,9 +593,8 @@ export function registerTasksTools(app: App, push: ToolPusher, gate: WriteGate):
 					return error(`Tasks plugin threw: ${errMsg(e)}`);
 				}
 				// Gate the write through the same boundary as every other vault
-				// write. Previously this handler called app.vault.modify directly,
-				// so a user with only the `extensions` tier (no write tiers) could
-				// rewrite ANY markdown file in the vault that happens to contain
+				// write — calling app.vault.modify directly would let an
+				// `extensions`-only agent rewrite any markdown file containing
 				// a checklist item.
 				return gateVaultWrite({
 					destPath: f.path,
@@ -633,10 +696,10 @@ export function registerTemplaterTools(app: App, push: ToolPusher, gate: WriteGa
 					return error(
 						`Template not found at '${templatePath}'. Pass a vault-relative path to a markdown template file.`,
 					);
-				// Reject path-traversal in user-supplied folder/filename. The earlier
-				// substring `folder.includes("..")` rejected legitimate names like
-				// `notes..backup` whose segments are not `..` — switch to the segment-
-				// aware helper used elsewhere for consistency.
+				// Reject path-traversal in user-supplied folder/filename via
+				// segment-aware matching (consistent with sibling write tools);
+				// a coarse `includes("..")` would reject legitimate names like
+				// `notes..backup`.
 				if (
 					folder !== undefined &&
 					(pathHasParentSegment(folder) || folder.includes("\\"))
@@ -662,18 +725,17 @@ export function registerTemplaterTools(app: App, push: ToolPusher, gate: WriteGa
 				if (filename !== undefined && filename.includes(":")) {
 					return error("'filename' may not contain ':' (alt-data-stream).");
 				}
-				// Predict Templater's destination path so we can gate before it writes.
-				// Templater itself provides no pre-flight API; replicate its naming:
-				// `<folder>/<filename>.md`, falling back to the template's basename and
-				// vault root when either is omitted.
+				// Predict Templater's destination path so the gate runs before
+				// it writes. Templater provides no pre-flight API; replicate
+				// its naming: `<folder>/<filename>.md`, falling back to the
+				// template's basename and vault root when either is omitted.
 				const destFolder = (folder ?? "").replace(/^\/+|\/+$/g, "");
 				const destName = filename ?? (templateFile as TFile).basename;
 				const destPath = destFolder ? `${destFolder}/${destName}.md` : `${destName}.md`;
-				// Defense-in-depth shape + pathFilter + symlink-realpath checks on
-				// the computed destination — sibling write tools (vault_create,
+				// Defense-in-depth shape + pathFilter + symlink-realpath checks
+				// on the computed destination. Sibling write tools (vault_create,
 				// vault_create_folder, vault_rename, vault_move,
-				// vault_periodic_note) all gate through this helper; this path
-				// historically skipped the symlink check entirely.
+				// vault_periodic_note) all gate through this helper.
 				const destError = validateNewVaultPath(app, destPath, gate.pathFilter);
 				if (destError) return destError;
 				return gateVaultWrite({
@@ -691,15 +753,13 @@ export function registerTemplaterTools(app: App, push: ToolPusher, gate: WriteGa
 							false,
 						);
 						if (!created) throw new Error("Templater returned no file.");
-						// Templater templates can call `tp.file.move(...)` from inside
-						// the script section to relocate the file AFTER creation,
-						// which would silently escape the destPath we gated on above.
-						// Post-validate the actual path: if Templater moved the file
-						// somewhere we wouldn't have allowed, delete the file and
-						// fail. This trades a small UX cost (templates that
-						// legitimately use tp.file.move stop working through this
-						// tool) for the guarantee that no template can write outside
-						// the gated scope.
+						// Templater templates can call `tp.file.move(...)` from
+						// the script section to relocate the file after creation,
+						// escaping the gated destPath. Post-validate the actual
+						// path: if Templater moved the file, delete it and fail.
+						// Trades a UX cost (legitimate tp.file.move use stops
+						// working) for the guarantee that no template writes
+						// outside the gated scope.
 						if (created.path !== destPath) {
 							try {
 								await app.vault.trash(created, true);
@@ -733,12 +793,9 @@ function getPeriodicNotes(app: App): PeriodicNotesPlugin | null {
 }
 
 /**
- * Access Periodic Notes. The plugin's public API historically lives as a
- * global `window.app.plugins.plugins["periodic-notes"]` but its helper
- * functions are re-exported from `obsidian-daily-notes-interface` via the
- * plugin. Rather than hard-binding to an internal API, we compute the note
- * path from the plugin's stored settings (folder + format) and either open
- * the file or create it via the vault API.
+ * Access Periodic Notes. Rather than hard-binding to an internal API,
+ * compute the note path from the plugin's stored settings (folder + format)
+ * and open or create the file via the vault API.
  */
 export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: WriteGate): void {
 	if (!getPeriodicNotes(app)) return;
@@ -794,11 +851,11 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 				const path = folder ? `${folder}/${filename}.md` : `${filename}.md`;
 
 				// The format string is plugin-controlled but moment passes
-				// through any non-token characters verbatim — including `/` and
-				// `..`. Reject paths whose realpath escapes the vault before we
-				// touch the filesystem. Also reject `..` segments outright: a
-				// format like `../sibling-folder/foo` stays inside the vault
-				// realpath but still writes to an unexpected location.
+				// non-token characters through verbatim — including `/` and
+				// `..`. Reject paths whose realpath escapes the vault before
+				// touching the filesystem. Also reject `..` segments outright:
+				// `../sibling-folder/foo` stays inside the vault realpath but
+				// still writes to an unexpected location.
 				if (pathHasParentSegment(path)) {
 					return error(
 						`Periodic note path '${path}' contains a '..' segment. Check the Periodic Notes format setting.`,

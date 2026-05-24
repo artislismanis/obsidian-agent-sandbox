@@ -51,8 +51,8 @@ export interface ReviewResult {
  *
  * Known limitations: a >3-line shift in one side falls through to the naive
  * "delete old; insert new" branch, producing a chunky but still-correct diff.
- * If we start showing diffs of mass refactors here, swap this for a proper
- * LCS implementation (e.g. diff-match-patch).
+ * Swap for a proper LCS implementation (e.g. diff-match-patch) if mass
+ * refactors ever land here.
  */
 export function computeUnifiedDiff(oldText: string, newText: string): string {
 	const oldLines = oldText.split("\n");

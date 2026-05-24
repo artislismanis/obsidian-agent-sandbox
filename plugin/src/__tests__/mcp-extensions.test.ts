@@ -42,6 +42,7 @@ function mockApp(canvasContent: string) {
 				getFiles: vi.fn(() => [file]),
 				getMarkdownFiles: vi.fn(() => []),
 				getFileByPath: vi.fn((p: string) => (p === file.path ? file : null)),
+				getAbstractFileByPath: vi.fn((p: string) => (p === file.path ? file : null)),
 				read: vi.fn(async () => canvasContent),
 				cachedRead: vi.fn(async () => canvasContent),
 				modify,
@@ -94,11 +95,8 @@ describe("Canvas tools", () => {
 
 	it("vault_canvas_read rejects non-canvas files", async () => {
 		const { app } = mockApp(initial);
-		// Return an existing but non-canvas file so the handler reaches the
-		// extension check rather than the earlier file-not-found branch.
-		// Previously this test set getFileByPath to null and asserted isError
-		// — which trivially passed via "file not found", masking a regression
-		// in the canvas-extension guard.
+		// Return an existing non-canvas file so the handler reaches the
+		// extension check rather than short-circuiting on file-not-found.
 		const mdFile = {
 			path: "not.md",
 			name: "not.md",
@@ -115,7 +113,6 @@ describe("Canvas tools", () => {
 		});
 		expect(result.isError).toBe(true);
 		const errText = (result.content[0] as { text: string }).text;
-		// Must surface the extension mismatch, not a file-not-found wording.
 		expect(errText.toLowerCase()).toMatch(/canvas|extension/);
 	});
 
@@ -158,6 +155,57 @@ describe("Canvas tools", () => {
 		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
 		expect(getTool(tools, "vault_canvas_read").tier).toBe("extensions");
 		expect(getTool(tools, "vault_canvas_modify").tier).toBe("extensions");
+	});
+
+	it("vault_canvas_read distinguishes missing from wrong-extension", async () => {
+		const { app } = mockApp(initial);
+		// Wrong extension: the path itself doesn't end in .canvas
+		app.vault.getFileByPath = vi.fn((_p: string) => null);
+		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
+		const wrongExt = await getTool(tools, "vault_canvas_read").handler({
+			path: "notes/foo.md",
+		});
+		expect(wrongExt.isError).toBe(true);
+		expect((wrongExt.content[0] as { text: string }).text).toBe("Path is not a .canvas file.");
+
+		// Missing: shape is right (.canvas) but no file at that path.
+		const missing = await getTool(tools, "vault_canvas_read").handler({
+			path: "notes/gone.canvas",
+		});
+		expect(missing.isError).toBe(true);
+		expect((missing.content[0] as { text: string }).text).toBe("Canvas file not found.");
+	});
+
+	it("vault_canvas_modify creates canvas when create:true and missing", async () => {
+		const { app } = mockApp(initial);
+		// Force a "missing" resolve for the new path.
+		app.vault.getFileByPath = vi.fn((_p: string) => null);
+		const created = vi.fn(async () => ({ path: "new.canvas" }) as TFile);
+		(app.vault as unknown as { create: typeof created }).create = created;
+		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
+		const result = await getTool(tools, "vault_canvas_modify").handler({
+			path: "new.canvas",
+			changes: JSON.stringify({ addNodes: [{ id: "seed", type: "text" }] }),
+			create: true,
+		});
+		expect(result.isError ?? false).toBe(false);
+		expect(created).toHaveBeenCalledTimes(1);
+		const [, body] = created.mock.calls[0] as unknown as [string, string];
+		const doc = JSON.parse(body);
+		expect(doc.nodes).toEqual([{ id: "seed", type: "text" }]);
+		expect(doc.edges).toEqual([]);
+	});
+
+	it("vault_canvas_modify errors without create flag when missing", async () => {
+		const { app } = mockApp(initial);
+		app.vault.getFileByPath = vi.fn((_p: string) => null);
+		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
+		const result = await getTool(tools, "vault_canvas_modify").handler({
+			path: "new.canvas",
+			changes: JSON.stringify({}),
+		});
+		expect(result.isError).toBe(true);
+		expect((result.content[0] as { text: string }).text).toBe("Canvas file not found.");
 	});
 });
 
@@ -250,6 +298,9 @@ describe("Tasks integration", () => {
 				getFiles: vi.fn(() => files),
 				getMarkdownFiles: vi.fn(() => files),
 				getFileByPath: vi.fn((p: string) => files.find((f) => f.path === p) ?? null),
+				getAbstractFileByPath: vi.fn(
+					(p: string) => files.find((f) => f.path === p) ?? null,
+				),
 				read: vi.fn(async (f: TFile) => opts.files[f.path]),
 				cachedRead: vi.fn(async (f: TFile) => opts.files[f.path]),
 				modify,
@@ -380,8 +431,8 @@ describe("Templater integration", () => {
 			p === "Templates/daily.md" ? templateFile : null,
 		);
 		// Templater's normal behaviour: write to the path the gate predicted.
-		// Returning a different path simulates `tp.file.move` and is now
-		// rejected by the post-validate check (covered by its own test below).
+		// Returning a different path simulates `tp.file.move` and is rejected
+		// by the post-validate check (covered by its own test below).
 		const create = vi.fn(async () => ({ path: "Notes/2026-04-19.md" }) as TFile);
 		(app as unknown as { plugins: unknown }).plugins = {
 			getPlugin: (id: string) =>
@@ -465,15 +516,15 @@ describe("Periodic Notes integration", () => {
 	it("rejects when the format string produces a path-traversal escape", async () => {
 		// User-controlled `format` is processed by moment, which passes
 		// through any characters that aren't moment tokens — including
-		// `/`, `..`, etc. The fix added an isVaultPathSafe gate after
-		// path computation; this test pins it: a format that resolves
-		// outside the vault root must error rather than write/read.
+		// `/`, `..`, etc. The isVaultPathSafe gate runs after path
+		// computation: a format that resolves outside the vault root
+		// must error rather than write/read.
 		const { app } = mockApp("{}");
-		// Mount a FileSystemAdapter-instance on the mock vault so the
+		// Mount a FileSystemAdapter instance on the mock vault so the
 		// safety gate's getVaultBasePath returns a real path (rather than
 		// null, which would make the gate a no-op for mobile / unit-test
-		// adapters). We instantiate the mocked FileSystemAdapter class
-		// from the top-level `vi.mock("obsidian", ...)` block.
+		// adapters). The class comes from the top-level
+		// `vi.mock("obsidian", ...)` block.
 		const { FileSystemAdapter } = await import("obsidian");
 		const adapter = new (FileSystemAdapter as unknown as new () => {
 			getBasePath: () => string;
@@ -508,7 +559,7 @@ describe("Periodic Notes integration", () => {
 			create: true,
 		});
 		expect(r.isError).toBe(true);
-		// The path-traversal guard now fires on the `..` segment before reaching
+		// The path-traversal guard fires on the `..` segment before reaching
 		// the realpath check; accept either error message so a future change
 		// that routes through realpath again doesn't break the test.
 		expect((r.content[0] as { text: string }).text).toMatch(
@@ -781,12 +832,6 @@ describe("plugin_extensions_list", () => {
 });
 
 describe("Extensions tier — write-boundary asymmetry fixes", () => {
-	// Tests for the PR2 cluster: drive-letter rejection on templater,
-	// vault_periodic_note using Templater's returned TFile (no collateral
-	// basename-matching trash), vault_periodic_note enforcing the
-	// templates-folder restriction, and CAS via gateVaultWrite's new
-	// recheckFile option (vault_tasks_toggle).
-
 	function mdAtForCas(path: string): TFile {
 		return {
 			path,
@@ -871,10 +916,9 @@ describe("Extensions tier — write-boundary asymmetry fixes", () => {
 	});
 
 	it("vault_periodic_note uses Templater's returned TFile to detect relocation", async () => {
-		// Pre-fix, on `tp.file.move`, vault_periodic_note fell back to
-		// `getMarkdownFiles().find(f => f.basename === noteName)` — which would
-		// match (and trash) an UNRELATED file sharing the basename. The fix
-		// uses Templater's returned TFile directly.
+		// A basename-only fallback would match (and trash) an UNRELATED file
+		// sharing the basename when Templater calls `tp.file.move`; the
+		// implementation uses Templater's returned TFile directly.
 		const { TFile: TFileClass } = await import("obsidian");
 		const templateFile = Object.assign(new (TFileClass as new () => object)(), {
 			path: "Templates/daily-template.md",
@@ -884,7 +928,7 @@ describe("Extensions tier — write-boundary asymmetry fixes", () => {
 		}) as unknown as TFile;
 		// The created note ends up at "Elsewhere/relocated.md" — distinct from
 		// the gated path. Also place an unrelated file with the same basename
-		// the bug would have trashed.
+		// to confirm the relocation detector won't trash it.
 		const unrelatedSameBasename = Object.assign(new (TFileClass as new () => object)(), {
 			path: "completely-unrelated/2026-04-19.md",
 			name: "2026-04-19.md",
@@ -956,10 +1000,9 @@ describe("Extensions tier — write-boundary asymmetry fixes", () => {
 
 	it("vault_periodic_note refuses Templater templates outside the templates folder", async () => {
 		const { TFile: TFileClass } = await import("obsidian");
-		// Template lives OUTSIDE Templater's configured templates folder.
-		// Pre-fix this was applied without question; post-fix it's rejected
-		// so a writeable malicious template can't smuggle script execution
-		// past the templates-folder boundary.
+		// Template lives OUTSIDE Templater's configured templates folder; a
+		// writeable malicious template there would otherwise smuggle script
+		// execution past the templates-folder boundary.
 		const templateFile = Object.assign(new (TFileClass as new () => object)(), {
 			path: "agent-workspace/maybe-malicious.md",
 			name: "maybe-malicious.md",
@@ -1014,10 +1057,9 @@ describe("Extensions tier — write-boundary asymmetry fixes", () => {
 	});
 
 	it("vault_tasks_toggle aborts on concurrent edit during review (CAS)", async () => {
-		// gateVaultWrite was missing the recheckFile mechanism that runWrite
-		// has for vault_modify et al. After PR2, toggle goes through the
-		// shared CAS check: if the file changes during the review window,
-		// the apply is aborted instead of clobbering the editor edit.
+		// Toggle goes through gateVaultWrite's shared CAS check: if the file
+		// changes during the review window, the apply is aborted instead of
+		// clobbering the editor edit.
 		const file = mdAtForCas("notes/tasks.md");
 		const original = "- [ ] thing\n";
 		const concurrentEdit = "- [ ] thing — edited mid-review\n";
@@ -1077,13 +1119,10 @@ describe("Extensions tier — write-boundary asymmetry fixes", () => {
 });
 
 describe("Extensions tier — pathFilter coverage (info-leak boundary)", () => {
-	// Pre-fix, registerExtensionTools was called without `pathFilter`, so
-	// every extension-tier tool was blind to the user's mcpPathAllowlist /
-	// mcpPathBlocklist setting. An agent with the `extensions` tier could
-	// then read or mutate blocklisted regions via canvas / dataview / tasks
-	// / templater / periodic-notes paths even though the equivalent
-	// vault_* tools refused the same path. Each test here pins one tool
-	// against the filter.
+	// Every extension-tier tool must respect mcpPathAllowlist / mcpPathBlocklist
+	// — otherwise an `extensions`-tier agent could read or mutate blocklisted
+	// regions via canvas/dataview/tasks/templater/periodic-notes paths even
+	// though the equivalent vault_* tools refuse the same path.
 
 	function canvasAt(path: string): TFile {
 		return {
@@ -1125,9 +1164,9 @@ describe("Extensions tier — pathFilter coverage (info-leak boundary)", () => {
 			path: "secrets/board.canvas",
 		});
 		expect(r.isError).toBe(true);
-		// Reuse the existing "Canvas file not found" sentinel — same shape as
-		// resolveCanvasFile returning null. The point of the assertion is that
-		// the read DOES NOT succeed; the wording is incidental.
+		// The "Canvas file not found" sentinel matches the resolveCanvasFile
+		// null-return shape. The assertion's point is that the read does not
+		// succeed; the wording is incidental.
 		expect((r.content[0] as { text: string }).text.toLowerCase()).toMatch(
 			/(?:not found|blocked|allow)/,
 		);

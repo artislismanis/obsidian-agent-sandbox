@@ -22,11 +22,10 @@ export function pathHasParentSegment(p: string): boolean {
 export function isValidWriteDir(dir: string): boolean {
 	const trimmed = dir.trim();
 	if (!trimmed) return false;
-	// Reject trivial current-directory aliases that pass naive checks but break
-	// `isPathWithinDir` downstream (which normalises `./` to `.` and then
-	// rejects all paths as "outside the empty-after-strip directory"). A user
-	// setting `./` would see writeScoped silently deny every write with no
-	// clear UI signal — fail closed at validation instead.
+	// Reject trivial current-directory aliases — `isPathWithinDir`
+	// normalises `./` to `.` and then rejects all paths as "outside the
+	// empty-after-strip directory", so `./` would silently deny every
+	// write. Fail closed at validation instead.
 	if (trimmed === "." || trimmed === "./" || trimmed === "/") return false;
 	return !pathHasParentSegment(trimmed) && !trimmed.startsWith("/");
 }

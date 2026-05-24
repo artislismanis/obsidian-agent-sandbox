@@ -149,11 +149,10 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	plugin: AgentSandboxPlugin;
 	private activeTab: TabId = "general";
 	private restartNeeded = false;
-	// Cache of compose-file-existence checks keyed by path, populated
-	// asynchronously to avoid blocking the renderer with sync `existsSync`.
-	// Values: true=found, false=missing, undefined=not yet checked. We
-	// re-render once a previously-pending path resolves so the warning text
-	// appears without user interaction.
+	// Cache of compose-file-existence checks keyed by path, populated async
+	// to avoid blocking the renderer with sync `existsSync`. Values:
+	// true=found, false=missing, undefined=not yet checked. Re-renders when
+	// a pending path resolves so the warning appears without user interaction.
 	private composePathExists: Map<string, boolean> = new Map();
 
 	constructor(app: App, plugin: AgentSandboxPlugin) {
@@ -379,12 +378,10 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 
 		const composeSetting = new Setting(el).setName("Docker Compose path").setDesc(composeDesc);
 
-		// Compose-file existence is computed off the event loop. Sync
-		// existsSync used to block the renderer with a stat per render — fine
-		// for one path, but the settings tab re-renders on every keystroke
-		// (onChange → display()), so the cost added up. The cache here
-		// short-circuits repeat checks for the same path and the async miss
-		// path triggers a one-shot re-render once the answer arrives.
+		// Compose-file existence is computed off the event loop — the settings
+		// tab re-renders on every keystroke (onChange → display()), so a sync
+		// stat per render adds up. The cache short-circuits repeats; the
+		// async miss path triggers a one-shot re-render when the answer lands.
 		if (!isWsl && this.plugin.settings.dockerComposeFilePath) {
 			const composePath = this.plugin.settings.dockerComposeFilePath;
 			const yml = join(composePath, "docker-compose.yml");
@@ -397,9 +394,8 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				});
 			} else if (cached === undefined) {
 				// Kick off the probe; re-render the panel once the answer
-				// lands. We re-display only when the active tab is still
-				// general — switching tabs while a probe is in flight is fine
-				// because the answer is cached for the next render.
+				// lands, but only if the general tab is still active —
+				// switching tabs mid-probe is fine since the answer is cached.
 				const activeAtProbe = this.activeTab;
 				fsp.access(yml)
 					.then(() => this.composePathExists.set(yml, true))

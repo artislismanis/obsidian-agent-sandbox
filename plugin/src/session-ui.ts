@@ -76,10 +76,9 @@ export async function showSessionCleanup(
 	try {
 		candidates = await api.listEmptySessions();
 	} catch (err) {
-		// listEmptySessions now throws when docker/tmux probing fails (vs the
-		// previous silent `catch → []` that made a daemon outage look like
-		// "all clean"). Surface the cause so the user can act on it rather
-		// than wondering why the cleanup modal vanished.
+		// listEmptySessions throws on docker/tmux probe failure (vs a silent
+		// `catch → []` that would make a daemon outage look like "all clean").
+		// Surface the cause so the cleanup modal doesn't vanish unexplained.
 		new Notice(`Could not list sessions: ${err instanceof Error ? err.message : String(err)}`);
 		return;
 	}
@@ -109,14 +108,12 @@ export async function showSessionCleanup(
 			btn.addEventListener("click", () => modal.close());
 		});
 		div.createEl("button", { text: "Kill selected", cls: "mod-cta" }, (btn) => {
-			// addEventListener accepts a callback returning void, but the
-			// inner body is async — the returned Promise is discarded by
-			// addEventListener. We use Promise.allSettled to swallow per-
-			// session failures inside, but a synchronous throw BEFORE that
-			// (e.g. `[...selected]` on a corrupted Set, or modal.close()
-			// throwing during teardown) would surface only as an unhandled
-			// rejection in the dev console. Wrap the whole body so any
-			// outer rejection becomes a Notice.
+			// addEventListener's callback returns void — async body Promises
+			// are discarded. Promise.allSettled handles per-session failures
+			// inside, but a synchronous throw before it (`[...selected]` on
+			// a corrupted Set, modal.close() throwing) would surface only as
+			// an unhandled rejection in the dev console. Wrap the body so
+			// any outer rejection becomes a Notice.
 			btn.addEventListener("click", () => {
 				void (async () => {
 					modal.close();

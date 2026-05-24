@@ -53,9 +53,7 @@ function makeHost(vaultBase: string) {
 describe("AnalyzeManager template loading", () => {
 	let tmpBase: string;
 
-	beforeEach(() => {
-		// nothing to reset
-	});
+	beforeEach(() => {});
 
 	it("returns an empty list when the prompts directory is missing", async () => {
 		tmpBase = mkdtempSync(join(tmpdir(), "oas-empty-"));

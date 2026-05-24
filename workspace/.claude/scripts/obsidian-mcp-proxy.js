@@ -15,18 +15,18 @@
 // obsidian` (or full restart). Start Obsidian before `claude` if you want
 // vault tools available for the whole session.
 //
-// Concurrency: requests are dispatched as they arrive on stdin — one slow
-// tool call no longer blocks subsequent calls. Writes back to stdout are
-// serialised through a single queue so JSON-RPC frames never interleave.
+// Concurrency: requests dispatch as they arrive on stdin so a slow tool call
+// doesn't block subsequent calls. Writes back to stdout are serialised
+// through a single queue so JSON-RPC frames never interleave.
 
 const http = require("http");
 const net = require("net");
 const readline = require("readline");
 
-// Guard parseInt against non-numeric env values. Without finite-check, a typo
-// like OAS_MCP_PORT=foo collapses to NaN and silently flows into
-// net.createConnection({port: NaN}) / http.request({timeout: NaN}) where it
-// either fails with an opaque error or disables the timeout entirely.
+// Guard parseInt against non-numeric env values. Without the finite-check, a
+// typo like OAS_MCP_PORT=foo collapses to NaN and flows into
+// net.createConnection({port: NaN}) / http.request({timeout: NaN}) — opaque
+// failure or a silently disabled timeout.
 function envInt(name, fallback) {
 	const raw = process.env[name];
 	if (raw === undefined || raw === "") return fallback;
@@ -49,13 +49,12 @@ let lastProbeResult = false;
 let sessionId = null;
 
 // Promise that resolves once the in-flight `initialize` request has produced
-// a sessionId. We need this because Claude Code emits `initialize` followed
-// immediately by `notifications/initialized` on consecutive stdin lines, and
-// since handleMessage runs without awaiting (so unrelated slow tool calls
-// don't block other requests), the notification's httpPost would otherwise
-// fire while sessionId is still null — losing the Mcp-Session-Id header that
-// the upstream server uses to route the notification to the right session.
-// Held only until the first initialize resolves.
+// a sessionId. Claude Code emits `initialize` followed immediately by
+// `notifications/initialized` on consecutive stdin lines, and handleMessage
+// runs without awaiting, so without this gate the notification's httpPost
+// would fire with sessionId still null — losing the Mcp-Session-Id header
+// the upstream server uses for routing. Held only until the first
+// initialize resolves.
 let pendingInitialize = null;
 
 function probePort() {
@@ -107,9 +106,7 @@ function drainWrite() {
 	// process.stdout.write fires its callback on flush regardless of whether
 	// the synchronous return was true (kernel buffer accepted) or false
 	// (queued; will emit 'drain' later). Relying solely on the callback
-	// avoids the previous double-fire where both the callback and a manual
-	// 'drain' listener reset `writing` and called drainWrite again — which
-	// could write the next frame twice under sustained backpressure.
+	// avoids double-firing under backpressure.
 	process.stdout.write(next, () => {
 		writing = false;
 		drainWrite();
@@ -166,10 +163,7 @@ function httpPost(message) {
 
 				res.on("end", () => {
 					// Reject on non-2xx so callers get a clean error frame back
-					// to Claude instead of an indefinite hang. Previously a 401
-					// HTML body (or empty response) fell through JSON.parse and
-					// resolved as [] — handleMessage then wrote zero frames and
-					// Claude waited forever on that request id.
+					// to Claude instead of an indefinite hang.
 					const status = res.statusCode || 0;
 					if (status < 200 || status >= 300) {
 						lastProbeResult = false;
@@ -312,14 +306,14 @@ async function handleMessage(msg) {
 function main() {
 	const rl = readline.createInterface({ input: process.stdin, terminal: false });
 
-	// Track in-flight handler promises so we can drain on shutdown — a 100ms
-	// fixed wait was dropping mid-flight tool calls when Claude Code closed
-	// stdin during a session exit. Drain budget is HTTP_TIMEOUT_MS + 1s so we
-	// give every outstanding request a chance to finish before exit.
+	// Drain in-flight handlers on shutdown so mid-flight tool calls aren't
+	// dropped when Claude Code closes stdin. Drain budget is
+	// HTTP_TIMEOUT_MS + 1s so every outstanding request gets a chance to
+	// finish before exit.
 	const inFlight = new Set();
 	const SHUTDOWN_DRAIN_MS = HTTP_TIMEOUT_MS + 1000;
 
-	// Dispatch messages without awaiting — a slow tool call no longer blocks
+	// Dispatch messages without awaiting so a slow tool call doesn't block
 	// other in-flight requests. handleMessage drives writes through the
 	// serialised writeFrame queue so JSON-RPC frames never interleave.
 	rl.on("line", (line) => {

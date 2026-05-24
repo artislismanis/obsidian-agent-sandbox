@@ -79,10 +79,8 @@ describe("FirewallStatusBar", () => {
 		const el = createMockElement();
 		const bar = new FirewallStatusBar(el, vi.fn());
 		bar.setState("enabled");
-		// The previous assertion `el.style.display === ""` was a tautology \u2014
-		// the mock's initial display value is "" and the code never touches
-		// style.display (visibility is driven by the `sandbox-statusbar-hidden`
-		// class). Assert the actual contract: enabled state is not hidden.
+		// Visibility is driven by the `sandbox-statusbar-hidden` class, not
+		// style.display: enabled state means the class is toggled off.
 		expect(el.toggleClass).toHaveBeenCalledWith("sandbox-statusbar-hidden", false);
 		expect(el.setText).toHaveBeenCalledWith("\uD83D\uDEE1 FW");
 		expect(el.toggleClass).toHaveBeenCalledWith("firewall-enabled", true);

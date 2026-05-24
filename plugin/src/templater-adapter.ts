@@ -3,13 +3,13 @@
  *
  * Templater's built-in folder-template hook calls
  * `append_template_to_active_file`, which fails when there is no active editor
- * — exactly the situation when MCP tools create files programmatically. We
- * sidestep that path by calling Templater's editor-free
+ * — exactly the situation when MCP tools create files programmatically. This
+ * module sidesteps that path by calling Templater's editor-free
  * `write_template_to_file` directly, and by suppressing the create hook around
- * our writes so its "no active editor" notice doesn't fire.
+ * writes so its "no active editor" notice doesn't fire.
  *
- * This module talks to a third-party plugin via untyped fields, so the shape
- * we depend on lives here as a single contract.
+ * Talks to a third-party plugin via untyped fields, so the depended-on shape
+ * lives here as a single contract.
  */
 
 import type { App, TFile } from "obsidian";
@@ -25,9 +25,9 @@ interface TemplaterPlugin {
 	};
 	templater?: {
 		write_template_to_file: (templateFile: TFile, file: TFile) => Promise<void>;
-		// Templater exposes `parse_template` (renders a template string against a
-		// running config) on the same object. Used to pre-resolve the rendered
-		// body so review modals can show what will actually be written.
+		// `parse_template` renders a template string against a running config.
+		// Pre-resolves the rendered body so review modals show what will
+		// actually be written.
 		parse_template?: (
 			config: { target_file: TFile; run_mode: number; active_file?: TFile | null },
 			template_content: string,
@@ -134,28 +134,26 @@ export async function applyTemplaterFolderTemplate(
 
 /**
  * Run `fn` with Templater's create-hook setting flipped off, restoring the
- * prior value afterwards. Without this, our `vault.create` calls would
- * trigger Templater's "no active editor" notice; we apply templates ourselves
- * via `applyTemplaterFolderTemplate`, so the hook is pure noise.
+ * prior value afterwards. Otherwise `vault.create` triggers Templater's "no
+ * active editor" notice; templates are applied directly via
+ * `applyTemplaterFolderTemplate`, so the hook is pure noise.
  *
- * Refcounted so concurrent `vault_create` calls compose safely: we capture
- * the original value on the first entry, force-disable the hook for the whole
- * critical section, and restore only when the last in-flight call exits. A
- * naive save/restore pair would let the second concurrent call snapshot the
- * already-disabled `false` and "restore" that on its way out, permanently
- * disabling the hook.
+ * Refcounted so concurrent `vault_create` calls compose safely: capture the
+ * original on first entry, force-disable for the critical section, restore
+ * only when the last in-flight call exits. A naive save/restore pair lets
+ * the second concurrent call snapshot the already-disabled `false` and
+ * "restore" that on exit, permanently disabling the hook.
  */
 let templaterSuppressDepth = 0;
 let templaterSuppressPrev: boolean | undefined;
 
 /**
  * Reset the suppression counter on plugin load. The depth/prev state lives at
- * module scope and survives across Obsidian's plugin enable/disable cycles
- * (modules are cached). Without this, a plugin unload that races a mid-flight
+ * module scope and survives Obsidian's plugin enable/disable cycles (modules
+ * are cached). Without this, a plugin unload racing a mid-flight
  * vault_create_with_template leaves `trigger_on_file_creation = false` on
- * Templater's settings until next Obsidian restart — the user's hook is
- * permanently disabled. main.ts calls this on every onload, parallel to
- * resetTerminalConnectionLog().
+ * Templater's settings until next Obsidian restart, permanently disabling
+ * the user's hook.
  */
 export function resetTemplaterSuppression(): void {
 	templaterSuppressDepth = 0;

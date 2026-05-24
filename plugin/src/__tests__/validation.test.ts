@@ -126,6 +126,7 @@ describe("writeDir validation in DockerManager", () => {
 			dockerMode: "local" as const,
 			composePath: "/opt/project",
 			wslDistro: "Ubuntu",
+			vaultPath: "/home/test/vault",
 			writeDir,
 		}));
 	}
@@ -170,8 +171,7 @@ describe("DockerManager.isBusy()", () => {
 describe("isPathWithinDir", () => {
 	// isPathWithinDir is the sole gate keeping writeScoped MCP tools inside
 	// the configured write directory — see the function comment for the
-	// fail-closed rationale on empty dir. These cases catch every published
-	// bypass shape we know about.
+	// fail-closed rationale on empty dir.
 	it("returns false for empty dir (fail-closed)", () => {
 		expect(isPathWithinDir("anything", "")).toBe(false);
 		expect(isPathWithinDir("foo/bar.md", "  ")).toBe(false);

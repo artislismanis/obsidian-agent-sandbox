@@ -30,9 +30,7 @@ describe("isRealPathWithinBase", () => {
 
 	it("walks up to the longest existing ancestor for missing target", () => {
 		// Multi-level walk-up: file doesn't exist, immediate parent doesn't
-		// exist, but the next-level-up ancestor does. The earlier version of
-		// this test had a duplicate `if (p === "/vault")` branch that masked
-		// whether the walker actually traversed past the first missing rung.
+		// exist, but the next-level-up ancestor does.
 		const realpath = (p: string) => {
 			if (p === "/vault") return "/vault";
 			if (p === "/vault/folder") throw new Error("ENOENT");

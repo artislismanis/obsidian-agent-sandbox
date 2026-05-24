@@ -13,15 +13,15 @@ export { VIEW_TYPE_TERMINAL };
 
 const MAX_RETRIES = 15;
 
-// Auto-reconnect on abnormal close. Container is almost always still running;
-// the WebSocket just dropped (Obsidian sleep, brief network hiccup). Be more
-// patient than the initial connect because reconnects happen during *active*
-// use — a "could not reconnect" error mid-session is much more disruptive
-// than a slow first connect when the user is waiting anyway.
+// Auto-reconnect on abnormal close. The container is almost always still
+// running; the WebSocket dropped from Obsidian sleep or a network hiccup.
+// More patient than the initial connect because reconnects happen during
+// active use — a mid-session "could not reconnect" error is much more
+// disruptive than a slow first connect.
 const RECONNECT_BACKOFF_MS = [500, 1000, 2000, 4000, 8000, 8000, 8000, 8000];
 
-// ttyd wire protocol — single-byte command prefix. Each direction has its own
-// meanings for the same ASCII codes; we only consume OUTPUT inbound.
+// ttyd wire protocol — single-byte command prefix. Each direction reuses the
+// same ASCII codes with different meanings; only OUTPUT is consumed inbound.
 const SERVER_MSG = { OUTPUT: 0x30 } as const;
 const CLIENT_MSG = { INPUT: "0", RESIZE: "1" } as const;
 
@@ -160,11 +160,9 @@ export class TerminalView extends ItemView {
 	// can't fire them after the underlying ws/term refs are gone.
 	private injectionTimers: number[] = [];
 
-	// Typed as Promise-returning so the call site (the "Rename Session" menu
-	// item) can attach a `.catch` for visibility. Pre-fix, this was typed
-	// `() => void` but assigned an `async () => { … }`; the returned Promise
-	// was discarded at the call site, so a `setViewState` rejection after a
-	// successful tmux rename became an unhandled rejection with no UI signal.
+	// Promise-returning so the "Rename Session" menu item can attach a
+	// `.catch` — a typed `() => void` would silently drop a setViewState
+	// rejection that follows a successful tmux rename.
 	onRenameSession: (() => Promise<void>) | null = null;
 	private initialPrompt: string | null = null;
 
@@ -275,12 +273,11 @@ export class TerminalView extends ItemView {
 
 		// Obsidian's Scope system intercepts Escape for "navigate back" before
 		// the DOM event reaches xterm.js. Register a Scope handler that blocks
-		// Obsidian's navigation and routes the ESC byte through xterm's input
-		// pipeline so wsTxBytes accounting and any onData chain stay consistent.
-		// Idempotency guard: onOpen is invoked again after Obsidian restores a
-		// persisted leaf without first popping our previous Scope, so without
-		// this flag we'd allocate a new Scope each time and leak the prior one
-		// (the user only sees the most-recent one's Escape binding work).
+		// the navigation and routes ESC through xterm's input pipeline so
+		// wsTxBytes accounting and any onData chain stay consistent.
+		// Idempotency guard: Obsidian invokes onOpen again after restoring a
+		// persisted leaf without popping the prior Scope, so without this flag
+		// each restore leaks a Scope (only the most-recent Escape binding works).
 		if (!this.scopeInstalled) {
 			this.scope = new Scope(this.app.scope);
 			this.scope.register([], "Escape", () => {
@@ -365,10 +362,10 @@ export class TerminalView extends ItemView {
 				);
 			}
 		} catch (e) {
-			// xterm init or related calls can throw on malformed settings
-			// (custom font that crashes Terminal constructor, etc.). Without
-			// this catch the rejection floats up to `void this.connect()` in
-			// onOpen and the user sees an empty pane with no retry button.
+			// xterm init can throw on malformed settings (a custom font that
+			// crashes the Terminal constructor, etc.). Catching here keeps the
+			// rejection from floating up to `void this.connect()` in onOpen
+			// and leaving the user with an empty pane and no retry button.
 			logger.error("Terminal", "connect() failed", e);
 			try {
 				this.showError(
@@ -493,10 +490,9 @@ export class TerminalView extends ItemView {
 				if (!this.getSettings().clipboardAutoCopy) return;
 				const selection = term.getSelection();
 				if (!selection) return;
-				// navigator.clipboard.writeText silently throws DOMException
-				// "Document is not focused" when Obsidian's window has lost
-				// focus mid-selection (e.g. user dragged across, clicked away).
-				// Skip the write rather than emitting a noisy console warning.
+				// clipboard.writeText throws DOMException "Document is not
+				// focused" when Obsidian's window lost focus mid-selection.
+				// Skip the write rather than emit a noisy console warning.
 				if (typeof document !== "undefined" && !document.hasFocus()) return;
 				navigator.clipboard.writeText(selection).catch(() => {});
 			}),
@@ -516,8 +512,8 @@ export class TerminalView extends ItemView {
 		this.term = term;
 		this.fitAddon = fitAddon;
 
-		// Forward xterm I/O to the *current* websocket via this.ws so a reconnect
-		// (which swaps this.ws) keeps working without re-registering listeners.
+		// Forward xterm I/O via this.ws so a reconnect (which swaps this.ws)
+		// keeps working without re-registering listeners.
 		this.termDisposables.push(
 			term.onData((input) => {
 				this.wsTxBytes += sendInputText(this.ws, input);
@@ -609,14 +605,13 @@ export class TerminalView extends ItemView {
 				return;
 			}
 
-			// Inject `session <name>` command to attach to a tmux session.
-			// The 300ms delay gives bash time to render the prompt.
+			// Inject `session <name>` to attach to a tmux session. The 300ms
+			// delay gives bash time to render the prompt.
 			//
 			// Defence-in-depth: validate the session name against the same
 			// regex used for direct tmux exec (kill/rename) before sending
-			// it down the wire. The name is typically user-typed and safe,
-			// but a hand-edited persisted view-state could carry shell
-			// metacharacters that would otherwise execute verbatim in bash.
+			// it down the wire. A hand-edited persisted view-state could
+			// carry shell metacharacters that would otherwise execute in bash.
 			if (this.sessionName && isValidSessionName(this.sessionName)) {
 				const cmd = `session ${this.sessionName}\n`;
 				const id = window.setTimeout(() => {
@@ -632,20 +627,21 @@ export class TerminalView extends ItemView {
 				);
 			}
 
-			// Inject an initial Claude prompt (from "Analyze in Sandbox" / URI handler).
-			// Runs after any session-attach command so it lands inside the tmux session.
+			// Inject an initial Claude prompt (from "Analyze in Sandbox" / URI
+			// handler). Runs after any session-attach command so it lands
+			// inside the tmux session.
 			//
-			// Suppress terminal input during the wait window so a fast user keystroke
-			// can't interleave with `claude '<escaped>'\n` — otherwise the injected
-			// command would run with the user's bytes appended to it.
+			// Suppress terminal input during the wait window so a fast user
+			// keystroke can't interleave with `claude '<escaped>'\n` and run
+			// the injected command with extra bytes appended.
 			if (this.initialPrompt) {
-				// Collapse newlines BEFORE single-quoting. A literal `\n` inside
-				// a single-quoted string sent over the pty is interpreted by the
-				// readline/cooked-mode line discipline as end-of-line, closing
-				// the line without a closing quote and dropping bash into
-				// `>` continuation (or worse, executing partial input). Prompt
-				// templates from `.claude/prompts/*.md` can contain real newlines;
-				// flatten them to spaces so the injected command stays one line.
+				// Collapse newlines before single-quoting. A literal `\n` inside
+				// a single-quoted string sent over the pty is interpreted by
+				// readline/cooked-mode as end-of-line, closing the line
+				// without a closing quote and dropping bash into `>` (or
+				// executing partial input). Prompt templates from
+				// `.claude/prompts/*.md` can contain real newlines; flatten
+				// to spaces so the injected command stays one line.
 				const flat = this.initialPrompt.replace(/\r?\n/g, " ");
 				const escaped = flat.replace(/'/g, `'\\''`);
 				const cmd = `claude '${escaped}'\n`;
@@ -662,10 +658,10 @@ export class TerminalView extends ItemView {
 						}
 					} finally {
 						// Re-enable input only on the still-current term — a fast
-						// view close that swapped this.term should leave it alone.
-						// Wrap the options setter: dispose() races this timer and
-						// can null `term.options` mid-call, throwing TypeError out
-						// of the finally block (which would otherwise propagate).
+						// view close that swapped this.term must leave it alone.
+						// Wrap the setter: dispose() races this timer and can
+						// null `term.options` mid-call, throwing TypeError out
+						// of the finally block.
 						if (this.term === term) {
 							try {
 								term.options.disableStdin = wasStdinDisabled;
@@ -688,7 +684,7 @@ export class TerminalView extends ItemView {
 			// proxies and ttyd debug builds emit zero-length data frames, and
 			// `new Uint8Array(rawData, 0, 1)` throws RangeError on those.
 			if (rawData.byteLength === 0) return;
-			// Only OUTPUT carries data we need; TITLE / PREFERENCES are ignored.
+			// Only OUTPUT carries terminal data; TITLE / PREFERENCES are ignored.
 			if (new Uint8Array(rawData, 0, 1)[0] === SERVER_MSG.OUTPUT) {
 				term.write(new Uint8Array(rawData, 1));
 			}
@@ -696,10 +692,10 @@ export class TerminalView extends ItemView {
 
 		const onClose = (event: CloseEvent) => {
 			const now = Date.now();
-			// Defence-in-depth guards first: a stale close fired after the view
-			// closed (gen drift) or after attachWebSocket swapped this.ws would
-			// otherwise log freshly-zeroed counters and confuse observability.
-			// Listener teardown via wsDispose normally prevents this.
+			// Defence-in-depth guards first: a stale close fired after the
+			// view closed (gen drift) or after attachWebSocket swapped
+			// this.ws would log freshly-zeroed counters and confuse
+			// observability. wsDispose normally prevents this.
 			if (gen !== this.generation) return;
 			if (this.ws !== ws) return;
 
@@ -715,11 +711,11 @@ export class TerminalView extends ItemView {
 				`opened=${opened} sessionMs=${sessionMs} idleMsBeforeClose=${idleMs} ` +
 				`rxBytes=${this.wsRxBytes} rxMsgs=${this.wsRxMsgs} txBytes=${this.wsTxBytes} ` +
 				`gen=${gen} instance=${this.instanceId}`;
-			// 1000 = normal closure, 1001 = going away. 1005 ("no status received")
-			// is commonly emitted on abrupt drops (Wi-Fi switch, container kill -9)
-			// and SHOULD reconnect — previously treating it as normal stranded
-			// recoverable drops with a misleading "container may have stopped"
-			// banner and no reconnect attempt.
+			// 1000 = normal closure, 1001 = going away. 1005 ("no status
+			// received") is commonly emitted on abrupt drops (Wi-Fi switch,
+			// container kill -9) and must reconnect — treating it as normal
+			// would strand recoverable drops behind a "container may have
+			// stopped" banner with no reconnect attempt.
 			const normal = event.code === 1000 || event.code === 1001;
 			if (normal) {
 				logger.debug("Terminal", `WebSocket closed cleanly — ${detail}`);

@@ -29,11 +29,9 @@ if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.test(targetVersion))
 	process.exit(1);
 }
 
-// Always resolve paths relative to this script's directory rather than CWD.
-// `npm version` runs the script with cwd = package.json's dir (so the old
-// relative-path form worked), but invocations like `npm version --prefix
-// plugin <ver>` set cwd to the caller — relative reads would then resolve
-// against the wrong directory and either fail noisily or stage nothing.
+// Resolve paths relative to this script's directory rather than CWD so
+// invocations like `npm version --prefix plugin <ver>` (cwd = caller) work
+// the same as the bare `npm version` (cwd = package.json's dir).
 const here = dirname(fileURLToPath(import.meta.url));
 const manifestPath = resolve(here, "manifest.json");
 const versionsPath = resolve(here, "versions.json");

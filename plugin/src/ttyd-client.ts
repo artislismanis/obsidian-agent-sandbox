@@ -15,19 +15,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 /** Resolve the host part of a ttyd URL.
  *
- * The `ttydBindAddress` setting controls where ttyd listens INSIDE the
- * container; for the plugin's HTTP/WS connection back to it from Obsidian
- * we need a reachable address. Two cases:
+ * `ttydBindAddress` controls where ttyd listens inside the container; the
+ * plugin needs a reachable address to connect back to it.
  *
- * - `127.0.0.1` (the default) — connect to localhost. The compose port
- *   mapping binds the host's loopback to the container port, so this
- *   reaches ttyd. We prefer the literal `127.0.0.1` over `localhost` to
- *   avoid IPv6 resolution surprises (`::1` vs `127.0.0.1`) on hosts where
- *   ttyd is IPv4-only.
- * - non-loopback (e.g. `0.0.0.0` for LAN access) — connect via the same
- *   address. Previously the helpers hardcoded `localhost`, so users who
- *   bound ttyd to `0.0.0.0` for remote access had a broken connection on
- *   any host where loopback resolution differed.
+ * - `127.0.0.1` (default) and `0.0.0.0` both map to literal `127.0.0.1` —
+ *   prefer the literal over `localhost` to avoid IPv6 resolution surprises
+ *   (`::1` vs `127.0.0.1`) on IPv4-only hosts.
+ * - Any other address (e.g. a LAN IP) is used verbatim.
  */
 function resolveHost(bindAddress: string | undefined): string {
 	const v = (bindAddress ?? "").trim();
@@ -63,10 +57,7 @@ export async function pollUntilReady(
 
 		if (isAborted()) return false;
 
-		// Skip the wait after the FINAL attempt — there's no next iteration to
-		// observe it. The previous loop spent an extra `waitMs` (up to 5s) idle
-		// before returning false, delaying the "could not connect" error UI for
-		// no purpose.
+		// Skip the wait after the final attempt — no next iteration would see it.
 		if (i === maxRetries - 1) break;
 		const waitMs = typeof backoff === "number" ? backoff : backoff(i);
 		onAttempt?.(i, waitMs);

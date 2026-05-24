@@ -54,12 +54,9 @@ describe("VaultCache", () => {
 	});
 
 	it("does not subscribe to 'changed' events (too noisy to invalidate graph)", () => {
-		// Earlier tests asserted "emitting 'changed' doesn't invalidate" by
-		// emitting and checking the compute wasn't re-run — but if VaultCache
-		// never registered a listener in the first place, that assertion is
-		// trivially satisfied. Assert the contract directly: no 'changed'
-		// listener exists. If a future refactor accidentally subscribes, this
-		// catches it.
+		// Assert the contract directly: no listener on 'changed'. Just
+		// emitting and checking the compute wasn't re-run would pass
+		// trivially if VaultCache never subscribed in the first place.
 		expect(mockMeta.listeners.get("changed")?.size ?? 0).toBe(0);
 
 		const compute = vi.fn(() => "val");
