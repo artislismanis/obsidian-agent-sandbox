@@ -157,7 +157,9 @@ Cache `plugin/.obsidian-cache/` by the key printed at the start of an e2e run (`
 
 End-to-end manual scenarios — things that need human judgment, interactive LLM use, cross-process workflows, or specific hardware — live in [qa-test-plan.md](./qa-test-plan.md). That plan is organised by setup cost (Stage 0 prerequisites → Stage 12 stress/recovery) so you can run it top-to-bottom on a fresh machine, or jump to a single stage when verifying a focused change.
 
-Run the automated suites here first; only fall through to the QA plan for behaviour the harness genuinely can't reach (see "What's NOT covered" above for the canonical list of gaps).
+For an exhaustive sweep of the MCP tool surface (every read/write/manage/extensions tool, gating behaviour, error shapes), hand [mcp-capability-test.md](./mcp-capability-test.md) to an in-container Claude Code session — it drives the run itself and emits a matrix-format report. Run it whenever the tool surface changes or as part of release validation; `qa-test-plan.md` Stage 3 cross-references it from the QA flow.
+
+Run the automated suites here first; only fall through to the QA plan or the MCP capability plan for behaviour the harness genuinely can't reach (see "What's NOT covered" above for the canonical list of gaps).
 
 ---
 

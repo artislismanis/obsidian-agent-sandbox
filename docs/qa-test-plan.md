@@ -272,6 +272,8 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 This is where the bulk of the value lives — interactive Claude against the plugin's own Obsidian MCP server.
 
+For an exhaustive per-tool sweep that runs itself (Claude drives, this plan stays human-driven), see [mcp-capability-test.md](./mcp-capability-test.md). The two are complementary: this stage validates the happy paths and the tier-toggle UX from a human's perspective; the capability test plan validates schema shapes, error messages, and per-tier gating exhaustively.
+
 **Tier model (`src/permission-tiers.ts`):**
 - Always-on when MCP is enabled: `read`, `writeScoped`, `agent`.
 - Toggled per-tier: `navigate`, `manage`, `extensions`.
