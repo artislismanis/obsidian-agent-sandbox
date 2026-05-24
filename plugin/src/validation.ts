@@ -27,7 +27,30 @@ export function isValidWriteDir(dir: string): boolean {
 	// empty-after-strip directory", so `./` would silently deny every
 	// write. Fail closed at validation instead.
 	if (trimmed === "." || trimmed === "./" || trimmed === "/") return false;
-	return !pathHasParentSegment(trimmed) && !trimmed.startsWith("/");
+	// Reject leading dot (hidden root directories, parity with entrypoint).
+	if (trimmed.startsWith(".")) return false;
+	// Reject backslash — values flow into bash single-quoted env exports;
+	// backslashes also indicate Windows absolute paths that Docker rejects.
+	if (trimmed.includes("\\")) return false;
+	// Reject absolute paths. Nested relative paths with forward slashes are
+	// intentionally allowed (e.g. "@Inbox/agent-workspace").
+	if (trimmed.startsWith("/")) return false;
+	return !pathHasParentSegment(trimmed);
+}
+
+/**
+ * Verify that `writeDir` resolves inside `vaultPath` on the host.
+ * This is the load-bearing escape guard: the compose bind-mount source is
+ * `${OAS_VAULT_PATH}/${OAS_VAULT_WRITE_DIR}` and Docker resolves it on the
+ * host before the container starts. The entrypoint check runs after the
+ * mount is established, so it cannot prevent escape — only this host-side
+ * check can.
+ */
+export function isWriteDirInsideVault(vaultPath: string, writeDir: string): boolean {
+	if (!vaultPath || !writeDir) return false;
+	const resolved = resolveNative(vaultPath, writeDir);
+	const base = vaultPath.endsWith(nativeSep) ? vaultPath : vaultPath + nativeSep;
+	return resolved === vaultPath || resolved.startsWith(base);
 }
 
 const VALID_SESSION_NAME = /^[\w.-]+$/;
@@ -156,6 +179,13 @@ const VALID_DOMAIN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0
 export function isValidDomainList(value: string): boolean {
 	if (!value.trim()) return true;
 	return splitCsv(value).every((entry) => VALID_DOMAIN.test(entry));
+}
+
+/** Validates a TCP port number (1-65535). Empty = valid (compose uses the default). */
+export function isValidPort(value: string): boolean {
+	if (!value.trim()) return true;
+	const n = parseInt(value.trim(), 10);
+	return String(n) === value.trim() && n >= 1 && n <= 65535;
 }
 
 /**

@@ -646,9 +646,22 @@ export default class AgentSandboxPlugin extends Plugin {
 				} catch {
 					this.firewallBar.setState("hidden");
 				}
-				new Notice(
-					`Auto-enable firewall failed: ${errMsg(error)}. You can enable it manually from the status bar.`,
-				);
+				// When the container is not running (restart-looping, exited, etc.)
+				// the firewall exec fails for that reason — surface a clearer message
+				// pointing at docker logs rather than the misleading "firewall failed".
+				let noticeMsg = `Auto-enable firewall failed: ${errMsg(error)}. You can enable it manually from the status bar.`;
+				try {
+					if (!(await this.docker.probeIsRunning())) {
+						noticeMsg =
+							"Container exited during startup — the firewall could not be applied. " +
+							"Run `docker logs oas-sandbox` for the cause " +
+							"(common: invalid Write Directory or IPv6 not disabled). " +
+							"Fix the setting and restart the container.";
+					}
+				} catch {
+					// probe failed — keep original message
+				}
+				new Notice(noticeMsg);
 			}
 		} else {
 			await this.refreshFirewallStatus();

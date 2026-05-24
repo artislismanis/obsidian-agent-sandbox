@@ -87,17 +87,26 @@ ensure_ownership() {
     fi
 }
 
-# Defensive guard against malicious OAS_VAULT_WRITE_DIR. The compose YAML
-# bind-mount source uses this value unvalidated; if a user (or compromised
-# config) sets `OAS_VAULT_WRITE_DIR=../other-folder`, the bind source escapes
-# the vault root. Docker normalises the destination too, so the mount can land
-# at an unexpected location. Reject obvious shapes (`..` segments, slashes,
-# leading dots) up-front before any chown happens. Empty/unset uses the
-# default and is fine.
+# Defense-in-depth guard for OAS_VAULT_WRITE_DIR. The plugin performs the
+# primary host-side containment check (path.resolve + prefix comparison)
+# before compose establishes the bind mount. This entrypoint check is a
+# second layer that catches any value that slipped through: absolute paths,
+# backslashes (Windows-style), leading-dot roots, and — via realpath -m —
+# anything that normalises outside /workspace/vault regardless of '..' count.
+# Nested relative paths (e.g. "@Inbox/agent-workspace") are intentionally
+# allowed; only escape attempts are rejected. Empty/unset uses the default.
 write_dir="${OAS_VAULT_WRITE_DIR:-agent-workspace}"
 case "$write_dir" in
-    *..*|*/*|*\\*|.*)
-        echo "ERROR: OAS_VAULT_WRITE_DIR='$write_dir' must be a single relative segment (no slashes, no '..', no leading dot)." >&2
+    ""|/*|*\\*|.*)
+        echo "ERROR: OAS_VAULT_WRITE_DIR='$write_dir' must be a non-empty, non-absolute, non-hidden relative path." >&2
+        exit 1
+        ;;
+esac
+resolved=$(realpath -m "/workspace/vault/$write_dir")
+case "$resolved" in
+    /workspace/vault/*) : ;;
+    *)
+        echo "ERROR: OAS_VAULT_WRITE_DIR='$write_dir' resolves to '$resolved', which is outside /workspace/vault." >&2
         exit 1
         ;;
 esac

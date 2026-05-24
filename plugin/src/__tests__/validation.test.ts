@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
 	isValidWriteDir,
+	isWriteDirInsideVault,
 	isValidPrivateHosts,
 	isValidMemory,
 	isValidCpus,
+	isValidPort,
 	isValidBindAddress,
 	isValidMemoryFileName,
 	isValidPathPrefixList,
@@ -21,10 +23,33 @@ describe("isValidWriteDir", () => {
 	it("rejects 'foo/../bar'", () => expect(isValidWriteDir("foo/../bar")).toBe(false));
 	it("rejects empty string", () => expect(isValidWriteDir("")).toBe(false));
 	it("rejects whitespace-only", () => expect(isValidWriteDir("   ")).toBe(false));
+	it("rejects leading-dot hidden dirs", () => expect(isValidWriteDir(".hidden")).toBe(false));
+	it("rejects backslash", () => expect(isValidWriteDir("foo\\bar")).toBe(false));
+	it("rejects leading backslash", () => expect(isValidWriteDir("\\windows")).toBe(false));
 	it("accepts 'agent-workspace'", () => expect(isValidWriteDir("agent-workspace")).toBe(true));
 	it("accepts 'subfolder'", () => expect(isValidWriteDir("subfolder")).toBe(true));
 	it("accepts 'my-dir'", () => expect(isValidWriteDir("my-dir")).toBe(true));
 	it("accepts nested 'a/b/c'", () => expect(isValidWriteDir("a/b/c")).toBe(true));
+	it("accepts '@Inbox/agent-workspace'", () =>
+		expect(isValidWriteDir("@Inbox/agent-workspace")).toBe(true));
+	it("accepts 'foo/bar'", () => expect(isValidWriteDir("foo/bar")).toBe(true));
+});
+
+describe("isWriteDirInsideVault", () => {
+	const vault = "/vault";
+	it("accepts a single segment", () => expect(isWriteDirInsideVault(vault, "agent")).toBe(true));
+	it("accepts nested path", () =>
+		expect(isWriteDirInsideVault(vault, "@Inbox/agent")).toBe(true));
+	it("accepts deeply nested path", () =>
+		expect(isWriteDirInsideVault(vault, "a/b/c")).toBe(true));
+	it("rejects parent traversal", () =>
+		expect(isWriteDirInsideVault(vault, "../escape")).toBe(false));
+	it("rejects deep traversal", () =>
+		expect(isWriteDirInsideVault(vault, "foo/../../etc")).toBe(false));
+	it("rejects absolute path", () =>
+		expect(isWriteDirInsideVault(vault, "/etc/passwd")).toBe(false));
+	it("rejects empty writeDir", () => expect(isWriteDirInsideVault(vault, "")).toBe(false));
+	it("rejects empty vaultPath", () => expect(isWriteDirInsideVault("", "notes")).toBe(false));
 });
 
 describe("isValidSessionName", () => {
@@ -252,6 +277,20 @@ describe("isPathAllowed", () => {
 	it("rejects path-prefix attacks", () => {
 		expect(isPathAllowed("notes-evil/file.md", ["notes/"], [])).toBe(false);
 	});
+});
+
+describe("isValidPort", () => {
+	it("accepts empty (uses compose default)", () => expect(isValidPort("")).toBe(true));
+	it("accepts '7681'", () => expect(isValidPort("7681")).toBe(true));
+	it("accepts '28080'", () => expect(isValidPort("28080")).toBe(true));
+	it("accepts '1' (minimum)", () => expect(isValidPort("1")).toBe(true));
+	it("accepts '65535' (maximum)", () => expect(isValidPort("65535")).toBe(true));
+	it("rejects '0'", () => expect(isValidPort("0")).toBe(false));
+	it("rejects '65536'", () => expect(isValidPort("65536")).toBe(false));
+	it("rejects 'abc'", () => expect(isValidPort("abc")).toBe(false));
+	it("rejects '-1'", () => expect(isValidPort("-1")).toBe(false));
+	it("rejects '80.5'", () => expect(isValidPort("80.5")).toBe(false));
+	it("rejects leading zeros", () => expect(isValidPort("0080")).toBe(false));
 });
 
 describe("isValidMemoryFileName", () => {

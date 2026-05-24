@@ -58,7 +58,6 @@ esac
 BASELINE_DOMAINS=(
   # Anthropic
   api.anthropic.com
-  statsig.anthropic.com
   sentry.io
 
   # npm
