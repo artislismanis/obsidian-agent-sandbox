@@ -101,7 +101,7 @@ jobs:
         # releases is a supply-chain liability — a tag re-push would
         # compromise every future release signature with no rollback.
         # SHA is v3.2.0 — keep comment in sync when bumping.
-        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f  # v3.2.0
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
         with:
           subject-path: |
             plugin/dist/main.js
