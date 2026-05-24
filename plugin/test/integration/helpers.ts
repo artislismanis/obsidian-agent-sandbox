@@ -171,15 +171,14 @@ export function containerDown(): void {
 }
 
 export function containerExec(cmd: string): string {
-	// Use `docker exec` directly rather than `docker compose exec`.
-	// Direct exec is faster and avoids docker-compose's internal exec-id
-	// tracking, which was producing spurious "No such exec instance"
-	// errors in fast-running test suites.
+	// Use `docker exec` directly rather than `docker compose exec`: it's
+	// faster and avoids compose's internal exec-id tracking, which produces
+	// spurious "No such exec instance" errors in fast-running test suites.
 	//
 	// Run as `claude` (non-root) to match how ttyd sessions run in prod.
 	// Claude Code refuses to run as root ("cannot be used with root/sudo
-	// privileges"), and this also catches any bugs where the plugin
-	// assumes root privileges it shouldn't have.
+	// privileges"), and this also catches bugs where the plugin assumes
+	// root privileges it shouldn't have.
 	return execSync(`docker exec -i -u claude oas-test-sandbox ${cmd}`, execOpts).toString().trim();
 }
 

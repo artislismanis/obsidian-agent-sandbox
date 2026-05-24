@@ -9,7 +9,7 @@ vi.mock("obsidian", () => ({
 
 import { buildTools } from "../mcp-tools";
 import type { McpToolDef } from "../mcp-tools";
-import { makeTFile, createMockApp, getTool } from "./fixtures";
+import { makeTFile, makeTFolder, createMockApp, getTool } from "./fixtures";
 
 function getResult(result: { content: Array<{ text: string }>; isError?: boolean }) {
 	return { text: result.content[0].text, isError: result.isError ?? false };
@@ -129,6 +129,18 @@ describe("MCP tool handlers", () => {
 			const r = getResult(await getTool(tools, "vault_read").handler({ path: "nope.md" }));
 			expect(r.isError).toBe(true);
 			expect(r.text).toBe("File not found.");
+		});
+
+		it("rejects wrong-type path with Invalid arguments", async () => {
+			const r = getResult(await getTool(tools, "vault_read").handler({ path: 123 } as never));
+			expect(r.isError).toBe(true);
+			expect(r.text.startsWith("Invalid arguments")).toBe(true);
+		});
+
+		it("rejects missing file/path with Invalid arguments", async () => {
+			const r = getResult(await getTool(tools, "vault_read").handler({}));
+			expect(r.isError).toBe(true);
+			expect(r.text).toBe("Invalid arguments: Provide either 'file' or 'path'.");
 		});
 	});
 
@@ -494,14 +506,12 @@ describe("MCP tool handlers", () => {
 			const r = getResult(
 				await getTool(tools, "vault_create").handler({ path: "agent-workspace/n.md" }),
 			);
-			// Previous behaviour silently returned a "Created" success here —
-			// the file was created but the reviewed template body never landed.
-			// New contract: surface the failure so agent and user know the
-			// on-disk state doesn't match the reviewed preview.
+			// Template-apply failure surfaces as an error so the agent and user
+			// know the on-disk state doesn't match the reviewed preview.
 			expect(r.isError).toBe(true);
 			expect(r.text).toMatch(/template application failed/i);
-			// The file IS still created on disk; the template apply is what
-			// failed. Verify the create call happened.
+			// The file is still created on disk; the template apply is what
+			// failed.
 			expect(app.vault.create).toHaveBeenCalledWith("agent-workspace/n.md", "");
 		});
 	});
@@ -555,16 +565,49 @@ describe("MCP tool handlers", () => {
 			expect(app.fileManager.processFrontMatter).toHaveBeenCalled();
 		});
 
-		it("parses JSON values", async () => {
+		it("accepts native arrays", async () => {
 			await getTool(tools, "vault_frontmatter_set").handler({
 				path: "agent-workspace/draft.md",
 				property: "tags",
-				value: '["a","b"]',
+				value: ["a", "b"],
 			});
 			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
 			const fm: Record<string, unknown> = {};
 			callback(fm);
 			expect(fm.tags).toEqual(["a", "b"]);
+		});
+
+		it("accepts native numbers, booleans, and objects", async () => {
+			const tool = getTool(tools, "vault_frontmatter_set");
+			const cases: Array<{ property: string; value: unknown }> = [
+				{ property: "count", value: 42 },
+				{ property: "published", value: true },
+				{ property: "meta", value: { author: "me", year: 2026 } },
+			];
+			for (const { property, value } of cases) {
+				app.fileManager.processFrontMatter.mockClear();
+				await tool.handler({
+					path: "agent-workspace/draft.md",
+					property,
+					value,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = {};
+				callback(fm);
+				expect(fm[property]).toEqual(value);
+			}
+		});
+
+		it("rejects missing value with Invalid arguments", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "tags",
+				} as never),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text.startsWith("Invalid arguments")).toBe(true);
+			expect(r.text).toContain("value");
 		});
 	});
 
@@ -673,6 +716,33 @@ describe("MCP tool handlers", () => {
 				true,
 			);
 		});
+
+		it("trashes folder recursively", async () => {
+			const folder = makeTFolder("notes/old-project");
+			const localApp = createMockApp([], { folders: [folder] });
+			const localTools = buildTools({
+				app: localApp as never,
+				getWriteDir: () => "agent-workspace",
+				review: async () => ({ approved: true }),
+			});
+			const r = getResult(
+				await getTool(localTools, "vault_delete").handler({ path: "notes/old-project" }),
+			);
+			expect(r.isError).toBe(false);
+			expect(r.text).toBe("Deleted folder notes/old-project");
+			expect(localApp.vault.trash).toHaveBeenCalledWith(
+				expect.objectContaining({ path: "notes/old-project" }),
+				true,
+			);
+		});
+
+		it("returns Path not found for missing target", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_delete").handler({ path: "nope/missing" }),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toBe("Path not found.");
+		});
 	});
 
 	describe("vault_create_folder", () => {
@@ -682,6 +752,39 @@ describe("MCP tool handlers", () => {
 			);
 			expect(r.isError).toBe(false);
 			expect(app.vault.createFolder).toHaveBeenCalledWith("new-folder");
+		});
+
+		it("is idempotent when folder already exists", async () => {
+			const localApp = createMockApp([], { folders: [makeTFolder("existing-folder")] });
+			const localTools = buildTools({
+				app: localApp as never,
+				getWriteDir: () => "agent-workspace",
+				review: async () => ({ approved: true }),
+			});
+			const r = getResult(
+				await getTool(localTools, "vault_create_folder").handler({
+					path: "existing-folder",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			expect(r.text).toBe("Folder already exists at existing-folder");
+			expect(localApp.vault.createFolder).not.toHaveBeenCalled();
+		});
+
+		it("errors when a file occupies the path", async () => {
+			const collide = makeTFile("notes/clash");
+			const localApp = createMockApp([collide]);
+			const localTools = buildTools({
+				app: localApp as never,
+				getWriteDir: () => "agent-workspace",
+				review: async () => ({ approved: true }),
+			});
+			const r = getResult(
+				await getTool(localTools, "vault_create_folder").handler({ path: "notes/clash" }),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toBe("Path notes/clash exists as a file; refusing to create folder.");
+			expect(localApp.vault.createFolder).not.toHaveBeenCalled();
 		});
 	});
 
@@ -809,6 +912,47 @@ describe("MCP tool handlers", () => {
 			);
 			expect(r.isError).toBe(false);
 			expect(r.text).toContain("Dry run");
+		});
+
+		it("matches every file in a folder when query is omitted", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_batch_frontmatter").handler({
+					folder: "notes",
+					property: "reviewed",
+					value: "true",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			expect(r.text).toContain("notes/hello.md");
+			expect(r.text).toContain("notes/world.md");
+			expect(r.text).not.toContain("agent-workspace/draft.md");
+		});
+
+		it("requires at least one of folder or query", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_batch_frontmatter").handler({
+					property: "reviewed",
+					value: "true",
+				}),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toBe("Invalid arguments: Provide at least one of 'query' or 'folder'.");
+		});
+
+		it("intersects folder + query", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_batch_frontmatter").handler({
+					folder: "notes",
+					query: "content",
+					property: "reviewed",
+					value: "true",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			// Both notes/* files exist; with the (mocked) always-match search
+			// they should all be listed. agent-workspace/draft.md must not.
+			expect(r.text).toContain("notes/hello.md");
+			expect(r.text).not.toContain("agent-workspace/draft.md");
 		});
 	});
 
@@ -1229,8 +1373,9 @@ describe("MCP tool handlers", () => {
 
 	describe("tier filtering contract", () => {
 		it("only builds tools registered across tiers; filtering is the server's job", () => {
-			// buildTools does not filter — verify writeVault/manage/reviewed variants exist
-			// in the raw list. The server filter at mcp-server.ts:210 is what gates them.
+			// buildTools does not filter — writeVault/manage/reviewed variants
+			// exist in the raw list. The server filter at mcp-server.ts:210
+			// gates them.
 			const names = tools.map((t) => t.name);
 			expect(names).toContain("vault_create");
 			expect(names).toContain("vault_create_anywhere");
@@ -1252,10 +1397,9 @@ describe("MCP tool handlers", () => {
 	});
 
 	describe("path-filter output gating (info-disclosure boundary)", () => {
-		// Build a separate app/tools where pathFilter restricts visibility to
-		// `notes/`. We then verify that link/graph/backlink outputs DO NOT
-		// surface paths under `secret/` — even when resolved-links metadata
-		// references them from an allowed file. Pre-fix, those tools leaked.
+		// pathFilter restricts visibility to `notes/`; link/graph/backlink
+		// outputs must not leak `secret/` paths even when allowed files'
+		// resolved-link metadata references them.
 		const filteredFiles = [
 			makeTFile("notes/visible.md"),
 			makeTFile("notes/sibling.md"),
@@ -1347,11 +1491,10 @@ describe("MCP tool handlers", () => {
 	});
 
 	describe("vault_move destination gating (writeDir escape boundary)", () => {
-		// Pre-fix, vault_move passed the SOURCE path to gateVaultWrite. A
-		// writeScoped+manage agent could then lift a file from inside writeDir
-		// to ANY destination — gate accepted because source-in-writeDir, and
-		// pathFilter (allowlist/blocklist) only checks the destination against
-		// allow/block lists, not against writeDir scoping.
+		// vault_move must gate the DESTINATION through gateVaultWrite, not the
+		// source. A writeScoped+manage agent could otherwise lift a file from
+		// inside writeDir to anywhere — pathFilter only enforces allow/block,
+		// not writeDir scoping.
 
 		it("scoped-only mode rejects moves whose destination escapes writeDir", async () => {
 			const localApp = createMockApp(

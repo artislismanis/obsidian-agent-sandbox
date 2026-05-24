@@ -48,14 +48,10 @@ export default tseslint.config(
 		ignores: ["main.js", "node_modules/", "dist/"],
 	},
 	{
-		// Build/release scripts and test harness configs at the package root,
-		// plus integration tests under test/, plus unit tests under
-		// src/__tests__/. Keep eslint:recommended on (catches typos in things
-		// like process.exit) but drop rules that don't fit ad-hoc tooling /
-		// test code. Without including src/__tests__/, unit tests were
-		// inheriting the strict prod rules (no-console: warn, no-explicit-any:
-		// warn, consistent-type-imports: error) while tests under test/ got
-		// the relaxed treatment — inconsistent test-file treatment.
+		// Build/release scripts, test harness configs at the package root,
+		// integration tests under test/, and unit tests under src/__tests__/.
+		// Keep eslint:recommended on (catches typos like process.exitt) but
+		// drop the strict prod rules that don't fit ad-hoc tooling/test code.
 		files: ["*.mjs", "*.ts", "*.mts", "test/**/*.ts", "test/**/*.mts", "src/__tests__/**/*.ts"],
 		rules: {
 			"@typescript-eslint/no-require-imports": "off",

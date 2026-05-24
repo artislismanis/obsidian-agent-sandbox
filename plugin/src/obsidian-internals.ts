@@ -33,15 +33,13 @@ let nonFileSystemAdapterWarned = false;
 /**
  * True when `vaultPath` resolves to a real filesystem path inside the vault
  * base. Returns `true` when the vault adapter isn't a `FileSystemAdapter`
- * (mobile, in-memory test adapters, or any future Obsidian adapter that
- * doesn't expose `getBasePath`/`getFullPath`) — so the symlink-traversal
- * guard becomes a no-op there. The first such call also logs a warning so
- * the dormant guard is at least observable in the dev console.
+ * (mobile, in-memory test adapters, or any future adapter without
+ * `getBasePath`/`getFullPath`) — the symlink-traversal guard becomes a
+ * no-op there, and the first such call logs a warning so the dormant guard
+ * is observable.
  *
- * Caller responsibility: this is defense-in-depth. The primary write-time
- * checks (`pathHasParentSegment`, drive-letter rejection, etc.) still
- * apply. Path components reaching here are expected to be already shape-
- * validated.
+ * Defense-in-depth: shape checks (`pathHasParentSegment`, drive-letter
+ * rejection, etc.) still apply at the call site.
  */
 export function isVaultPathSafe(app: App, vaultPath: string): boolean {
 	const base = getVaultBasePath(app);
@@ -73,19 +71,14 @@ export function getPluginsHost(app: App): PluginsHost | undefined {
 
 /**
  * Look up an installed + enabled plugin by id. Returns null when the plugin
- * isn't installed, isn't enabled, or the host shape isn't what we expect.
- * Centralises the runtime shape check every integration would otherwise
- * duplicate.
+ * isn't installed, isn't enabled, or the host shape is unexpected.
  */
 export function getInstalledPlugin<T = unknown>(app: App, pluginId: string): T | null {
 	const host = getPluginsHost(app);
 	if (!host) return null;
-	// Require the enabledPlugins set to be present AND contain the id.
-	// Earlier code made the `has` check conditional on the set existing, which
-	// meant a missing set fell through to `host.plugins?.[id]` — but Obsidian
-	// keeps the plugin instance object in `plugins` after disable, so a
-	// disabled Templater/Dataview/Tasks would still register tools that fail
-	// at runtime. Be strict.
+	// Obsidian keeps the plugin instance in `plugins` after disable, so
+	// checking only `plugins[id]` would treat a disabled Templater/Dataview/
+	// Tasks as enabled. Require enabledPlugins membership explicitly.
 	if (!host.enabledPlugins || !host.enabledPlugins.has(pluginId)) return null;
 	const plugin = host.getPlugin?.(pluginId) ?? host.plugins?.[pluginId] ?? null;
 	return plugin as T | null;

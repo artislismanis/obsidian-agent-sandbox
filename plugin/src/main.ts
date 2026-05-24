@@ -37,11 +37,10 @@ const FIREWALL_EVENT_THROTTLE = 10_000;
 
 export default class AgentSandboxPlugin extends Plugin {
 	settings: AgentSandboxSettings = { ...DEFAULT_SETTINGS };
-	// `!` definite-assignment is honest here: onload assigns each field early
-	// and synchronously before any await, so any code path that runs later
-	// (including onunload) sees them initialized. The `?.` in onunload below
-	// is defensive only — protects against a future refactor that hoists an
-	// `await` between field declaration and assignment.
+	// `!` definite-assignment: onload assigns each field synchronously
+	// before any await, so all later code paths (including onunload) see
+	// them initialized. The `?.` in onunload is defensive against a future
+	// refactor that hoists an `await` between declaration and assignment.
 	private docker!: DockerManager;
 	private statusBar!: StatusBarManager;
 	private firewallBar!: FirewallStatusBar;
@@ -60,10 +59,10 @@ export default class AgentSandboxPlugin extends Plugin {
 			try {
 				await this.saveData(this.settings);
 			} catch (e) {
-				// Without this guard, saveData rejections (disk full, permission
-				// glitch on data.json) silently vanish — debounce doesn't surface
-				// the inner promise. Settings changes would appear to "stick" in
-				// the UI but be lost on next reload.
+				// debounce doesn't surface the inner promise, so saveData
+				// rejections (disk full, permission glitch on data.json) would
+				// silently vanish — the UI shows the change "stuck" but the
+				// next reload loses it.
 				logger.error("Plugin", "Settings save failed", e);
 				new Notice(`Failed to save settings: ${errMsg(e)}`);
 			}
@@ -73,34 +72,41 @@ export default class AgentSandboxPlugin extends Plugin {
 	);
 
 	async onload() {
-		// Module-level state in terminal-view.ts (the ring buffer + instance
-		// counter) and templater-adapter.ts (the Templater hook-suppression
-		// refcount) survive plugin disable/enable since Obsidian caches the
-		// module. Reset on each load so postmortems don't include events from
-		// a previous lifecycle, and so a previous unload mid-write doesn't
-		// leave Templater's trigger_on_file_creation pinned to false.
+		// Module-level state in terminal-view.ts (ring buffer + instance
+		// counter) and templater-adapter.ts (hook-suppression refcount)
+		// survives plugin disable/enable — Obsidian caches the module. Reset
+		// on each load so postmortems don't include events from a previous
+		// lifecycle, and so a previous mid-write unload doesn't leave
+		// Templater's trigger_on_file_creation pinned to false.
 		resetTerminalConnectionLog();
 		resetTemplaterSuppression();
 		await this.loadSettings();
 		this.addSettingTab(new AgentSandboxSettingTab(this.app, this));
 
-		this.docker = new DockerManager(() => ({
-			dockerMode: this.settings.dockerMode,
-			composePath: this.settings.dockerComposeFilePath,
-			wslDistro: this.settings.wslDistroName,
-			vaultPath: getVaultBasePath(this.app) ?? undefined,
-			writeDir: this.settings.vaultWriteDir,
-			memoryFileName: this.settings.memoryFileName,
-			ttydPort: this.settings.ttydPort,
-			ttydBindAddress: this.settings.ttydBindAddress,
-			allowedPrivateHosts: this.settings.allowedPrivateHosts,
-			additionalFirewallDomains: this.settings.additionalFirewallDomains,
-			containerMemory: this.settings.containerMemory,
-			containerCpus: this.settings.containerCpus,
-			sudoPassword: this.settings.sudoPassword,
-			mcpToken: this.settings.mcpEnabled ? this.settings.mcpToken : undefined,
-			mcpPort: this.settings.mcpEnabled ? this.settings.mcpPort : undefined,
-		}));
+		this.docker = new DockerManager(() => {
+			const _vp = getVaultBasePath(this.app);
+			logger.info(
+				"Docker",
+				`vaultPath probe: type=${typeof _vp} value=${JSON.stringify(_vp)} adapter=${this.app.vault.adapter?.constructor?.name}`,
+			);
+			return {
+				dockerMode: this.settings.dockerMode,
+				composePath: this.settings.dockerComposeFilePath,
+				wslDistro: this.settings.wslDistroName,
+				vaultPath: _vp ?? undefined,
+				writeDir: this.settings.vaultWriteDir,
+				memoryFileName: this.settings.memoryFileName,
+				ttydPort: this.settings.ttydPort,
+				ttydBindAddress: this.settings.ttydBindAddress,
+				allowedPrivateHosts: this.settings.allowedPrivateHosts,
+				additionalFirewallDomains: this.settings.additionalFirewallDomains,
+				containerMemory: this.settings.containerMemory,
+				containerCpus: this.settings.containerCpus,
+				sudoPassword: this.settings.sudoPassword,
+				mcpToken: this.settings.mcpEnabled ? this.settings.mcpToken : undefined,
+				mcpPort: this.settings.mcpEnabled ? this.settings.mcpPort : undefined,
+			};
+		});
 
 		const statusBarEl = this.addStatusBarItem();
 		this.statusBar = new StatusBarManager(statusBarEl);
@@ -153,8 +159,8 @@ export default class AgentSandboxPlugin extends Plugin {
 					} catch (e) {
 						logger.error("Plugin", "renameSession failed", e);
 						// Surface the real cause (validation message, tmux state,
-						// docker error) instead of a blank "Failed". Without this
-						// the user sees a generic notice and has to open dev tools.
+						// docker error) instead of a generic "Failed" that
+						// forces the user to open dev tools.
 						new Notice(`Failed to rename tmux session: ${errMsg(e)}`);
 						return;
 					}
@@ -169,10 +175,10 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		this.app.workspace.onLayoutReady(() => {
 			// onLayoutReady can fire more than once across rapid disable/enable
-			// cycles in Obsidian (the workspace event has been observed to
-			// re-fire when the plugin re-registers during a layout transition).
-			// A double backgroundStartup races docker probe and status-bar
-			// state — guard with a one-shot flag.
+			// cycles in Obsidian — re-fires have been observed when the plugin
+			// re-registers during a layout transition. A double
+			// backgroundStartup races docker probe and status-bar state, so
+			// guard with a one-shot flag.
 			if (this.layoutReadyHandled) return;
 			this.layoutReadyHandled = true;
 			void this.backgroundStartup();
@@ -263,9 +269,9 @@ export default class AgentSandboxPlugin extends Plugin {
 					return;
 				}
 				const text = formatConnectionLog(events);
-				// Always log to dev console first so the postmortem data is
-				// recoverable even when the clipboard write rejects (document
-				// not focused, clipboard API disabled).
+				// Log to dev console first so postmortem data is recoverable
+				// even when the clipboard write rejects (document not focused,
+				// clipboard API disabled).
 				logger.info("Terminal", `Connection log (${events.length} events):\n${text}`);
 				try {
 					await navigator.clipboard.writeText(text);
@@ -318,9 +324,8 @@ export default class AgentSandboxPlugin extends Plugin {
 				await this.analyze.runAnalyze(path, params.template);
 			} catch (e) {
 				// Obsidian's protocol-handler dispatcher swallows unhandled
-				// rejections silently. Without this catch, external tooling
-				// triggering this URI sees nothing visible when something fails
-				// (e.g. template load throws unexpectedly).
+				// rejections silently — external tooling triggering this URI
+				// would see no visible failure (e.g. template load throws).
 				logger.error("Plugin", "agent-sandbox/analyze handler failed", e);
 				new Notice(`Analyze failed: ${errMsg(e)}`);
 			}
@@ -336,10 +341,9 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		if (this.settings.mcpEnabled) {
 			// Route through the lifecycle queue so a fast settings-tab toggle
-			// fired during onload can't race the initial start. Every other
-			// caller goes through queueMcpOp; the initial start used to bypass
-			// it, leaving a small window where the second start's commit could
-			// race the first start's failure-cleanup branch.
+			// fired during onload can't race the initial start. Bypassing the
+			// queue leaves a window where a second start's commit can race
+			// the first start's failure-cleanup branch.
 			void this.queueMcpOp(() => this.startMcpServer());
 		}
 
@@ -372,14 +376,10 @@ export default class AgentSandboxPlugin extends Plugin {
 						}
 						// Promise.race: whichever of (docker stop) or (5s timer)
 						// resolves first wins. The losing branch keeps running —
-						// docker stop continues in the background (its result is
-						// discarded), and the timer leaks until GC clears it.
-						// Adding an AbortController here would only cancel the
-						// timer, not the underlying `child_process.exec` inside
-						// DockerManager.stop(); that would require routing a
-						// signal through the docker layer (non-trivial across the
-						// WSL/Windows command-builder paths). Tradeoff accepted:
-						// quit is racing against Obsidian shutdown anyway.
+						// docker stop continues in the background and the timer
+						// leaks until GC. AbortController would only cancel the
+						// timer, not the child_process.exec inside
+						// DockerManager.stop(); quit races Obsidian shutdown anyway.
 						await Promise.race([
 							this.docker.stop().catch((err) => {
 								logger.warn(
@@ -398,14 +398,13 @@ export default class AgentSandboxPlugin extends Plugin {
 	async onunload(): Promise<void> {
 		this.stopHealthPoll();
 		// Order is load-bearing:
-		// 1. Stop MCP first so no more onActivity events can fire after we
-		//    teardown the UI sinks. Previously the activityUi.clear() ran
-		//    before mcpServer.stop(), which created a window where in-flight
-		//    tool calls could fire activity events into a cleared UI.
-		// 2. Then dispose AgentOutputNotifier and clear ActivityUi.
+		// 1. Stop MCP first so no onActivity events fire after the UI sinks
+		//    are torn down — otherwise in-flight tool calls fire activity
+		//    events into a cleared UI.
+		// 2. Dispose AgentOutputNotifier and clear ActivityUi.
 		// 3. Persist settings.
-		// 4. Detach terminal leaves last (TerminalView.onClose may want to
-		//    log a final activity event before the MCP server is gone).
+		// 4. Detach terminal leaves last (TerminalView.onClose may log a
+		//    final activity event before the MCP server is gone).
 		// The 2s race inside mcpServer.stop() bounds worst-case wait.
 		// Drain any queued lifecycle op first so a toggle/restart enqueued
 		// just before unload can't construct a fresh server after stop()
@@ -432,10 +431,9 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.firewallBar?.destroy();
 
 		// Plugin disable always stops the container — `autoStopContainer`
-		// only controls the Obsidian-exit ("quit") path above. Disable is an
-		// explicit user action that should leave no background container
-		// running; leaving it up surprises users who reach for the toggle to
-		// release docker resources.
+		// only governs the Obsidian-exit ("quit") path above. Disable is an
+		// explicit user action; leaving the container up would surprise
+		// users reaching for the toggle to release docker resources.
 		this.docker?.stopDetached();
 	}
 
@@ -444,9 +442,8 @@ export default class AgentSandboxPlugin extends Plugin {
 		if (!this.settings.mcpToken) {
 			this.settings.mcpToken = generateToken();
 			// Guard the save so a disk/permission failure on first install
-			// doesn't abort onload. Without this, the first-load saveData
-			// reject propagated through onload and the plugin appeared to
-			// "not load" with no visible error.
+			// doesn't abort onload — the unhandled reject would make the
+			// plugin appear to "not load" with no visible error.
 			try {
 				await this.saveData(this.settings);
 			} catch (e) {
@@ -473,14 +470,13 @@ export default class AgentSandboxPlugin extends Plugin {
 
 	/**
 	 * Wrap an async handler so any unhandled rejection becomes a user-visible
-	 * Notice instead of a silent dev-console entry. Use this for command and
-	 * menu callbacks where the registration site only accepts `() => void`.
+	 * Notice instead of a silent dev-console entry. Use for command and menu
+	 * callbacks where the registration site only accepts `() => void`.
 	 *
-	 * Most action methods already wrap their work in try/catch + Notice, but
-	 * if a pre-condition (guardBusy, settings access) ever throws outside
-	 * those internal handlers, the rejection escapes — and Obsidian discards
-	 * it without surfacing anything to the user. This wrapper closes that
-	 * gap so failure modes always have a UI signal.
+	 * Most action methods wrap their work in try/catch + Notice, but a
+	 * pre-condition (guardBusy, settings access) that throws outside those
+	 * handlers escapes, and Obsidian discards the rejection without surfacing
+	 * anything. This wrapper closes that gap.
 	 */
 	private safeFire(label: string, fn: () => Promise<unknown>): () => void {
 		return () => {
@@ -542,10 +538,10 @@ export default class AgentSandboxPlugin extends Plugin {
 		if (this.guardBusy()) return;
 		let conflicts = await this.checkStartupPortConflicts();
 		if (conflicts.length > 0) {
-			// A previous `docker compose down` may still be tearing the container
-			// down — it no longer reports as "running" but the host port mapping
-			// is still held. Treat any compose-managed container as ours so we
-			// can finish that cleanup before retrying.
+			// A prior `docker compose down` may still be tearing the container
+			// down — it no longer reports as "running" but the host port
+			// mapping is still held. Treat any compose-managed container as
+			// ours so cleanup finishes before retrying.
 			const isRunning = await this.docker.probeIsRunning();
 			const hasContainer = isRunning || (await this.docker.hasAnyContainer());
 			if (hasContainer) {
@@ -598,10 +594,9 @@ export default class AgentSandboxPlugin extends Plugin {
 		try {
 			this.lastKnownContainerId = await this.docker.getContainerId();
 		} catch (err) {
-			// A probe failure here doesn't block startup — we just lose the
-			// drift-detection baseline for this session. Logging makes it
-			// observable; the next checkContainerIdDrift call also handles
-			// its own probe failure (see below).
+			// A probe failure here doesn't block startup — it just loses the
+			// drift-detection baseline for this session. Logging keeps it
+			// observable; checkContainerIdDrift handles its own probe failure.
 			logger.warn("Plugin", "Initial container-id probe failed", err);
 			this.lastKnownContainerId = "";
 		}
@@ -641,11 +636,11 @@ export default class AgentSandboxPlugin extends Plugin {
 				await this.docker.enableFirewall();
 				this.firewallBar.setState("enabled");
 			} catch (error: unknown) {
-				// Don't collapse the failure to "disabled" — we don't actually
-				// know whether the firewall is off, half-applied, or fully
-				// applied but the docker exec returned non-zero on a side
-				// concern. Probe the real state instead, falling back to
-				// "hidden" (renders as "n/a") if even the probe fails.
+				// Don't collapse the failure to "disabled" — the firewall may
+				// be off, half-applied, or fully applied with docker exec
+				// returning non-zero on a side concern. Probe the real state
+				// instead, falling back to "hidden" (renders as "n/a") if even
+				// the probe fails.
 				try {
 					await this.refreshFirewallStatus();
 				} catch {
@@ -732,12 +727,11 @@ export default class AgentSandboxPlugin extends Plugin {
 	private async startMcpServer(): Promise<void> {
 		if (this.mcpServer?.isRunning()) return;
 		try {
-			// Re-validate the path-prefix lists at server start. The settings UI
-			// rejects bad inputs at save time, but a hand-edited data.json
-			// could carry an invalid value through. Without this re-check, an
-			// unparseable list (e.g. embedded '..') would flow into pathFilter
-			// and silently degrade to "matches nothing" — making the filter
-			// inert without surfacing the misconfiguration.
+			// Re-validate path-prefix lists at start. The settings UI rejects
+			// bad inputs at save time, but a hand-edited data.json could
+			// carry an invalid value through. An unparseable list (e.g.
+			// embedded '..') would degrade pathFilter to "matches nothing"
+			// silently — inert filter, no surfaced misconfiguration.
 			if (!isValidPathPrefixList(this.settings.mcpPathAllowlist ?? "")) {
 				throw new Error(
 					"Invalid mcpPathAllowlist in settings. Use comma-separated path prefixes (e.g. 'notes/, archive/').",
@@ -774,22 +768,21 @@ export default class AgentSandboxPlugin extends Plugin {
 			});
 			await this.mcpServer.start();
 		} catch (error: unknown) {
-			// Discard the half-constructed instance so the next start attempt
-			// rebuilds with current settings. Without this, mcpServer holds a
-			// reference whose port/token/tiers were captured BEFORE the user
-			// fixed whatever caused the start to fail (e.g. port conflict),
-			// and a retry through `applyMcpEnabled` would hit the early-return
-			// in start() and silently succeed against the stale config.
+			// Discard the half-constructed instance so the next start rebuilds
+			// with current settings — otherwise mcpServer pins port/token/tiers
+			// captured before the user fixed whatever caused the failure (e.g.
+			// port conflict), and a retry hits the early-return in start()
+			// and silently succeeds against the stale config.
 			try {
 				await this.mcpServer?.stop();
 			} catch {
 				/* nothing usable started */
 			}
 			this.mcpServer = null;
-			// Reset mcpEnabled so the settings toggle reflects runtime reality
-			// — otherwise the toggle stays ON, every plugin reload retries the
-			// failing start, and the user sees a Notice each restart while
-			// believing MCP is enabled.
+			// Reset mcpEnabled so the toggle reflects runtime reality —
+			// otherwise it stays ON, every plugin reload retries the failing
+			// start, and the user sees a Notice each restart while believing
+			// MCP is enabled.
 			if (this.settings.mcpEnabled) {
 				this.settings.mcpEnabled = false;
 				this.saveSettings();
@@ -961,14 +954,11 @@ export default class AgentSandboxPlugin extends Plugin {
 
 			this.startHealthPoll();
 		} catch (error: unknown) {
-			// A probe THROW (vs. a clean false) means we couldn't determine the
-			// container state at all — Docker daemon momentarily unavailable,
-			// WSL handshake glitch, etc. Don't destroy persisted terminal
-			// tabs over a transient: the health poll below retries on a 5s
-			// cadence and will detach legitimately when the container is
-			// definitely down. The previous design here detached leaves
-			// immediately, so a Docker-restart blip wiped the user's
-			// terminal layout.
+			// A probe throw (vs. a clean false) means the container state is
+			// indeterminate — Docker daemon momentarily unavailable, WSL
+			// handshake glitch, etc. Don't destroy persisted terminal tabs
+			// over a transient: the health poll below retries every 5s and
+			// detaches legitimately once the container is definitely down.
 			this.startHealthPoll();
 			this.reportContainerError({ detailsPrefix: "Docker error", error, notice: true });
 		}
@@ -1007,8 +997,8 @@ export default class AgentSandboxPlugin extends Plugin {
 	private async checkStartupPortConflicts(): Promise<number[]> {
 		// Only probe ports the container will bind. The MCP server is hosted
 		// by the plugin (this process), so its port is always "in use" from
-		// the OS's perspective — including it here makes the pre-flight
-		// always abort container start when MCP is enabled.
+		// the OS's perspective — including it would always abort container
+		// start when MCP is enabled.
 		const ports = [this.settings.ttydPort];
 		return this.docker.checkPortConflicts(ports, this.settings.ttydBindAddress || "127.0.0.1");
 	}
@@ -1018,11 +1008,8 @@ export default class AgentSandboxPlugin extends Plugin {
 		try {
 			current = await this.docker.getContainerId();
 		} catch (err) {
-			// Skip this drift check on probe failure — the next health poll
-			// retries. Pre-fix this returned "" silently and `!current`
-			// short-circuited the function, so a flaky probe permanently
-			// masked any real container recreation until the next probe
-			// happened to succeed. Logging the cause makes the gap visible.
+			// Log on probe failure so a flaky probe doesn't silently mask
+			// real container recreation. Next health poll retries.
 			logger.warn("Plugin", "Container-id drift probe failed; will retry on next poll", err);
 			return;
 		}

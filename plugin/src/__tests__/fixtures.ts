@@ -1,11 +1,9 @@
 /**
- * Shared test fixtures for MCP tool tests. Replaces the near-identical
- * `makeTFile` / `createMockApp` / `getTool` helpers that used to live in each
- * test file. Per-test divergence (read body, cache contents, etc.) is handled
- * via the `opts` overrides on `createMockApp`.
+ * Shared test fixtures for MCP tool tests. Per-test divergence (read body,
+ * cache contents, etc.) is handled via the `opts` overrides on `createMockApp`.
  */
 
-import type { TFile, TFolder } from "obsidian";
+import type { TAbstractFile, TFile, TFolder } from "obsidian";
 import { vi } from "vitest";
 import type { McpToolDef } from "../mcp-tools";
 
@@ -25,6 +23,22 @@ export function makeTFile(path: string, content = ""): TFile {
 	} as TFile;
 }
 
+/** Folder stand-in for tests. The `children` field is the structural marker
+ *  callers duck-type against (`"children" in abstract`) to distinguish folders
+ *  from files without depending on `instanceof TFolder` (which fails for
+ *  test-time plain objects). */
+export function makeTFolder(path: string): TFolder {
+	const parts = path.split("/");
+	const name = parts[parts.length - 1] ?? path;
+	return {
+		path,
+		name,
+		vault: {} as never,
+		parent: { path: parts.slice(0, -1).join("/") || "" } as TFolder,
+		children: [],
+	} as unknown as TFolder;
+}
+
 export interface MockAppOptions {
 	/** Per-path metadata cache entries. */
 	caches?: Record<string, unknown>;
@@ -35,6 +49,8 @@ export interface MockAppOptions {
 	 * file. Defaults to `` `content of ${f.path}` ``.
 	 */
 	readBody?: string | ((f: TFile) => string);
+	/** Folders that the mocked `getAbstractFileByPath` should resolve. */
+	folders?: TFolder[];
 }
 
 export function createMockApp(files: TFile[] = [], opts: MockAppOptions = {}) {
@@ -45,11 +61,16 @@ export function createMockApp(files: TFile[] = [], opts: MockAppOptions = {}) {
 	};
 	const caches = opts.caches ?? {};
 	const defaultCache = opts.defaultCache ?? null;
+	const folders = opts.folders ?? [];
 	return {
 		vault: {
 			getFiles: vi.fn(() => files),
 			getMarkdownFiles: vi.fn(() => files.filter((f) => f.extension === "md")),
 			getFileByPath: vi.fn((p: string) => files.find((f) => f.path === p) ?? null),
+			getAbstractFileByPath: vi.fn(
+				(p: string): TAbstractFile | null =>
+					files.find((f) => f.path === p) ?? folders.find((d) => d.path === p) ?? null,
+			),
 			read: vi.fn(readImpl),
 			cachedRead: vi.fn(readImpl),
 			create: vi.fn(async (path: string, content = "") => makeTFile(path, content)),

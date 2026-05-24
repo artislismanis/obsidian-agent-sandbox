@@ -19,9 +19,9 @@ import { VIEW_TYPE_TERMINAL } from "./view-types";
 
 /**
  * Structural-typed guard that doesn't import the TerminalView class — that
- * import would pull xterm.js into the (jsdom-free) unit test bundle. We
- * cross-check the leaf's view-type *and* the methods we need; a placeholder /
- * deferred view returned by Obsidian during reload won't satisfy both.
+ * import would pull xterm.js into the (jsdom-free) unit test bundle. Checks
+ * both the leaf's view-type and the required methods; a placeholder /
+ * deferred view returned by Obsidian during reload satisfies neither.
  */
 function isTerminalViewLike(leafView: unknown): leafView is TerminalView {
 	if (!leafView || typeof leafView !== "object") return false;
@@ -67,12 +67,10 @@ export class ActivityUi {
 		private statusBar: StatusBarManager,
 		private getActivity: () => ReadonlyMap<string, ActivityEntry> | undefined,
 	) {
-		// Wrap tickStale in try/catch so a late tick after teardown (clear()
-		// raced by an unload that threw partway) can't propagate as an
-		// unhandled error against stale `this.app` / `this.statusBar` refs.
-		// The interval itself uses raw setInterval (not Plugin.registerInterval)
-		// because ActivityUi isn't plumbed with a Plugin reference — clear()
-		// is responsible for clearing it.
+		// Wrap tickStale in try/catch so a late tick after teardown can't
+		// propagate as an unhandled error against stale `this.app` /
+		// `this.statusBar` refs. Raw setInterval (not Plugin.registerInterval)
+		// because ActivityUi has no Plugin reference — clear() owns cleanup.
 		this.staleTickId = setInterval(() => {
 			try {
 				this.tickStale();
@@ -192,13 +190,9 @@ export class AgentOutputNotifier {
 	}
 
 	private pathInsideWriteDir(path: string): boolean {
-		// If the user cleared `vaultWriteDir`, the writeScoped MCP gate
-		// fail-closes (no writes allowed). Mirror that here: with no write
-		// dir configured, no path counts as "inside the write directory" —
-		// notifications stay silent rather than firing for an arbitrary
-		// fallback like `agent-workspace/`. Previously this used the
-		// fallback string, so notifications could surface for paths that
-		// the actual write tier wouldn't permit.
+		// Mirror the writeScoped MCP gate: when `vaultWriteDir` is cleared,
+		// it fail-closes, so no path counts as inside and notifications
+		// stay silent rather than firing for a fallback path.
 		return isPathWithinDir(path, this.getWriteDir());
 	}
 

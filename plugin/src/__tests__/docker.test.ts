@@ -82,10 +82,8 @@ describe("DockerManager", () => {
 	});
 
 	describe("parseIsRunning JSON error handling", () => {
-		// Pre-fix, a malformed JSON-array envelope returned false silently.
-		// Now it logs a warn and returns false — the test pins that the
-		// return contract is unchanged so callers downstream still treat
-		// drift as "stopped".
+		// Malformed JSON-array envelopes must return false (callers treat
+		// drift as "stopped") while logging the parse failure.
 
 		it("returns false for malformed JSON array (and now logs internally)", () => {
 			const output = '[{"Name":"oas-sandbox-1","State":"running"';
@@ -109,6 +107,8 @@ describe("DockerManager", () => {
 				dockerMode: "local",
 				composePath: "/opt/project",
 				wslDistro: "Ubuntu",
+				vaultPath: "/home/test/vault",
+				writeDir: "agent-workspace",
 				memoryFileName: "../../etc/passwd",
 			}));
 			await expect(docker.start()).rejects.toThrow(/memory file name|Invalid memory/i);
@@ -119,6 +119,8 @@ describe("DockerManager", () => {
 				dockerMode: "local",
 				composePath: "/opt/project",
 				wslDistro: "Ubuntu",
+				vaultPath: "/home/test/vault",
+				writeDir: "agent-workspace",
 				memoryFileName: "sub/memory.json",
 			}));
 			await expect(docker.start()).rejects.toThrow(/memory file name|Invalid memory/i);
@@ -129,6 +131,8 @@ describe("DockerManager", () => {
 				dockerMode: "local",
 				composePath: "/opt/project",
 				wslDistro: "Ubuntu",
+				vaultPath: "/home/test/vault",
+				writeDir: "agent-workspace",
 				ttydBindAddress: "0.0.0.0:80:80",
 			}));
 			await expect(docker.start()).rejects.toThrow(/bind address|Invalid ttyd/i);

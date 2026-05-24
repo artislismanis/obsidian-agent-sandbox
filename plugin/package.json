@@ -16,6 +16,7 @@
 		"test:e2e": "wdio run ./wdio.conf.mts",
 		"test:e2e:headless": "xvfb-run -a wdio run ./wdio.conf.mts",
 		"check": "npm run lint && npm run format:check && tsc -noEmit -skipLibCheck && npm run test:coverage",
+		"docs:gen": "UPDATE_SCHEMAS=1 vitest run mcp-schemas-doc",
 		"version": "node version-bump.mjs",
 		"prepare": "husky"
 	},

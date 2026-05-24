@@ -21,9 +21,8 @@ set -uo pipefail
 # Counter fed by tool_version / tool_present; checked at exit.
 MISSING_TOOLS=0
 # Counter fed by tool_version when an optional minimum-major arg is given
-# and the installed major is older. A version regression is just as
-# user-impacting as a missing tool (MCP SDKs assume Node 24+, jq 1.7
-# behaves differently from 1.6, etc.) — surface it loudly.
+# and the installed major is older. A version regression is treated as a
+# failure (non-zero exit) just like a missing tool.
 TOOL_VERSION_REGRESSIONS=0
 
 # Parse the first integer component from a version string. "v24.5.0" → 24,

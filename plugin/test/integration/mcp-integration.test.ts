@@ -29,13 +29,8 @@ const SKIP = !isDockerAvailable() || !isImageBuilt();
 // Container lifecycle is managed by globalSetup.ts.
 describe.skipIf(SKIP)("MCP server integration with container", () => {
 	it("container can resolve host.docker.internal to an IPv4 address", () => {
-		// Previously this test piped curl through `|| echo refused` and
-		// accepted `["refused", "401", "000"]` — i.e. "any outcome whatsoever".
-		// That covers neither name resolution nor reachability since curl
-		// failures all collapsed into "refused". Assert what we can actually
-		// guarantee in the integration harness: host.docker.internal resolves
-		// to an IP from inside the container. The reachability of the host's
-		// MCP port is environment-dependent and out of scope here.
+		// Reachability of the host's MCP port is environment-dependent and
+		// out of scope here; only name resolution is asserted.
 		const ip = containerExec(
 			`getent hosts host.docker.internal | awk '{print $1; exit}'`,
 		).trim();
@@ -154,16 +149,13 @@ describe.skipIf(SKIP)("MCP HTTP server (standalone, no Obsidian)", () => {
 	});
 
 	it("rejects unauthenticated requests with 401", async () => {
-		// Previously this was named "returns 404 for wrong path" but the
-		// assertion (and the actual response) was 401 — auth runs before
-		// path routing, so the wrong-path code path is never exercised here.
-		// Renamed to match what's actually verified.
+		// Auth runs before path routing, so an unauthenticated wrong-path
+		// request never reaches the 404 code path.
 		const status = await httpGet(`http://127.0.0.1:${MCP_PORT}/wrong`);
 		expect(status).toBe(401);
 	});
 
 	it("returns 404 for unknown path when authenticated", async () => {
-		// Now exercise the wrong-path code path with valid auth.
 		const status = await httpGet(`http://127.0.0.1:${MCP_PORT}/wrong`, {
 			Authorization: `Bearer ${MCP_TOKEN}`,
 		});
@@ -172,10 +164,7 @@ describe.skipIf(SKIP)("MCP HTTP server (standalone, no Obsidian)", () => {
 
 	it("returns 405 for GET /mcp without session id", async () => {
 		// Authenticated GET on /mcp without a session is not a valid SSE
-		// stream open and the server should reject it cleanly. Previously
-		// this test was named "CORS preflight works" but it issued a GET (not
-		// OPTIONS) and accepted [400, 401] — so it asserted nothing about
-		// CORS. Tightened to the actual contract.
+		// stream open; the server rejects it cleanly.
 		const status = await httpGet(`http://127.0.0.1:${MCP_PORT}/mcp`, {
 			Authorization: `Bearer ${MCP_TOKEN}`,
 		});
@@ -207,10 +196,8 @@ function makeMockApp() {
 			trash: async () => {},
 			createFolder: async () => {},
 			// Audit-log file sink (mcp-server.ts createFileAuditSink) calls
-			// adapter.mkdir/.stat/.append on every tool invocation. Without
-			// this mock, every call threw TypeError that was silently swallowed
-			// — tests invoked tools without exercising the audit-write path
-			// at all. Match the shape in mcp-server.test.ts:66-73.
+			// adapter.mkdir/.stat/.append on every tool invocation. Mock the
+			// shape (matches mcp-server.test.ts:66-73).
 			adapter: {
 				exists: async () => false,
 				mkdir: async () => undefined,
@@ -410,12 +397,9 @@ describe.skipIf(SKIP)("MCP tool invocation (HTTP end-to-end)", () => {
 	});
 
 	it("vault_create rejects '..' segments up-front (first layer)", async () => {
-		// Exercise the upfront path-shape guard. `../escape.md` should be
-		// rejected with the "may not contain a '..'" message BEFORE reaching
-		// the write-dir gate. Previously this test accepted EITHER message
-		// via a regex disjunction — if the upfront check were removed, the
-		// second-layer "write directory" wording would still satisfy the
-		// assertion and the regression would go undetected.
+		// Exercises the upfront path-shape guard: `../escape.md` is rejected
+		// with the "may not contain a '..'" message before the write-dir
+		// gate fires.
 		const res = (await mcpRequest(session, "tools/call", {
 			name: "vault_create",
 			arguments: { path: "../escape.md", content: "evil" },

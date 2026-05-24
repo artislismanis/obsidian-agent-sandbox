@@ -334,12 +334,9 @@ describe("buildLocalWindowsCommand", () => {
 });
 
 describe("control-byte rejection across env vars (CRLF + NUL)", () => {
-	// Previously assertNoCrlf only ran for SENSITIVE_ENV_KEYS (OAS_SUDO_PASSWORD,
-	// OAS_MCP_TOKEN). After PR3, every env var rejects CR/LF/NUL — protecting
-	// against hand-edited data.json that injects a newline into, e.g.,
-	// OAS_MEMORY_FILE_NAME or OAS_VAULT_PATH. On Windows cmd.exe, an LF would
-	// terminate the `set "KEY=..."` statement and let the rest run as a fresh
-	// command after the next `&&`.
+	// Every env var must reject CR/LF/NUL, not just sensitive ones. On
+	// Windows cmd.exe an injected LF would terminate the `set "KEY=..."`
+	// statement and run the rest as a fresh command after the next `&&`.
 
 	it("buildLocalCommand rejects newlines in non-sensitive env vars", () => {
 		expect(() =>

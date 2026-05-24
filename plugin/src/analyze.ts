@@ -71,11 +71,8 @@ export class AnalyzeManager {
 			} catch {
 				continue;
 			}
-			// Parallelise reads — the loop was previously sequential, so a
-			// directory of N templates served N round trips of stat+read
-			// where one Promise.all batch handles them concurrently. Each
-			// per-file try/catch returns null on failure so unreadable
-			// templates are skipped without poisoning the whole batch.
+			// Per-file try/catch returns null so one unreadable template
+			// doesn't poison the batch.
 			const mdEntries = entries.filter((e) => e.endsWith(".md"));
 			const settled = await Promise.all(
 				mdEntries.map(async (entry): Promise<PromptTemplate | null> => {

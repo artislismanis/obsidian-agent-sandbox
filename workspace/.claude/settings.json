@@ -1,4 +1,7 @@
 {
+	"model": "opusplan",
+	"advisorModel": "opus",
+	"effortLevel": "high",
 	"permissions": {
 		"defaultMode": "bypassPermissions"
 	},

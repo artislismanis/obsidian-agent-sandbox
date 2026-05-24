@@ -9,22 +9,17 @@ SOURCES_FILE="/etc/oas/firewall-sources.tsv"
 EXTRAS_FILE="/etc/oas/firewall-extras.txt"
 LOCK_FILE="/var/lock/oas-firewall.lock"
 
-# Serialise concurrent invocations. The plugin can re-init while a manual
-# `init-firewall.sh` is running, which would race the ipset swap and leave
+# Serialise concurrent invocations. A re-init racing the ipset swap can leave
 # the OUTPUT chain attached to a half-built set. flock with -n bails fast
 # rather than queueing — the second caller's intent is already satisfied
-# by the first.
-# --disable / --status / --list-sources don't mutate the active ruleset
-# in conflicting ways, so they skip the lock to stay responsive.
+# by the first. --status and --list-sources don't mutate active ruleset
+# state so they skip the lock to stay responsive.
 case "${1:-}" in
   --status|--list-sources) ;;
   *)
-    # --disable also takes the lock — it mutates the active ruleset
-    # (flushes OUTPUT, destroys ipset). Letting it run concurrently with
-    # the apply path raced: --disable would `ipset destroy allowed_ips`
-    # mid-apply, and the subsequent `ipset swap allowed_ips_new allowed_ips`
-    # in the apply path would fail because the target no longer exists,
-    # leaving the new ipset orphaned and the OUTPUT chain unchanged.
+    # --disable also takes the lock because it mutates the active ruleset
+    # (flushes OUTPUT, destroys ipset); running concurrently with the apply
+    # path would destroy allowed_ips mid-swap.
     exec 9>"$LOCK_FILE"
     if ! flock -n 9; then
       echo "init-firewall.sh: another instance is already running ($LOCK_FILE)" >&2
@@ -202,13 +197,9 @@ elif [ -f "$EXTRAS_FILE" ]; then
   done < "$EXTRAS_FILE"
 fi
 
-# Resolve domains BEFORE flipping the OUTPUT policy. The previous design
-# flipped to DROP first and exited 1 on baseline-DNS failure, which left
-# the container with a DROP-policy + no-rules state — effectively bricked
-# until manual recovery. Resolving first means a transient DNS hiccup on
-# first-run produces an error without leaving the container in a broken
-# half-applied state. Existing rules from a prior successful init keep
-# protecting until the swap below.
+# Resolve domains BEFORE flipping the OUTPUT policy. A DNS hiccup must not
+# leave the container with a DROP policy and no rules; existing rules from a
+# prior successful init keep protecting until the atomic swap below.
 #
 # Build a fresh ipset in parallel with the existing one — only swap on
 # success.
@@ -229,11 +220,9 @@ echo "Resolving domains..."
 declare -A IS_BASELINE
 for d in "${BASELINE_DOMAINS[@]}"; do IS_BASELINE[$d]=1; done
 
-# Resolve a single domain with up to N retries. Baseline domains use the
-# retried path so transient resolver glitches (rate limits, brief upstream
-# timeouts on container start) don't brick the firewall apply. Optional
-# domains use a single attempt — if a user-supplied domain doesn't
-# resolve we want to surface that fast, not paper over a typo.
+# Resolve a single domain with up to N retries. Baseline domains retry so
+# transient resolver glitches don't brick the firewall apply. Optional
+# user-supplied domains use a single attempt so typos surface fast.
 _resolve_domain() {
   local domain="$1" tries="$2" attempt=0 ips=""
   while [ "$attempt" -lt "$tries" ]; do
@@ -305,9 +294,8 @@ done
 if [ "$BASELINE_FAILED" -gt 0 ]; then
   echo "ERROR: $BASELINE_FAILED baseline domain(s) failed to resolve — refusing to apply firewall with required gaps" >&2
   ipset destroy allowed_ips_new 2>/dev/null || true
-  # Existing OUTPUT chain (if any) is left intact: we never touched the
-  # policy or rules, so the container's network state is whatever it was
-  # before this invocation.
+  # Existing OUTPUT chain (if any) is left intact — policy and rules are
+  # untouched on this code path.
   exit 1
 fi
 if [ "$OPTIONAL_FAILED" -gt 0 ]; then
@@ -333,11 +321,10 @@ ipset destroy allowed_ips_new
 trap - EXIT
 
 # Build the OUTPUT chain into a single iptables-restore transaction so the
-# chain is replaced atomically. Previous design did `-F OUTPUT` followed by
-# ~10 `-A OUTPUT` calls one at a time; with the policy already DROP from a
-# prior init, that left a sub-second window where the chain had no rules
-# and traffic was silently dropped. iptables-restore commits all rules in
-# one kernel transaction.
+# chain is replaced atomically. Per-rule `-A OUTPUT` calls would leave a
+# sub-second window where the DROP policy was in force with no ACCEPT rules,
+# silently dropping traffic. iptables-restore commits everything in one
+# kernel transaction.
 MCP_PORT="${OAS_MCP_PORT:-28080}"
 # Validate MCP_PORT — typo'd values would land verbatim in --dport and
 # iptables-restore would reject the whole transaction, leaving the firewall
@@ -347,10 +334,9 @@ if ! [[ "$MCP_PORT" =~ ^[0-9]+$ ]] || (( MCP_PORT < 1 || MCP_PORT > 65535 )); th
   echo "init-firewall: ERROR: invalid OAS_MCP_PORT='$MCP_PORT' (must be 1-65535)" >&2
   exit 1
 fi
-# Take the first default route only — `awk '/default/ {print $3}'` without
-# an `exit` returns multiple lines when the container has multiple default
-# routes (rare but happens with attached secondary networks), which then
-# slammed iptables-restore with a multi-line `-d $GATEWAY` literal.
+# Take the first default route only — multiple default routes (rare, e.g.
+# attached secondary networks) would otherwise produce a multi-line literal
+# that iptables-restore rejects.
 GATEWAY=$(ip route | awk '/default/ {print $3; exit}')
 OAS_HOST=$(getent hosts host.docker.internal 2>/dev/null | awk '{print $1; exit}')
 # Reject OAS_HOST if it isn't an IPv4 address. getent can return an IPv6
@@ -408,9 +394,9 @@ fi
   echo "-A OUTPUT -m set --match-set allowed_ips dst -p tcp --dport 443 -j ACCEPT"
   echo "-A OUTPUT -m set --match-set allowed_ips dst -p tcp --dport 80 -j ACCEPT"
 
-  # Docker gateway — port-scoped (HTTP/HTTPS + MCP only). A wide-open
-  # gateway rule was effectively a hole in NAT mode because the gateway is
-  # the path to all host services.
+  # Docker gateway — port-scoped (HTTP/HTTPS + MCP only). The gateway is
+  # the path to all host services, so a wide-open rule would be a hole in
+  # NAT mode.
   if [ -n "$GATEWAY" ]; then
     echo "-A OUTPUT -d $GATEWAY -p tcp --dport 80 -j ACCEPT"
     echo "-A OUTPUT -d $GATEWAY -p tcp --dport 443 -j ACCEPT"

@@ -458,9 +458,9 @@ describe("ObsidianMcpServer", () => {
 		});
 
 		it("clears the clientError listener and the mcpServers map after stop", async () => {
-			// Internal-state probes — pre-fix, neither was cleared on stop(),
-			// which produced a slow leak across plugin enable/disable cycles
-			// (each cycle's listener + tools tree pinned by the closure).
+			// Internal-state probes: leaving either uncleared on stop() leaks
+			// across plugin enable/disable cycles (the listener + tools tree
+			// stay pinned by the closure).
 			const tempServer = new ObsidianMcpServer(app as never, {
 				port: TEST_PORT + 2,
 				token: "temp2",
@@ -481,15 +481,12 @@ describe("ObsidianMcpServer", () => {
 		});
 
 		it("supports rapid start→stop→start without EADDRINUSE", async () => {
-			// Pre-fix, the 2 s close-timer race could let the timer win on
-			// busy / SSE-keepalive sessions, returning from stop() while the
-			// OS socket was still bound. The next start() would then hit
-			// EADDRINUSE and main.ts would auto-disable mcpEnabled. With
-			// closeAllConnections() before close(), the socket releases
-			// promptly even with lingering connections. We can't directly
-			// reproduce the SSE-keepalive scenario in a unit test, but a
-			// rapid restart on the same port still exercises the close-then-
-			// reopen path and catches outright regressions.
+			// Without closeAllConnections() before close(), the 2s close-timer
+			// race lets the timer win on busy / SSE-keepalive sessions:
+			// stop() returns while the OS socket is still bound and the next
+			// start() hits EADDRINUSE. The SSE-keepalive scenario can't be
+			// reproduced in unit form, but a rapid restart on the same port
+			// exercises the close-then-reopen path.
 			const port = TEST_PORT + 3;
 			for (let i = 0; i < 3; i++) {
 				const s = new ObsidianMcpServer(app as never, {

@@ -113,8 +113,8 @@ class AuditLog {
 	private maxEntries: number;
 	private sink: ((entry: AuditEntry) => void | Promise<void>) | null = null;
 	// Serialise sink invocations so file-rotation (stat → remove → rename →
-	// append) can't interleave with concurrent record() calls. Without this,
-	// two simultaneous tool invocations near the rotation threshold would race
+	// append) can't interleave with concurrent record() calls. Two
+	// simultaneous tool invocations near the rotation threshold would race
 	// inside createFileAuditSink — both reading the pre-rotation byte count,
 	// both deciding to rotate, the second rename clobbering the first archive.
 	private sinkChain: Promise<void> = Promise.resolve();
@@ -135,13 +135,13 @@ class AuditLog {
 		const sink = this.sink;
 		if (!sink) return;
 		// Serialise writes via a per-sink promise chain so rotation (stat →
-		// remove → rename → append) can't interleave with another record() call.
+		// remove → rename → append) can't interleave with another record().
 		// Swallow rejections at every step so a poisoned link can't break the
-		// chain and so sink failures never propagate into tool execution:
-		// - `.catch(() => {})` on the chain neutralises any prior-link rejection
-		//   before we run the next sink call (otherwise the `then`'s onFulfilled
-		//   would be skipped and the recursive rejection would loop forever).
-		// - The inner try/catch + `.catch` handles BOTH sync throws and async
+		// chain and sink failures never propagate into tool execution:
+		// - `.catch(() => {})` neutralises any prior-link rejection before
+		//   the next sink call — otherwise `then`'s onFulfilled is skipped
+		//   and the recursive rejection loops forever.
+		// - Inner try/catch + `.catch` handles both sync throws and async
 		//   rejections from this iteration's sink call.
 		this.sinkChain = this.sinkChain
 			.catch(() => {})
@@ -166,12 +166,11 @@ const AUDIT_FILE = ".oas/mcp-audit.jsonl";
 const AUDIT_FILE_MAX_BYTES = 1_024_000;
 const AUDIT_FILE_ARCHIVE = ".oas/mcp-audit.1.jsonl";
 
-// Rate-limited warn helper so a persistent audit failure (disk full,
-// permission denied) reports once per minute instead of flooding the console
-// on every tool call. The audit log is a security feature; silent failure of
-// the SINK was a real gap — the previous code logged at `debug` level
-// (default-hidden behind the `info` minimum), so operators only saw it after
-// deliberately flipping log levels.
+// Rate-limited warn helper: a persistent audit failure (disk full, permission
+// denied) reports once per minute instead of flooding the console on every
+// tool call. The audit log is a security feature; sink failure must surface
+// at warn level — debug-level logs are hidden behind the default `info`
+// minimum and operators only see them after flipping log levels.
 let lastAuditWarnAt = 0;
 function warnAuditFailureRateLimited(err: unknown): void {
 	const now = Date.now();
@@ -183,9 +182,9 @@ function warnAuditFailureRateLimited(err: unknown): void {
 function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
 	const adapter = app.vault.adapter;
 	let ensuredDir = false;
-	// Track running byte count so we only stat (and rotate) when we suspect we
-	// crossed the threshold — otherwise the file sink would do 3 vault-adapter
-	// calls per MCP tool invocation.
+	// Track running byte count to stat (and rotate) only when the threshold
+	// is suspected — otherwise the sink does 3 vault-adapter calls per tool
+	// invocation.
 	let estimatedBytes = -1;
 	return async (entry) => {
 		if (!ensuredDir) {
@@ -193,13 +192,13 @@ function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
 				await adapter.mkdir(".oas");
 				ensuredDir = true;
 			} catch (err) {
-				// Directory already exists is fine — confirm via stat.
+				// Directory-already-exists is fine — confirm via stat.
 				const stat = await adapter.stat(".oas").catch(() => null);
 				if (stat?.type === "folder") {
 					ensuredDir = true;
 				} else {
-					// Real failure (permissions, etc.) — leave ensuredDir false so
-					// the next call retries instead of silently dropping appends.
+					// Real failure (permissions, etc.) — leave ensuredDir false
+					// so the next call retries instead of dropping appends.
 					throw err;
 				}
 			}
@@ -214,8 +213,8 @@ function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
 				try {
 					await adapter.remove(AUDIT_FILE_ARCHIVE).catch(() => undefined);
 					await adapter.rename(AUDIT_FILE, AUDIT_FILE_ARCHIVE);
-					// Rotation succeeded: the live file is now empty, so reset
-					// the counter to 0 rather than -1 (sentinel for re-stat).
+					// Rotation succeeded: live file is empty, so reset to 0
+					// rather than -1 (sentinel for re-stat).
 					estimatedBytes = 0;
 				} catch {
 					// Rename failed — re-stat next iteration to pick up the real
@@ -224,20 +223,16 @@ function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
 				}
 			}
 			await adapter.append(AUDIT_FILE, line);
-			// Guard against accumulating bytes against the re-stat sentinel
-			// (-1). A previous version did `estimatedBytes += line.length`
-			// unconditionally — when rotation failed and the sentinel was set,
-			// the +=N raised it positive, the next iteration's `< 0` check was
-			// false, and the re-stat never happened. The on-disk file then grew
-			// unbounded after the first rename failure.
+			// Only accumulate when the counter holds a real value. If the
+			// re-stat sentinel (-1) is active (rotation failed last round),
+			// `+=N` would raise it positive, the next `< 0` check would skip
+			// the re-stat, and the file would grow unbounded.
 			if (estimatedBytes >= 0) estimatedBytes += Buffer.byteLength(line);
 		} catch (e) {
-			// Promote to `warn` so disk-full / permission-denied surfaces at
-			// the default log level (the audit log is a security feature; its
-			// breakage must be observable without the user toggling debug
-			// logging). Rate-limited to one entry per minute so a persistent
-			// failure doesn't flood the console on every tool call. Never
-			// re-throw — audit writes must not block tool execution.
+			// Warn-level so disk-full / permission-denied surfaces at the
+			// default log threshold — the audit log is a security feature.
+			// Rate-limited to one entry per minute. Never re-throw — audit
+			// writes must not block tool execution.
 			warnAuditFailureRateLimited(e);
 		}
 	};
@@ -248,9 +243,9 @@ function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
 export class ObsidianMcpServer {
 	private httpServer: Server | null = null;
 	private transports = new Map<string, StreamableHTTPServerTransport>();
-	// Track per-session McpServer SDK instances so we can .close() them when the
-	// transport drops. Without this, every new session leaks an McpServer for the
-	// life of the plugin — small in absolute terms but unbounded over time.
+	// Track per-session McpServer SDK instances so .close() can run when the
+	// transport drops. Otherwise every new session leaks an McpServer for
+	// the life of the plugin — small per session, unbounded over time.
 	private mcpServers = new Map<string, McpServer>();
 	private sessionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 	private app: App;
@@ -261,10 +256,10 @@ export class ObsidianMcpServer {
 	private auditLog = new AuditLog(AUDIT_MAX_ENTRIES);
 	private cache: VaultCache | null = null;
 	private activity = new Map<string, ActivityEntry>();
-	// Saved listener reference so stop() can detach it explicitly. Without
-	// this, the listener's closure pins `this` (and the whole tools/audit/
-	// cache tree) to the still-attached HTTP server until GC catches up —
-	// across plugin enable/disable cycles that produces a slow leak.
+	// Saved listener reference so stop() can detach it explicitly. Otherwise
+	// the listener's closure pins `this` (and the tools/audit/cache tree)
+	// to the still-attached HTTP server until GC — across plugin
+	// enable/disable cycles this leaks slowly.
 	private clientErrorListener: ((err: Error) => void) | null = null;
 
 	constructor(app: App, config: McpServerConfig) {
@@ -364,12 +359,10 @@ export class ObsidianMcpServer {
 		this.transports.clear();
 
 		// Explicitly close any per-session McpServer instances still in the
-		// map. The transport.close() chain above is expected to fire onclose
-		// → cleanupSession, which removes the McpServer from mcpServers — but
-		// the SDK doesn't strictly guarantee the ordering. If close() resolves
-		// before onclose fires (a documented edge in some SDK transports), the
-		// map keeps a stale reference that's never released. Walk what's left
-		// and close it directly so stop() really does release everything.
+		// map. transport.close() is expected to fire onclose → cleanupSession,
+		// removing the McpServer; but the SDK doesn't strictly guarantee the
+		// ordering, and on some transports close() resolves before onclose,
+		// leaving a stale map entry. Walk what's left and close it directly.
 		const serverCloses = Array.from(this.mcpServers.entries()).map(async ([sid, server]) => {
 			try {
 				await server.close?.();
@@ -382,23 +375,19 @@ export class ObsidianMcpServer {
 
 		if (this.httpServer) {
 			const server = this.httpServer;
-			// Detach the saved clientError listener BEFORE close() so the
+			// Detach the saved clientError listener before close() so the
 			// closure stops pinning `this` through the listener registry.
-			// Without this, the listener (and its captured `this`) lives on
-			// the still-referenced Server instance until GC; across plugin
-			// enable/disable cycles that grows.
 			if (this.clientErrorListener) {
 				server.off("clientError", this.clientErrorListener);
 				this.clientErrorListener = null;
 			}
 			// Force-close any active connections (incl. lingering SSE
-			// keepalives) before close() resolves. Without this, the previous
-			// 2 s Promise.race fallback could let the timer win on a busy
-			// server — `this.httpServer = null` then ran while the OS socket
-			// was still bound, and the next start() hit EADDRINUSE. The
-			// failure path in main.ts then auto-disables `mcpEnabled` and
-			// the user sees "MCP turned itself off" with no actionable error.
-			// closeAllConnections is Node ≥ 18.2.
+			// keepalives) before close() resolves. Otherwise the 2s
+			// Promise.race fallback lets the timer win on a busy server,
+			// `this.httpServer = null` runs while the OS socket is still
+			// bound, and the next start() hits EADDRINUSE — auto-disabling
+			// `mcpEnabled` with "MCP turned itself off" and no actionable
+			// error. closeAllConnections is Node ≥ 18.2.
 			server.closeAllConnections?.();
 			let closeTimer: ReturnType<typeof setTimeout> | undefined;
 			await Promise.race([
@@ -504,14 +493,14 @@ export class ObsidianMcpServer {
 	}
 
 	/**
-	 * Decide whether a given Origin header value is allowed to receive the
-	 * Authorization-bearing CORS response. We only echo ACAO for trusted
-	 * origins so a random page on the user's intranet can't ride the auth
-	 * header to talk to our MCP listener via the browser.
+	 * Decide whether a given Origin is allowed to receive the
+	 * Authorization-bearing CORS response. ACAO is only echoed for trusted
+	 * origins so a random intranet page can't ride the auth header to talk
+	 * to the MCP listener via the browser.
 	 *
 	 * Trusted: missing/null Origin (curl, Obsidian's main process), loopback
-	 * HTTP origins (any port), and Obsidian-internal app:// origins (Obsidian's
-	 * own MCP client uses Origin: app://obsidian.md).
+	 * HTTP origins (any port), and `app://` origins (Obsidian's own MCP
+	 * client uses Origin: app://obsidian.md).
 	 */
 	private isOriginAllowed(origin: string | undefined): boolean {
 		// Missing Origin = non-browser (curl, Obsidian's main process) — trust it.
@@ -683,9 +672,9 @@ export class ObsidianMcpServer {
 				if (settled) return;
 				size += chunk.length;
 				if (size > MAX_BODY_BYTES) {
-					// Drop buffered prefix immediately and tear the request down;
-					// remove our listeners so end/error after destroy() can't fire
-					// our handlers again or leak references via the closure.
+					// Drop the buffered prefix and tear the request down. Remove
+					// the listeners so end/error after destroy() can't fire the
+					// handlers again or leak references via the closure.
 					chunks = [];
 					size = 0;
 					settleReject(new Error("Request body too large"));
@@ -789,11 +778,11 @@ export class ObsidianMcpServer {
 				timeoutMs,
 			);
 		});
-		// Attach a catch to the handler promise BEFORE racing so a late
-		// rejection (after timeout already won the race) doesn't surface as an
-		// unhandled rejection. Timeouts can't truly cancel an in-flight handler
-		// — apply() may complete after we returned a "failed" result. We log
-		// the late outcome so the audit trail isn't silent about it.
+		// Attach a catch to the handler promise before racing so a late
+		// rejection (after timeout won) doesn't surface as an unhandled
+		// rejection. Timeouts can't truly cancel an in-flight handler —
+		// apply() may complete after the "failed" result returned. Log the
+		// late outcome so the audit trail isn't silent.
 		const handlerPromise = tool.handler(args);
 		handlerPromise.catch((err) => {
 			logger.warn("MCP", `Late rejection from '${tool.name}' (after timeout/return)`, err);
@@ -802,11 +791,11 @@ export class ObsidianMcpServer {
 			if (timer) clearTimeout(timer);
 		});
 		// Truncate every text entry independently in the byte domain, then cap
-		// the cumulative response at MAX_RESPONSE_TOTAL_BYTES so a tool that
-		// returns many sub-cap entries can't still produce a multi-MB payload.
-		// String .slice() works in UTF-16 code units, so a naive slice past a
-		// multi-byte boundary still over-budgets after re-encoding; we slice
-		// the encoded buffer and decode with Replacement-character fallback.
+		// the cumulative response at MAX_RESPONSE_TOTAL_BYTES so many sub-cap
+		// entries can't still produce a multi-MB payload. String .slice() is
+		// UTF-16 code units — a naive slice past a multi-byte boundary
+		// over-budgets after re-encoding. Slice the encoded buffer and decode
+		// with replacement-character fallback.
 		const TRUNCATION_SUFFIX = "\n\n[truncated]";
 		const TRUNCATION_BYTES = Buffer.byteLength(TRUNCATION_SUFFIX);
 		if (Array.isArray(result.content)) {
@@ -839,10 +828,9 @@ export class ObsidianMcpServer {
 	}
 
 	private createMcpServer(): McpServer {
-		// Read version from manifest.json (the single source of truth that
-		// version-bump.mjs already syncs across the repo) so MCP clients that
-		// surface server identity (e.g. Inspector) don't see a stale 0.1.0 while
-		// the plugin is on 0.1.1+.
+		// Read version from manifest.json (single source of truth synced by
+		// version-bump.mjs) so MCP clients that surface server identity (e.g.
+		// Inspector) match the plugin's actual version.
 		const server = new McpServer({
 			name: "obsidian-vault",
 			version: manifest.version,
@@ -937,18 +925,17 @@ export class ObsidianMcpServer {
 				logger.debug("MCP", `Session ${sid.slice(0, 8)}… closed`);
 				this.cleanupSession(sid);
 			}
-			// No sid means init never completed (no onsessioninitialized). The
-			// transport is still being torn down, but we have nothing to remove
-			// from this.transports — the entry was never added. Nothing else to
-			// do here, but keep the branch explicit so future readers see it.
+			// No sid means init never completed (no onsessioninitialized) —
+			// the transport entry was never added to this.transports, so
+			// nothing to remove. Branch left explicit for readers.
 		};
 
 		try {
 			await server.connect(transport);
-			// onsessioninitialized fires from inside handleRequest and now
-			// also registers the server in this.mcpServers, so cleanupSession
-			// can find it via the onclose chain. Keep handleRequest after
-			// connect so the SDK sets up its routing before the first request.
+			// onsessioninitialized fires from inside handleRequest and also
+			// registers the server in this.mcpServers, so cleanupSession can
+			// find it via the onclose chain. handleRequest must follow
+			// connect so the SDK has its routing in place.
 			await transport.handleRequest(req, res, body);
 		} catch (err) {
 			logger.error("MCP", "Failed to initialize MCP session", err);
@@ -957,8 +944,8 @@ export class ObsidianMcpServer {
 				this.cleanupSession(sid);
 			} else {
 				// Init failed before onsessioninitialized fired, so neither the
-				// transport nor the McpServer is tracked yet. Close both directly
-				// so we don't leak SDK resources / SSE keepalives.
+				// transport nor the McpServer is tracked yet. Close both
+				// directly to avoid leaking SDK resources / SSE keepalives.
 				try {
 					await transport.close?.();
 				} catch (closeErr) {
