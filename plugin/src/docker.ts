@@ -30,6 +30,7 @@ const SERVICE_NAME = "sandbox";
 import type { DockerMode } from "./settings";
 import {
 	isValidWriteDir,
+	isWriteDirInsideVault,
 	isValidPrivateHosts,
 	isValidDomainList,
 	isValidMemory,
@@ -37,6 +38,7 @@ import {
 	isValidSessionName,
 	isValidMemoryFileName,
 	isValidBindAddress,
+	isValidPort,
 } from "./validation";
 
 export interface DockerManagerSettings {
@@ -326,9 +328,14 @@ export class DockerManager {
 				value: writeDir,
 				validate: isValidWriteDir,
 				invalidMsg:
-					"Invalid vault write directory. Must be a relative path without '..' components.",
+					"Invalid vault write directory. Use a relative path (nested paths like @Inbox/notes are allowed, but no '..', backslashes, or leading dot).",
 			},
-			{ key: "OAS_TTYD_PORT", value: ttydPort ? String(ttydPort) : "" },
+			{
+				key: "OAS_TTYD_PORT",
+				value: ttydPort ? String(ttydPort) : "",
+				validate: isValidPort,
+				invalidMsg: "Invalid ttyd port. Use a number between 1 and 65535.",
+			},
 			{
 				key: "OAS_TTYD_BIND",
 				value: ttydBindAddress,
@@ -378,7 +385,12 @@ export class DockerManager {
 			// injection.
 			{ key: "OAS_SUDO_PASSWORD", value: sudoPassword },
 			{ key: "OAS_MCP_TOKEN", value: mcpToken },
-			{ key: "OAS_MCP_PORT", value: mcpPort ? String(mcpPort) : "" },
+			{
+				key: "OAS_MCP_PORT",
+				value: mcpPort ? String(mcpPort) : "",
+				validate: isValidPort,
+				invalidMsg: "Invalid MCP port. Use a number between 1 and 65535.",
+			},
 		];
 
 		const envVars: Record<string, string> = {};
@@ -390,6 +402,18 @@ export class DockerManager {
 			if (validate && !validate(v)) throw new Error(invalidMsg!);
 			if (v === "") continue;
 			envVars[key] = v;
+		}
+
+		// Host-side bind-mount containment check. The compose YAML source is
+		// `${OAS_VAULT_PATH}/${OAS_VAULT_WRITE_DIR}` — Docker resolves it on the
+		// host before the container starts, so the entrypoint's guard runs too
+		// late to prevent escape. Verify here while vaultPath is the raw native
+		// path (before WSL conversion) so path.resolve uses the right separator.
+		if (vaultPath && writeDir && !isWriteDirInsideVault(vaultPath, writeDir)) {
+			throw new Error(
+				"Vault write directory resolves outside the vault root. " +
+					"Adjust the Write Directory setting (no '..' components allowed).",
+			);
 		}
 		logger.info(
 			"Docker",

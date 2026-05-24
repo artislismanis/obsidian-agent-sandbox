@@ -433,9 +433,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		this.addValidatedTextSetting(el, {
 			name: "Vault write directory",
 			desc:
-				"Folder inside the vault where the container can write. " +
-				"The rest of the vault is mounted read-only. Created automatically on start. " +
-				"Requires restart.",
+				"Folder inside the vault where the container can write — nested paths like " +
+				"@Inbox/agent-workspace are supported. The rest of the vault is mounted read-only. " +
+				"Created automatically on start. Requires restart.",
 			key: "vaultWriteDir",
 			validator: isValidWriteDir,
 			placeholder: "agent-workspace",
