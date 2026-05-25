@@ -499,6 +499,25 @@ export class TerminalView extends ItemView {
 		);
 
 		term.attachCustomKeyEventHandler((event) => {
+			// Ctrl+C with an active selection copies (like Terminal.app/iTerm2),
+			// but only when auto-copy is off — if auto-copy is on the selection
+			// is already in the clipboard, so Ctrl+C should keep its SIGINT meaning.
+			if (
+				event.type === "keydown" &&
+				event.ctrlKey &&
+				!event.shiftKey &&
+				!event.altKey &&
+				event.key === "c" &&
+				term.hasSelection() &&
+				!this.getSettings().clipboardAutoCopy
+			) {
+				const sel = term.getSelection();
+				if (sel && typeof document !== "undefined" && document.hasFocus()) {
+					navigator.clipboard.writeText(sel).catch(() => {});
+				}
+				term.clearSelection();
+				return false;
+			}
 			if (event.ctrlKey && event.shiftKey && event.key === "V" && event.type === "keydown") {
 				navigator.clipboard.readText().then(
 					(text) => term.paste(text),
