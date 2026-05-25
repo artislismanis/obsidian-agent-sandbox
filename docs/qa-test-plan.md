@@ -79,12 +79,53 @@ This stage exercises the settings UI, error/fallback paths before any container 
 - **Expected:** 1) Settings UI rejects or sanitises the input — the field does not accept paths outside the vault root. 2) On load the plugin normalises the stored value back to a vault-relative path; no container crash or half-up state results. No clear failure Notice for the invalid-path case is expected because the invalid state cannot be reached at startup.
 - **Notes:** P1. The protection is in the settings layer, not the startup path. The original "startup failure" scenario is not reachable because the UI and settings-load sanitisation prevent it.
 
-### 1.7 Port conflict pre-flight (MCP)
+### 1.7 Port conflict detection
 
-- **Setup:** Occupy MCP port: `nc -l 28080 &` (use whatever port Settings → MCP shows).
-- **Steps:** Start container.
-- **Expected:** Notice "Port conflict: 28080 already in use on 127.0.0.1. Stop the other process or change the port in settings." Container does NOT start.
-- **Notes:** P0. `kill %1` to free the port. Repeat with the ttyd port.
+The plugin has **two separate** conflict-detection mechanisms with different code paths, failure modes, and platform behaviour. Keep them separate when testing.
+
+**Port-occupier reference** — pick the one-liner that matches your host OS and the bind address shown in settings. The occupier must run in the **same network namespace as the process doing the bind** (see per-scenario notes below).
+
+| Host | `127.0.0.1` (loopback) | `0.0.0.0` (all interfaces) | Specific IP |
+|---|---|---|---|
+| Windows (PowerShell) | `$l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, <PORT>); $l.Start()` | `$l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, <PORT>); $l.Start()` | `$l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse('<IP>'), <PORT>); $l.Start()` |
+| Linux / macOS / WSL shell | `python3 -c "import socket,sys; s=socket.socket(); s.bind(('127.0.0.1',<PORT>)); s.listen(); print('bound'); sys.stdin.read()"` | same with `'0.0.0.0'` | same with `'<IP>'` |
+| Linux, netcat-openbsd only | `nc -l 127.0.0.1 <PORT>` | `nc -l 0.0.0.0 <PORT>` | `nc -l <IP> <PORT>` |
+
+Release: PowerShell → `$l.Stop()`. Python / nc → Ctrl+C. (`nc -l <port>` without an IP is netcat-openbsd syntax only; netcat-traditional requires `-p <port>`. The Python one-liner works everywhere.)
+
+To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode") or check `%USERPROFILE%\.wslconfig` for `networkingMode=mirrored`; absence means NAT (default).
+
+---
+
+**1.7a — ttyd port pre-flight (container start)**
+
+- **What it exercises:** `checkStartupPortConflicts` (`main.ts:1010`) → `DockerManager.checkPortConflicts` (`docker.ts:699`) — probes `Settings → Terminal → Bind address` + `Port` inside the **plugin process (Obsidian host netns)** before invoking Docker.
+- **Setup:** On the **Obsidian host**, occupy `<ttydBindAddress>:<ttydPort>` (default `127.0.0.1:7681`) using the table above. **On WSL2**: the plugin probes the Windows host netns; compose binds inside WSL2's netns. These are the same only in WSL2 mirrored mode — see expected outcomes below.
+- **Steps:** Command palette → **Sandbox: Start Container**.
+- **Expected:**
+  - **Linux native Docker / macOS Docker Desktop / WSL2 mirrored mode:** Notice `Port conflict: 7681 already in use on 127.0.0.1. Stop the other process or change the port in settings.` Container does not start. *(Note: Notice always says `127.0.0.1` even if Bind address is set to something else — known cosmetic bug.)*
+  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns. Container starts; terminal tab spins without connecting; no Notice. **Record this as a known gap**, not a pass. See `docs/proposals/port-conflict-detection-improvements.md` Task 1.
+- **Cleanup:** Release the port. Restart container if it started in the NAT-mode gap case.
+- **Notes:** P1 on platforms where pre-flight works. Known gap on WSL2 NAT.
+
+---
+
+**1.7b — MCP port reactive failure (server start)**
+
+- **What it exercises:** `startMcpServer` catch path (`main.ts:783`) — `listen()` fails, plugin shows Notice and **persists `mcpEnabled = false`**.
+- **MCP runs in the plugin process on the Obsidian host** (not inside Docker/WSL). Occupy the port on the **Windows host** (not inside a WSL shell) on WSL2 setups.
+- **Setup:**
+  1. Container running.
+  2. MCP must be **stopped** before occupying the port. If "Enable MCP server" is currently on, toggle it off first via **Sandbox: Toggle MCP Server**.
+  3. Occupy `<mcpBindAddress>:<mcpPort>` (default `127.0.0.1:28080`) using the table above — on the **Obsidian host**.
+- **Steps:** Command palette → **Sandbox: Toggle MCP Server** (starts MCP because it is currently stopped).
+- **Expected:**
+  - Notice: `MCP server failed to start: …` (error will mention address in use).
+  - Settings → MCP → **Enable MCP server** is now **OFF** (auto-disabled and persisted — reopen settings to confirm).
+  - Container itself remains running.
+- **Recovery sub-step (recommended):** Release the port → toggle MCP on again → should start cleanly. Confirms the half-state cleanup in the catch block.
+- **Cleanup:** `$l.Stop()` / Ctrl+C.
+- **Notes:** P0. Host-process path — must fire on all platforms.
 
 ### 1.8 URI handler without container
 
