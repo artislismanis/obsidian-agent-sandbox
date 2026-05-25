@@ -228,6 +228,28 @@ export function getWslHostIp(mode: string | undefined): string | undefined {
 	return pick((n) => n.toLowerCase().includes("wsl"));
 }
 
+/**
+ * Parse `ss -tlnH` stdout and return which of `requestedPorts` are listening.
+ * Each non-header line has local address as column 4 (0-based 3): `ip:port`.
+ * IPv6 addresses look like `[::]:port`; wildcard is `*:port`.
+ * Port is everything after the last colon.
+ */
+export function parseSsListeningPorts(stdout: string, requestedPorts: number[]): number[] {
+	const portSet = new Set(requestedPorts);
+	const found = new Set<number>();
+	for (const raw of stdout.split("\n")) {
+		const line = raw.replace(/\r/g, "").trim();
+		if (!line) continue;
+		const cols = line.split(/\s+/);
+		const localAddr = cols[3]; // "ip:port" or "[::]:port" or "*:port"
+		if (!localAddr) continue;
+		const portStr = localAddr.slice(localAddr.lastIndexOf(":") + 1);
+		const portNum = parseInt(portStr, 10);
+		if (!isNaN(portNum) && portSet.has(portNum)) found.add(portNum);
+	}
+	return Array.from(found).sort((a, b) => a - b);
+}
+
 export class DockerManager {
 	private getSettings: () => DockerManagerSettings;
 	private busy = false;
@@ -736,6 +758,57 @@ export class DockerManager {
 			),
 		);
 		return conflicts.sort((a, b) => a - b);
+	}
+
+	/**
+	 * Dispatch port-conflict check based on docker mode and WSL networking mode.
+	 * In WSL NAT mode the plugin (Windows host) and Docker (WSL2 namespace) are
+	 * on different network stacks, so a host-side `net.createServer` probe can't
+	 * see ports bound inside WSL. Probe via `wsl.exe … ss -tlnH` instead.
+	 * Falls back to host-side probe for local mode, WSL mirrored mode, and when
+	 * the networking mode can't be detected.
+	 */
+	async checkStartupConflicts(ports: number[], host: string): Promise<number[]> {
+		const { dockerMode, wslDistro } = this.getSettings();
+		if (dockerMode === "wsl") {
+			const { mode } = await this.getWslProbe(wslDistro);
+			if (mode === "nat") {
+				return this.checkPortConflictsWsl(ports, wslDistro);
+			}
+		}
+		return this.checkPortConflicts(ports, host);
+	}
+
+	private async checkPortConflictsWsl(ports: number[], wslDistro: string): Promise<number[]> {
+		return new Promise<number[]>((resolve) => {
+			const child = spawn("wsl.exe", ["-d", wslDistro, "--", "ss", "-tlnH"], {
+				windowsHide: true,
+			});
+			let stdout = "";
+			const timer = setTimeout(() => {
+				child.kill();
+				logger.warn("Docker", "WSL port probe (ss) timed out; skipping WSL conflict check");
+				resolve([]);
+			}, PROBE_TIMEOUT);
+			child.stdout?.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
+			child.on("error", (err) => {
+				clearTimeout(timer);
+				logger.warn("Docker", `WSL port probe (ss) failed: ${errMsg(err)}`);
+				resolve([]);
+			});
+			child.on("close", (code) => {
+				clearTimeout(timer);
+				if (code !== 0) {
+					logger.warn(
+						"Docker",
+						`WSL ss exited with code ${code}; skipping WSL conflict check`,
+					);
+					resolve([]);
+					return;
+				}
+				resolve(parseSsListeningPorts(stdout, ports));
+			});
+		});
 	}
 
 	/**
