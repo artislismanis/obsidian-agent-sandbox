@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DockerManager } from "../docker";
+import { DockerManager, parseSsListeningPorts } from "../docker";
 
 describe("DockerManager", () => {
 	describe("run rejects when composePath is empty", () => {
@@ -137,5 +137,48 @@ describe("DockerManager", () => {
 			}));
 			await expect(docker.start()).rejects.toThrow(/bind address|Invalid ttyd/i);
 		});
+	});
+});
+
+describe("parseSsListeningPorts", () => {
+	it("returns matching port from typical ss -tlnH output", () => {
+		const stdout = [
+			"LISTEN 0 128 127.0.0.1:7681 0.0.0.0:*",
+			"LISTEN 0 128 0.0.0.0:22    0.0.0.0:*",
+		].join("\n");
+		expect(parseSsListeningPorts(stdout, [7681])).toEqual([7681]);
+	});
+
+	it("returns empty when requested port is not listening", () => {
+		const stdout = "LISTEN 0 128 127.0.0.1:22 0.0.0.0:*\n";
+		expect(parseSsListeningPorts(stdout, [7681])).toEqual([]);
+	});
+
+	it("returns multiple matching ports, sorted", () => {
+		const stdout = [
+			"LISTEN 0 128 0.0.0.0:7681 0.0.0.0:*",
+			"LISTEN 0 128 0.0.0.0:8080 0.0.0.0:*",
+			"LISTEN 0 128 0.0.0.0:22   0.0.0.0:*",
+		].join("\n");
+		expect(parseSsListeningPorts(stdout, [8080, 7681])).toEqual([7681, 8080]);
+	});
+
+	it("handles IPv6 addresses ([::]:port)", () => {
+		const stdout = "LISTEN 0 128 [::]:7681 [::]:*\n";
+		expect(parseSsListeningPorts(stdout, [7681])).toEqual([7681]);
+	});
+
+	it("handles wildcard addresses (*:port)", () => {
+		const stdout = "LISTEN 0 128 *:7681 *:*\n";
+		expect(parseSsListeningPorts(stdout, [7681])).toEqual([7681]);
+	});
+
+	it("handles CRLF line endings from Windows piping", () => {
+		const stdout = "LISTEN 0 128 127.0.0.1:7681 0.0.0.0:*\r\n";
+		expect(parseSsListeningPorts(stdout, [7681])).toEqual([7681]);
+	});
+
+	it("returns empty on empty stdout", () => {
+		expect(parseSsListeningPorts("", [7681])).toEqual([]);
 	});
 });

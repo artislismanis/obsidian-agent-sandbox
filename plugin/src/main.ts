@@ -21,6 +21,7 @@ import {
 	resetTerminalConnectionLog,
 } from "./terminal-view";
 import { isValidPathPrefixList, isValidWriteDir, splitCsv } from "./validation";
+import { pollUntilReady } from "./ttyd-client";
 import { setLogLevel, logger, errMsg } from "./logger";
 import { ObsidianMcpServer, generateToken } from "./mcp-server";
 import { reviewsRequired } from "./permission-tiers";
@@ -571,7 +572,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			}
 			if (conflicts.length > 0) {
 				new Notice(
-					`Port conflict: ${conflicts.join(", ")} already in use on 127.0.0.1. Stop the other process or change the port in settings.`,
+					`Port conflict: ${conflicts.join(", ")} already in use on ${this.settings.ttydBindAddress || "127.0.0.1"}. Stop the other process or change the port in settings.`,
 					10000,
 				);
 				return;
@@ -602,6 +603,26 @@ export default class AgentSandboxPlugin extends Plugin {
 		}
 		await this.applyFirewallAfterStart();
 		this.startHealthPoll();
+		await this.checkTtydReachability();
+	}
+
+	private async checkTtydReachability(): Promise<void> {
+		const { ttydPort, ttydBindAddress } = this.settings;
+		const reached = await pollUntilReady(
+			ttydPort,
+			3,
+			(i) => [500, 1500, 2500][i] ?? 2500,
+			() => false,
+			undefined,
+			ttydBindAddress,
+		);
+		if (!reached) {
+			const bind = ttydBindAddress || "127.0.0.1";
+			new Notice(
+				`Sandbox started but terminal isn't reachable on ${bind}:${ttydPort}. Check for a port conflict or run 'docker compose logs' to investigate.`,
+				10000,
+			);
+		}
 	}
 
 	private async stopContainer(): Promise<void> {
@@ -1013,7 +1034,10 @@ export default class AgentSandboxPlugin extends Plugin {
 		// the OS's perspective — including it would always abort container
 		// start when MCP is enabled.
 		const ports = [this.settings.ttydPort];
-		return this.docker.checkPortConflicts(ports, this.settings.ttydBindAddress || "127.0.0.1");
+		return this.docker.checkStartupConflicts(
+			ports,
+			this.settings.ttydBindAddress || "127.0.0.1",
+		);
 	}
 
 	private async checkContainerIdDrift(): Promise<void> {
