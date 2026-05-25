@@ -67,17 +67,17 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.5 Start with Docker daemon stopped
 
-- **Setup:** Stop Docker on the host (`sudo systemctl stop docker` or quit Docker Desktop).
+- **Setup:** Stop Docker on the host. On Linux with systemd: `sudo systemctl stop docker.socket docker.service`. On macOS/Windows: quit Docker Desktop or Rancher Desktop.
 - **Steps:** Command palette → **Sandbox: Start Container**.
 - **Expected:** Clear Notice within ~5 s naming the failure ("Docker not available", "Cannot connect to Docker daemon", etc.). No infinite spinner. Status bar settles to a stopped/errored state with a useful tooltip.
 - **Notes:** P0. Restart Docker before continuing.
 
-### 1.6 Start with no vault path / read-only home
+### 1.6 Write directory validation in settings
 
-- **Setup:** Vault is at a normal location but write directory points at a path Obsidian can't write (e.g. `/root/forbidden` on Linux).
-- **Steps:** Start container.
-- **Expected:** Clear failure Notice naming the directory issue; container does not enter a half-up state. Settings tab flags the invalid directory if reopened.
-- **Notes:** P1. Reset write directory afterwards.
+- **Setup:** Plugin enabled. Settings → General open.
+- **Steps:** 1) Attempt to type a path outside the vault (e.g. `/root/forbidden` or `../../escape`) into **Vault write directory**. 2) Manually edit the vault's `data.json` (`.obsidian/plugins/obsidian-agent-sandbox/data.json`) to set `vaultWriteDir` to a path that escapes the vault, then reload the plugin.
+- **Expected:** 1) Settings UI rejects or sanitises the input — the field does not accept paths outside the vault root. 2) On load the plugin normalises the stored value back to a vault-relative path; no container crash or half-up state results. No clear failure Notice for the invalid-path case is expected because the invalid state cannot be reached at startup.
+- **Notes:** P1. The protection is in the settings layer, not the startup path. The original "startup failure" scenario is not reachable because the UI and settings-load sanitisation prevent it.
 
 ### 1.7 Port conflict pre-flight (MCP)
 
