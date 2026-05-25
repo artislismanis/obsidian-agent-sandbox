@@ -149,8 +149,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${OAS_CONTAINER_MEMORY:-8G}
-          cpus: "${OAS_CONTAINER_CPUS:-4}"
+          memory: ${OAS_CONTAINER_MEMORY:-4G}
+          cpus: "${OAS_CONTAINER_CPUS:-2}"
           # 512 is well above what a Claude session + ttyd + tmux + a
           # few MCP servers needs in practice, while still bounding
           # fork-bomb-style runaway loops.

@@ -275,6 +275,24 @@
 	opacity: 0.9;
 }
 
+/* ── Inline field warning banner (inside a Setting's descEl) ─ */
+
+.sandbox-settings-field-warning {
+	margin-top: 6px;
+	padding: 4px 8px 4px 10px;
+	background-color: rgba(255, 193, 7, 0.12);
+	border-left: 3px solid #ffc107;
+	border-radius: 2px;
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+}
+
+.sandbox-settings-field-warning::before {
+	content: "⚠ WARNING: ";
+	font-weight: 600;
+	color: #c68000;
+}
+
 /* ── Settings warning callout ─────────────────────── */
 
 .sandbox-settings-warning {

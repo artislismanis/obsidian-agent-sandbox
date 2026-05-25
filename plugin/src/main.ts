@@ -92,7 +92,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			return {
 				dockerMode: this.settings.dockerMode,
 				composePath: this.settings.dockerComposeFilePath,
-				wslDistro: this.settings.wslDistroName,
+				wslDistro: this.settings.wslDistroName || "Ubuntu",
 				vaultPath: _vp ?? undefined,
 				writeDir: this.settings.vaultWriteDir,
 				memoryFileName: this.settings.memoryFileName,

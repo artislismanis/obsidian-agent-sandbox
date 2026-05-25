@@ -102,7 +102,7 @@ export type TerminalSettings = Pick<
 export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	dockerMode: "wsl",
 	dockerComposeFilePath: "",
-	wslDistroName: "Ubuntu",
+	wslDistroName: "",
 	vaultWriteDir: "agent-workspace",
 	memoryFileName: "memory.json",
 	ttydPort: 7681,
@@ -116,9 +116,9 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	clipboardAutoCopy: true,
 	allowedPrivateHosts: "",
 	additionalFirewallDomains: "",
-	containerMemory: "8G",
-	containerCpus: "4",
-	autoEnableFirewall: false,
+	containerMemory: "4G",
+	containerCpus: "2",
+	autoEnableFirewall: true,
 	// Empty default — sudo is disabled until the user explicitly sets a password.
 	// Matches container/.env.example, which also ships no default to avoid
 	// encouraging a known weak credential to leak into committed .env files.
@@ -138,10 +138,12 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	mcpPathAllowlist: "",
 	mcpPathBlocklist: "",
 	agentOutputNotify: "new",
-	logLevel: "info",
+	logLevel: "warn",
 	mcpToolTimeout: 10,
 	mcpReviewTimeout: 180,
 };
+
+const RESTART_CONTAINER_SUFFIX = " Requires container restart.";
 
 type TabId = "general" | "terminal" | "advanced" | "mcp";
 
@@ -199,7 +201,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	): void {
 		new Setting(el)
 			.setName(opts.name)
-			.setDesc(opts.desc)
+			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
 			.addText((text) => {
 				if (opts.placeholder) text.setPlaceholder(opts.placeholder);
 				text.setValue(String(this.plugin.settings[opts.key])).onChange(async (value) => {
@@ -231,7 +233,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	): void {
 		new Setting(el)
 			.setName(opts.name)
-			.setDesc(opts.desc)
+			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings[opts.key] as boolean)
@@ -257,7 +259,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	): void {
 		new Setting(el)
 			.setName(opts.name)
-			.setDesc(opts.desc)
+			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
 			.addText((text) => {
 				if (opts.placeholder) text.setPlaceholder(opts.placeholder);
 				text.setValue(String(this.plugin.settings[opts.key])).onChange(async (value) => {
@@ -286,7 +288,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	): void {
 		new Setting(el)
 			.setName(opts.name)
-			.setDesc(opts.desc)
+			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
 			.addText((text) => {
 				if (opts.placeholder) text.setPlaceholder(opts.placeholder);
 				text.setValue(String(this.plugin.settings[opts.key])).onChange(async (value) => {
@@ -333,8 +335,8 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		const tabs: { id: TabId; label: string }[] = [
 			{ id: "general", label: "General" },
 			{ id: "terminal", label: "Terminal" },
-			{ id: "advanced", label: "Advanced" },
 			{ id: "mcp", label: "MCP" },
+			{ id: "advanced", label: "Advanced" },
 		];
 		for (const tab of tabs) {
 			const btn = tabBar.createEl("button", {
@@ -356,7 +358,8 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.setName("Docker mode")
 			.setDesc(
 				"How Docker is accessed. WSL runs commands via wsl.exe. " +
-					"Local runs docker compose directly on the host.",
+					"Local runs docker compose directly on the host." +
+					RESTART_CONTAINER_SUFFIX,
 			)
 			.addDropdown((dropdown) =>
 				dropdown
@@ -366,6 +369,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.dockerMode = value as DockerMode;
 						this.plugin.saveSettings();
+						this.markRestart();
 						this.display();
 					}),
 			);
@@ -373,8 +377,10 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		const isWsl = this.plugin.settings.dockerMode === "wsl";
 
 		const composeDesc = isWsl
-			? "Absolute WSL path to the directory containing docker-compose.yml. Requires restart."
-			: "Absolute path to the directory containing docker-compose.yml. Requires restart.";
+			? "Absolute WSL path to the directory containing docker-compose.yml." +
+				RESTART_CONTAINER_SUFFIX
+			: "Absolute path to the directory containing docker-compose.yml." +
+				RESTART_CONTAINER_SUFFIX;
 
 		const composeSetting = new Setting(el).setName("Docker Compose path").setDesc(composeDesc);
 
@@ -424,8 +430,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		if (isWsl) {
 			this.addPlainTextSetting(el, {
 				name: "WSL distribution",
-				desc: "The WSL distribution used for running Docker commands. Requires restart.",
+				desc: "The WSL distribution used for running Docker commands.",
 				key: "wslDistroName",
+				placeholder: "Ubuntu",
 				requiresRestart: true,
 			});
 		}
@@ -435,7 +442,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			desc:
 				"Folder inside the vault where the container can write — nested paths like " +
 				"@Inbox/agent-workspace are supported. The rest of the vault is mounted read-only. " +
-				"Created automatically on start. Requires restart.",
+				"Created automatically on start.",
 			key: "vaultWriteDir",
 			validator: isValidWriteDir,
 			placeholder: "agent-workspace",
@@ -446,7 +453,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			name: "Memory file name",
 			desc:
 				"Filename for the memory MCP server, stored in the vault's .oas/ directory " +
-				"(independent of the write directory). Requires restart.",
+				"(independent of the write directory).",
 			key: "memoryFileName",
 			validator: isValidMemoryFileName,
 			placeholder: "memory.json",
@@ -495,29 +502,40 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	private renderTerminal(el: HTMLElement): void {
 		this.addNumberSetting(el, {
 			name: "Port",
-			desc: "The host port mapped to ttyd inside the container (default: 7681). Requires restart.",
+			desc: "The host port mapped to ttyd inside the container (default: 7681).",
 			key: "ttydPort",
 			min: 1,
 			max: 65535,
 			requiresRestart: true,
 		});
 
-		const bindDesc =
-			this.plugin.settings.ttydBindAddress === "0.0.0.0"
-				? "Warning: 0.0.0.0 exposes ttyd to your network without authentication. " +
-					"Anyone on your network can access the terminal. Requires restart."
-				: "IP address ttyd binds to on the host. Default 127.0.0.1 (localhost only). " +
-					"Requires restart.";
-
-		this.addValidatedTextSetting(el, {
-			name: "Bind address",
-			desc: bindDesc,
-			key: "ttydBindAddress",
-			validator: isValidBindAddress,
-			placeholder: "127.0.0.1",
-			requiresRestart: true,
-			onChange: () => this.display(),
+		const ttydBindSetting = new Setting(el)
+			.setName("Bind address")
+			.setDesc(
+				"IP address ttyd binds to on the host. Default 127.0.0.1 (localhost only)." +
+					RESTART_CONTAINER_SUFFIX,
+			)
+			.addText((text) => {
+				text.setPlaceholder("127.0.0.1")
+					.setValue(this.plugin.settings.ttydBindAddress)
+					.onChange(async (value) => {
+						if (isValidBindAddress(value)) {
+							this.plugin.settings.ttydBindAddress = value;
+							this.plugin.saveSettings();
+							this.markRestart();
+							text.inputEl.removeClass("sandbox-input-error");
+							ttydBindWarning.style.display = value === "0.0.0.0" ? "" : "none";
+						} else {
+							text.inputEl.addClass("sandbox-input-error");
+						}
+					});
+			});
+		const ttydBindWarning = ttydBindSetting.descEl.createEl("div", {
+			cls: "sandbox-settings-field-warning",
+			text: "0.0.0.0 exposes ttyd to your network without authentication. Anyone on your network can access the terminal.",
 		});
+		ttydBindWarning.style.display =
+			this.plugin.settings.ttydBindAddress === "0.0.0.0" ? "" : "none";
 
 		new Setting(el).setName("Appearance").setHeading();
 
@@ -584,7 +602,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 
 		this.addNumberSetting(el, {
 			name: "MCP port",
-			desc: "Port for the MCP Streamable HTTP endpoint. Requires container restart for the new port to be passed in.",
+			desc: "Port for the MCP Streamable HTTP endpoint.",
 			key: "mcpPort",
 			min: 1,
 			max: 65535,
@@ -593,22 +611,34 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			onChange: () => void this.plugin.restartMcpIfRunning(),
 		});
 
-		const mcpBindDesc =
-			this.plugin.settings.mcpBindAddress === "0.0.0.0"
-				? "Warning: 0.0.0.0 exposes MCP to your network. Bearer-token auth is the only line of defense. Use this only if you need container access and cannot bind to the docker bridge gateway."
-				: "IP the MCP HTTP server binds to. Default 127.0.0.1 hides MCP from the network and from the container. To let the container reach MCP via host.docker.internal, set this to the docker bridge gateway IP (e.g. 172.17.0.1 on Linux native Docker) or 0.0.0.0. Requires MCP restart.";
-
-		this.addValidatedTextSetting(el, {
-			name: "MCP bind address",
-			desc: mcpBindDesc,
-			key: "mcpBindAddress",
-			validator: isValidBindAddress,
-			placeholder: "127.0.0.1",
-			onChange: () => {
-				void this.plugin.restartMcpIfRunning();
-				this.display();
-			},
+		const mcpBindSetting = new Setting(el)
+			.setName("MCP bind address")
+			.setDesc(
+				"IP the MCP HTTP server binds to. Default 127.0.0.1 hides MCP from the network and from the container. " +
+					"To let the container reach MCP via host.docker.internal, set this to the docker bridge gateway IP " +
+					"(e.g. 172.17.0.1 on Linux native Docker) or 0.0.0.0.",
+			)
+			.addText((text) => {
+				text.setPlaceholder("127.0.0.1")
+					.setValue(this.plugin.settings.mcpBindAddress)
+					.onChange(async (value) => {
+						if (isValidBindAddress(value)) {
+							this.plugin.settings.mcpBindAddress = value;
+							this.plugin.saveSettings();
+							void this.plugin.restartMcpIfRunning();
+							text.inputEl.removeClass("sandbox-input-error");
+							mcpBindWarning.style.display = value === "0.0.0.0" ? "" : "none";
+						} else {
+							text.inputEl.addClass("sandbox-input-error");
+						}
+					});
+			});
+		const mcpBindWarning = mcpBindSetting.descEl.createEl("div", {
+			cls: "sandbox-settings-field-warning",
+			text: "0.0.0.0 exposes MCP to your network. Bearer-token auth is the only line of defense.",
 		});
+		mcpBindWarning.style.display =
+			this.plugin.settings.mcpBindAddress === "0.0.0.0" ? "" : "none";
 
 		new Setting(el)
 			.setName("Auth token")
@@ -761,19 +791,19 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			name: "Memory limit",
 			desc:
 				"Maximum memory for the container (e.g. 4G, 8G, 16G). " +
-				"On WSL2, also check .wslconfig memory allocation. Requires restart.",
+				"On WSL2, also check .wslconfig memory allocation.",
 			key: "containerMemory",
 			validator: isValidMemory,
-			placeholder: "8G",
+			placeholder: "4G",
 			requiresRestart: true,
 		});
 
 		this.addValidatedTextSetting(el, {
 			name: "CPU limit",
-			desc: "Maximum CPU cores for the container. Requires restart.",
+			desc: "Maximum CPU cores for the container.",
 			key: "containerCpus",
 			validator: isValidCpus,
-			placeholder: "4",
+			placeholder: "2",
 			requiresRestart: true,
 		});
 
@@ -792,7 +822,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			desc:
 				"Comma-separated IPs or CIDRs allowed through the firewall. " +
 				"Use for local services like NAS, API servers, etc. " +
-				"The Docker gateway is always allowed. Requires restart.",
+				"The Docker gateway is always allowed.",
 			key: "allowedPrivateHosts",
 			validator: isValidPrivateHosts,
 			placeholder: "e.g. 192.168.1.100, 10.0.0.0/8",
@@ -804,7 +834,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			desc:
 				"Comma-separated domains to add to the firewall allowlist (e.g. api.atlassian.com, slack.com). " +
 				"Adds to — never overrides — the built-in baseline. For host-managed rules Claude cannot see, " +
-				"edit container/firewall-extras.txt instead. Requires restart.",
+				"edit container/firewall-extras.txt instead.",
 			key: "additionalFirewallDomains",
 			validator: isValidDomainList,
 			placeholder: "e.g. api.atlassian.com, slack.com",
@@ -840,7 +870,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			desc:
 				"Password for the narrow apt-get/apt sudo inside the container. " +
 				"Used by humans during interactive sessions to test-install tools. " +
-				"Matches the default in container/.env.example. Requires restart.",
+				"Matches the default in container/.env.example.",
 			key: "sudoPassword",
 			placeholder: "(use container/.env value)",
 			requiresRestart: true,
