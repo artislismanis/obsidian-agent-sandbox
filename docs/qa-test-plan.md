@@ -34,17 +34,22 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.1 First-enable settings tab render
 
-- **Setup:** Plugin freshly enabled (toggle off then on in Community Plugins).
-- **Steps:** Open Settings → Agent Sandbox. Visit every tab: General, Terminal, Advanced, MCP.
-- **Expected:** Each tab renders without console errors (Ctrl+Shift+I). Default values populated. "Requires restart" labels appear on: Vault write directory and Memory file name (General); ttyd Bind address (Terminal); MCP port and Additional firewall domains (MCP/Advanced); Sudo password, Memory limit, CPU limit (Advanced). Absent everywhere else.
-- **Notes:** P1. Open DevTools before clicking so you catch transient errors.
+- **Setup:** Plugin freshly enabled (toggle off then on in Community Plugins). DevTools open (Ctrl+Shift+I) before clicking — catch transient errors.
+- **Steps:** Open Settings → Agent Sandbox. Visit all four tabs in order: **General, Terminal, MCP, Advanced**. For each, verify fields appear in the order listed below with the stated defaults and "Requires container restart." labels where noted.
+- **Expected:**
+  - **General** (top to bottom): Docker mode = `WSL (Windows)` *(Requires container restart.)*; Docker Compose path = empty *(Requires container restart.)*; WSL distribution = empty with placeholder `Ubuntu` *(Requires container restart., visible only when Docker mode = WSL)*; Vault write directory = `agent-workspace` *(Requires container restart.)*; Memory file name = `memory.json` *(Requires container restart.)*; Auto-start on load = off *(no label)*; Auto-stop on exit = off *(no label)*; Notify on agent output = `New files only (default)` *(no label)*.
+  - **Terminal** (top to bottom): Port = `7681` *(Requires container restart.)*; Bind address = `127.0.0.1` *(Requires container restart.)*; Terminal theme = `Follow Obsidian theme` *(no label)*; Terminal font = empty *(no label)*; Font size = `14` *(no label)*; Scrollback = `10000` *(no label)*; Auto-copy on selection = on *(no label)*.
+  - **MCP** (top to bottom): Enable MCP server = on *(no label)*; MCP port = `28080` *(Requires container restart.)*; MCP bind address = `127.0.0.1` *(no label — hot-swap)*; Auth token = auto-generated value *(no label)*; Vault-wide writes = `None` *(no label)*; Navigate / Manage / Extensions tiers = off *(no label each)*; Allowed paths = empty *(no label)*; Blocked paths = empty *(no label)*; Tool timeout = `10` *(no label)*; Review timeout = `180` *(no label)*.
+  - **Advanced** (top to bottom): Log level = `Warn` *(no label)*; Memory limit = `4G` *(Requires container restart.)*; CPU limit = `2` *(Requires container restart.)*; Auto-enable firewall on start = **on** *(no label)*; Allowed private hosts = empty *(Requires container restart.)*; Additional firewall domains = empty *(Requires container restart.)*; Effective allowlist (Refresh button, no input) *(no label)*; Sudo password = empty *(Requires container restart.)*.
+  - No red console errors on any tab. A `[Violation] Forced reflow …` yellow warning on plugin enable/disable is known and benign.
+- **Notes:** P1. This inventory is the authoritative list — field order, defaults, and label presence all matter. Update this scenario when settings change.
 
-### 1.2 Restart-required indicator accuracy
+### 1.2 Restart-required modal on settings close
 
-- **Setup:** Container running once, then stopped (we just want the plugin to know its last-applied config).
-- **Steps:** Change a "Requires restart" setting (e.g. General → Vault write directory). Observe inline indicator near the setting and the status bar tooltip.
-- **Expected:** A pending-restart hint appears near the changed control; status bar tooltip mentions "restart required" (or analogous wording). Reverting the value clears the hint.
-- **Notes:** P1. Verify hint disappears on revert, not just on restart.
+- **Setup:** Container running.
+- **Steps:** Open Settings → Agent Sandbox. Change any field flagged in 1.1 as "Requires container restart." (e.g. General → Vault write directory). Close the settings tab (click another settings section or close the settings modal entirely).
+- **Expected:** While the settings tab is open, no inline indicator or status bar change appears. On close, a **Restart Container?** modal appears: message reads "You changed settings that require a container restart. Restart now? This will stop all active terminal sessions." Two buttons: **Restart** (restarts container and dismisses) and **Later** (saves settings without restarting and dismisses). Both dismiss the modal cleanly with no console errors. The modal does NOT appear if the container is not running when settings close.
+- **Notes:** P1. Known limitation: editing a restart-required field then reverting the value still triggers the modal (no diff tracking). Field list is single-sourced in 1.1.
 
 ### 1.3 MCP token regenerate
 
@@ -56,9 +61,9 @@ This stage exercises the settings UI, error/fallback paths before any container 
 ### 1.4 Bind address security warning toggle
 
 - **Setup:** Two bind-address fields: **Terminal → Bind address** (ttyd) and **MCP → MCP bind address**. Exercise both.
-- **Steps:** For each, change `127.0.0.1` → `0.0.0.0`, then to a non-loopback IP, then back.
-- **Expected:** ttyd field shows "0.0.0.0 exposes ttyd to your network without authentication"; MCP field shows "0.0.0.0 exposes MCP to your network. Bearer-token auth is the only line of defense". Banner disappears on revert to `127.0.0.1`. Each warning shows on its own field only.
-- **Notes:** P0. Verifies the human-visible message reads correctly and doesn't get clipped.
+- **Steps:** For each, change `127.0.0.1` → `0.0.0.0`, then to a non-loopback IP, then back to `127.0.0.1`. Keep the input focused while typing.
+- **Expected:** The field's normal description text remains visible at all times. When value is `0.0.0.0`, a distinct amber `⚠ WARNING:` banner appears *below* the description — ttyd field: "0.0.0.0 exposes ttyd to your network without authentication. Anyone on your network can access the terminal."; MCP field: "0.0.0.0 exposes MCP to your network. Bearer-token auth is the only line of defense." On revert to `127.0.0.1` (or any other non-`0.0.0.0` value) the banner disappears; the description is unchanged. Input focus is preserved across keystrokes (no full-tab re-render). Each warning shows on its own field only.
+- **Notes:** P0. Verify the banner is visually distinct (amber left-border) and the base description is still readable alongside it.
 
 ### 1.5 Start with Docker daemon stopped
 
