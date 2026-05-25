@@ -31,6 +31,18 @@ import { resetTemplaterSuppression } from "./templater-adapter";
 
 const TOOLTIP_STOPPED = "Container is not running\nClick for options";
 const HEALTH_POLL_INTERVAL = 30_000;
+
+function formatUptime(startedAt: string): string {
+	const elapsed = Date.now() - new Date(startedAt).getTime();
+	if (isNaN(elapsed) || elapsed < 0) return "unknown";
+	const totalSecs = Math.floor(elapsed / 1000);
+	const days = Math.floor(totalSecs / 86400);
+	const hours = Math.floor((totalSecs % 86400) / 3600);
+	const mins = Math.floor((totalSecs % 3600) / 60);
+	if (days > 0) return `${days}d ${hours}h ${mins}m`;
+	if (hours > 0) return `${hours}h ${mins}m`;
+	return `${mins}m`;
+}
 // Long safety-net poll — firewall can be toggled out-of-band (user runs
 // init-firewall.sh in the container) and event-driven refreshes can miss it.
 const FIREWALL_REFRESH_INTERVAL = 5 * 60_000;
@@ -755,6 +767,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			} else if (!enabled && this.mcpServer?.isRunning()) {
 				await this.stopMcpServer();
 			}
+			this.updateTooltip();
 		});
 	}
 
@@ -847,6 +860,7 @@ export default class AgentSandboxPlugin extends Plugin {
 					new Notice(`MCP server listening on port ${this.settings.mcpPort}.`);
 				}
 			}
+			this.updateTooltip();
 		});
 	}
 
@@ -887,6 +901,15 @@ export default class AgentSandboxPlugin extends Plugin {
 				.setIcon("shield")
 				.setDisabled(busy || !running)
 				.onClick(this.safeFire("Toggle firewall", () => this.toggleFirewall())),
+		);
+
+		const mcpRunning = this.mcpServer?.isRunning() ?? false;
+		menu.addItem((item) =>
+			item
+				.setTitle(mcpRunning ? "Disable MCP Server" : "Enable MCP Server")
+				.setIcon("server")
+				.setDisabled(busy)
+				.onClick(this.safeFire("Toggle MCP server", () => this.toggleMcpServer())),
 		);
 
 		menu.addSeparator();
@@ -1142,8 +1165,31 @@ export default class AgentSandboxPlugin extends Plugin {
 			const output = await this.docker.status();
 			const isRunning = DockerManager.parseIsRunning(output);
 			await this.syncStatusBar(isRunning);
-			new Notice(isRunning ? "Container is running" : "Container is stopped");
 			this.startHealthPoll();
+
+			if (!isRunning) {
+				new Notice("Sandbox: Stopped", 5000);
+				return;
+			}
+
+			const [info, containerId] = await Promise.all([
+				this.docker.getContainerInfo(),
+				this.docker.getContainerId(),
+			]);
+
+			const mcpRunning = this.mcpServer?.isRunning() ?? false;
+			const fwState = this.firewallBar.getState();
+			const fwLine =
+				fwState === "enabled" ? "on" : fwState === "disabled" ? "off" : "unknown";
+
+			const lines = ["Sandbox: Running"];
+			if (containerId) lines.push(`ID: ${containerId.slice(0, 12)}`);
+			if (info?.image) lines.push(`Image: ${info.image}`);
+			if (info?.startedAt) lines.push(`Up: ${formatUptime(info.startedAt)}`);
+			lines.push(`MCP: ${mcpRunning ? `on (port ${this.settings.mcpPort})` : "off"}`);
+			lines.push(`Firewall: ${fwLine}`);
+
+			new Notice(lines.join("\n"), 8000);
 		} catch (error: unknown) {
 			this.statusBar.setState("error");
 			new Notice(`Failed to get status: ${errMsg(error)}`);
