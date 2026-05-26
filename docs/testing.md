@@ -35,7 +35,12 @@ Exit code `0` means the suite passed. Any non-zero code = one or more failures. 
 ### E2E tests (Layer 3)
 
 - **Obsidian desktop** — `wdio-obsidian-service` downloads it automatically the first time, cached in `plugin/.obsidian-cache/`
-- **A display server** — locally any X/Wayland session works; in CI or SSH use `npm run test:e2e:headless` which wraps the runner in `xvfb-run`
+- **A display server** — locally any X/Wayland session works; in CI or SSH use `npm run test:e2e:headless` which wraps the runner in `xvfb-run`:
+  ```bash
+  # Ubuntu / Debian / WSL
+  sudo apt install xvfb
+  # macOS — not needed, Obsidian uses the native display
+  ```
 - **Built plugin artifacts** — run `npm run build` before `npm run test:e2e`; `dist/main.js`, `dist/manifest.json`, `dist/styles.css` must exist before the suite launches Obsidian
 
 On first run, wdio downloads Obsidian from GitHub releases into `plugin/.obsidian-cache/`. Network errors are transient; retry.
