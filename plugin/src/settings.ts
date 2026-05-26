@@ -131,7 +131,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	// bridge gateway). This default keeps the vault tool surface off the LAN.
 	mcpBindAddress: "127.0.0.1",
 	mcpToken: "",
-	mcpVaultWrites: "none",
+	mcpVaultWrites: "scoped",
 	mcpTierNavigate: false,
 	mcpTierManage: false,
 	mcpTierExtensions: false,
@@ -673,7 +673,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			)
 			.addDropdown((dd) =>
 				dd
-					.addOption("none", "None")
+					.addOption("scoped", "None")
 					.addOption("reviewed", "Reviewed")
 					.addOption("full", "Full (no review)")
 					.setValue(this.plugin.settings.mcpVaultWrites)

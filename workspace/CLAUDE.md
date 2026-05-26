@@ -11,7 +11,7 @@ This is Claude's configurable workspace inside the Agent Sandbox container. Ever
 | `.claude/skills/` | Project skills shipped with the workspace (see `ls .claude/skills/` for the current set). |
 | `.claude/agents/` | Sub-agents directory — *not present by default*; create this folder + files in it if you want repo-managed sub-agents. |
 | `.claude/commands/` | Slash-command directory — *not present by default*; create this folder + files in it for repo-managed commands. |
-| `.claude/hooks/` | Claude Code lifecycle hook scripts — currently: `notify-status.sh` (reports working/idle/awaiting_input to the Obsidian plugin via MCP) |
+| `.claude/hooks/` | Claude Code lifecycle hook scripts — `notify-status.sh` (reports working/idle/awaiting_input to the Obsidian plugin via MCP) |
 | `.claude/scripts/` | Statusline and other helper scripts referenced from `.claude/settings.json` |
 | `.claude/prompts/` | "Analyze in Sandbox" prompt-template library (`summarize`, `extract-todos`, `critique`, `explain`) |
 | `.mcp.json` | MCP server configuration (memory, etc.) |
@@ -22,7 +22,7 @@ This is Claude's configurable workspace inside the Agent Sandbox container. Ever
 
 ## Extensibility tiers — inline reference
 
-Three places configuration and capabilities can live. Put new things in the right tier:
+Three places configuration and capabilities can live. Full rationale: `docs/explanation/architecture.md`. Put new things in the right tier:
 
 1. **Tier 1 — repo-managed (this folder, `workspace/`)**
    Capabilities shared by everyone using the sandbox. Lives in git, flows back via PR. Examples: project skills you want teammates to inherit, MCP server declarations, permission defaults, Obsidian-vault-specific methodology.

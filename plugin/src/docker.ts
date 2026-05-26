@@ -332,7 +332,7 @@ export class DockerManager {
 			invalidMsg?: string;
 		}[] = [
 			{
-				key: "OAS_VAULT_PATH",
+				key: "OAS_VAULT_HOST_PATH",
 				value: vaultPath
 					? dockerMode === "wsl"
 						? windowsToWslPath(vaultPath)
@@ -419,7 +419,7 @@ export class DockerManager {
 		for (const { key, value, validate, invalidMsg } of envSpec) {
 			const v = value === undefined ? "" : String(value);
 			// Validate before the empty-skip — a validator that rejects empty
-			// (e.g. OAS_VAULT_PATH) must surface as an error instead of
+			// (e.g. OAS_VAULT_HOST_PATH) must surface as an error instead of
 			// silently falling through to compose's `${VAR:-fallback}`.
 			if (validate && !validate(v)) throw new Error(invalidMsg!);
 			if (v === "") continue;
@@ -427,7 +427,7 @@ export class DockerManager {
 		}
 
 		// Host-side bind-mount containment check. The compose YAML source is
-		// `${OAS_VAULT_PATH}/${OAS_VAULT_WRITE_DIR}` — Docker resolves it on the
+		// `${OAS_VAULT_HOST_PATH}/${OAS_VAULT_WRITE_DIR}` — Docker resolves it on the
 		// host before the container starts, so the entrypoint's guard runs too
 		// late to prevent escape. Verify here while vaultPath is the raw native
 		// path (before WSL conversion) so path.resolve uses the right separator.
@@ -566,13 +566,13 @@ export class DockerManager {
 		const { dockerMode, composePath, wslDistro } = settings;
 		if (!composePath) return;
 
-		// `docker compose down` doesn't need OAS_VAULT_PATH/OAS_VAULT_WRITE_DIR
+		// `docker compose down` doesn't need OAS_VAULT_HOST_PATH/OAS_VAULT_WRITE_DIR
 		// to find the project (the `name: oas` field pins it), but compose
 		// still substitutes ${VAR} in the YAML and warns to stderr when unset.
 		// Providing the values keeps behaviour symmetric with run().
 		const downEnv: Record<string, string> = {};
 		if (settings.vaultPath) {
-			downEnv.OAS_VAULT_PATH =
+			downEnv.OAS_VAULT_HOST_PATH =
 				dockerMode === "wsl" ? windowsToWslPath(settings.vaultPath) : settings.vaultPath;
 		}
 		if (settings.writeDir) downEnv.OAS_VAULT_WRITE_DIR = settings.writeDir;

@@ -14,7 +14,7 @@ This is enforced by what docker-compose mounts, not by convention. Breaking it r
 
 ## Why MCP over a file-based protocol for activity signalling?
 
-File-based signalling (agent writes state to a well-known path; plugin watches) was the first design. MCP won because:
+MCP won over file-based signalling (agent writes state to a well-known path; plugin watches) because:
 
 - **Standardized.** Any MCP-capable agent can discover the tool via `tools/list` — no ad-hoc path convention.
 - **Reuses infrastructure.** Auth, rate limiting, audit log already exist for vault tools. No new file watcher, no cross-platform `fs.watch` quirks.
@@ -33,15 +33,13 @@ Additive union; no precedence; `--list-sources` tags every entry with its origin
 
 ## Why no separate permission toggle for read / writeScoped?
 
-Earlier versions exposed every MCP tier (read, writeScoped, agent, navigate, manage, extensions, writeReviewed, writeVault) as a separate settings toggle. This misled users: "turning off `read` denies Claude access to vault content", which is false — Claude can always read the vault via filesystem. What the toggles actually controlled was whether the Obsidian-metadata-aware *tools* were registered, which is an ergonomics switch, not a permission gate.
+Every MCP tier (read, writeScoped, agent, navigate, manage, extensions, writeReviewed, writeVault) as a separate settings toggle would mislead users: "turning off `read` denies Claude access to vault content" — false, Claude can always read the vault via filesystem. What the toggles actually control is whether the Obsidian-metadata-aware *tools* are registered, which is an ergonomics switch, not a permission gate.
 
-The split: `read` and `writeScoped` (capability tiers — always on) vs the five escalation tiers (real permissions — user toggles). This keeps the mental model honest: **toggles exist for capabilities that go beyond filesystem access**.
+The split: `read` and `writeScoped` (capability tiers — always on) vs the five escalation tiers (real permissions — user toggles). **Toggles exist for capabilities that go beyond filesystem access.**
 
 ## Why structural review-gate instead of per-handler calls?
 
-Earlier: each write handler that cared called `requireReview`. Missed calls silently bypassed review — and we had one, caught during `/simplify`: `vault_append_reviewed` and five others were registered under the `writeReviewed` tier but never actually reviewed.
-
-The fix: every write handler now routes through `runWrite`, which calls `requireReview` unconditionally. Forgetting review on a new handler is now a compile-time error (missing field) or a failing test — not a silent bypass.
+Every write handler routes through `runWrite`, which calls `requireReview` unconditionally. Forgetting review on a new handler is a compile-time error (missing field) or a failing test — not a silent bypass.
 
 ## Why file-based audit log on top of the in-memory ring buffer?
 

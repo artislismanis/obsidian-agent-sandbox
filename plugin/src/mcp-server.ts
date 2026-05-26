@@ -1,5 +1,5 @@
 import { createServer } from "http";
-import type { Server, IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "http";
+import type { Server, IncomingMessage, ServerResponse } from "http";
 import type { App } from "obsidian";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -18,6 +18,12 @@ import { buildTools } from "./mcp-tools";
 import { VaultCache } from "./mcp-cache";
 import { logger, errMsg } from "./logger";
 import { ALWAYS_ON_TIERS, GATED_TIERS } from "./permission-tiers";
+import { RateLimiter } from "./mcp-rate-limiter";
+import { AuditLog, createFileAuditSink } from "./mcp-audit";
+import type { AuditEntry } from "./mcp-audit";
+export type { AuditEntry } from "./mcp-audit";
+export { startSseKeepalive } from "./mcp-sse";
+import { startSseKeepalive } from "./mcp-sse";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const manifest = require("../manifest.json") as { version: string };
 
@@ -58,253 +64,12 @@ export interface McpServerConfig {
 }
 
 const SESSION_TIMEOUT_MS = 10 * 60_000;
-// Interval for SSE keepalive comments sent while a reviewed-write modal awaits
-// user approval. Must be well under the proxy's OAS_MCP_TIMEOUT_MS (default 15 s)
-// to prevent socket inactivity from triggering a proxy timeout.
-const KEEPALIVE_INTERVAL_MS = 5_000;
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_RESPONSE_BYTES = 512_000;
 const MAX_RESPONSE_TOTAL_BYTES = 1024 * 1024;
-const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT_READ = 60;
 const RATE_LIMIT_WRITE = 20;
 const AUDIT_MAX_ENTRIES = 200;
-
-// ── Rate limiter ─────────────────────────────────────
-
-interface RateBucket {
-	timestamps: number[];
-}
-
-class RateLimiter {
-	private buckets = new Map<string, RateBucket>();
-	private defaultRead: number;
-	private defaultWrite: number;
-
-	constructor(defaultRead: number, defaultWrite: number) {
-		this.defaultRead = defaultRead;
-		this.defaultWrite = defaultWrite;
-	}
-
-	check(toolName: string, tier: PermissionTier): boolean {
-		const limit = tier === "read" || tier === "navigate" ? this.defaultRead : this.defaultWrite;
-		const now = Date.now();
-		let bucket = this.buckets.get(toolName);
-		if (!bucket) {
-			bucket = { timestamps: [] };
-			this.buckets.set(toolName, bucket);
-		}
-		while (bucket.timestamps.length > 0 && now - bucket.timestamps[0] >= RATE_WINDOW_MS) {
-			bucket.timestamps.shift();
-		}
-		if (bucket.timestamps.length >= limit) return false;
-		bucket.timestamps.push(now);
-		return true;
-	}
-}
-
-// ── Audit log ────────────────────────────────────────
-
-export interface AuditEntry {
-	timestamp: number;
-	tool: string;
-	success: boolean;
-	durationMs: number;
-}
-
-class AuditLog {
-	private entries: AuditEntry[] = [];
-	private maxEntries: number;
-	private sink: ((entry: AuditEntry) => void | Promise<void>) | null = null;
-	// Serialise sink invocations so file-rotation (stat → remove → rename →
-	// append) can't interleave with concurrent record() calls. Two
-	// simultaneous tool invocations near the rotation threshold would race
-	// inside createFileAuditSink — both reading the pre-rotation byte count,
-	// both deciding to rotate, the second rename clobbering the first archive.
-	private sinkChain: Promise<void> = Promise.resolve();
-
-	constructor(maxEntries: number) {
-		this.maxEntries = maxEntries;
-	}
-
-	setSink(sink: ((entry: AuditEntry) => void | Promise<void>) | null): void {
-		this.sink = sink;
-	}
-
-	record(entry: AuditEntry): void {
-		this.entries.push(entry);
-		if (this.entries.length > this.maxEntries) {
-			this.entries = this.entries.slice(-this.maxEntries);
-		}
-		const sink = this.sink;
-		if (!sink) return;
-		// Serialise writes via a per-sink promise chain so rotation (stat →
-		// remove → rename → append) can't interleave with another record().
-		// Swallow rejections at every step so a poisoned link can't break the
-		// chain and sink failures never propagate into tool execution:
-		// - `.catch(() => {})` neutralises any prior-link rejection before
-		//   the next sink call — otherwise `then`'s onFulfilled is skipped
-		//   and the recursive rejection loops forever.
-		// - Inner try/catch + `.catch` handles both sync throws and async
-		//   rejections from this iteration's sink call.
-		this.sinkChain = this.sinkChain
-			.catch(() => {})
-			.then(() => {
-				try {
-					const maybe = sink(entry);
-					return maybe instanceof Promise
-						? maybe.catch((e) => logger.debug("MCP", "Audit sink failed", e))
-						: undefined;
-				} catch (e) {
-					logger.debug("MCP", "Audit sink failed", e);
-				}
-			});
-	}
-
-	getEntries(): readonly AuditEntry[] {
-		return this.entries;
-	}
-}
-
-const AUDIT_FILE = ".oas/mcp-audit.jsonl";
-const AUDIT_FILE_MAX_BYTES = 1_024_000;
-const AUDIT_FILE_ARCHIVE = ".oas/mcp-audit.1.jsonl";
-
-// Rate-limited warn helper: a persistent audit failure (disk full, permission
-// denied) reports once per minute instead of flooding the console on every
-// tool call. The audit log is a security feature; sink failure must surface
-// at warn level — debug-level logs are hidden behind the default `info`
-// minimum and operators only see them after flipping log levels.
-let lastAuditWarnAt = 0;
-function warnAuditFailureRateLimited(err: unknown): void {
-	const now = Date.now();
-	if (now - lastAuditWarnAt < 60_000) return;
-	lastAuditWarnAt = now;
-	logger.warn("MCP", "Audit append failed (rate-limited; further failures suppressed)", err);
-}
-
-function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
-	const adapter = app.vault.adapter;
-	let ensuredDir = false;
-	// Track running byte count to stat (and rotate) only when the threshold
-	// is suspected — otherwise the sink does 3 vault-adapter calls per tool
-	// invocation.
-	let estimatedBytes = -1;
-	return async (entry) => {
-		if (!ensuredDir) {
-			try {
-				await adapter.mkdir(".oas");
-				ensuredDir = true;
-			} catch (err) {
-				// Directory-already-exists is fine — confirm via stat.
-				const stat = await adapter.stat(".oas").catch(() => null);
-				if (stat?.type === "folder") {
-					ensuredDir = true;
-				} else {
-					// Real failure (permissions, etc.) — leave ensuredDir false
-					// so the next call retries instead of dropping appends.
-					throw err;
-				}
-			}
-		}
-		try {
-			const line = JSON.stringify(entry) + "\n";
-			if (estimatedBytes < 0) {
-				const stat = await adapter.stat(AUDIT_FILE).catch(() => null);
-				estimatedBytes = stat?.size ?? 0;
-			}
-			if (estimatedBytes > AUDIT_FILE_MAX_BYTES) {
-				try {
-					await adapter.remove(AUDIT_FILE_ARCHIVE).catch(() => undefined);
-					await adapter.rename(AUDIT_FILE, AUDIT_FILE_ARCHIVE);
-					// Rotation succeeded: live file is empty, so reset to 0
-					// rather than -1 (sentinel for re-stat).
-					estimatedBytes = 0;
-				} catch {
-					// Rename failed — re-stat next iteration to pick up the real
-					// size (the cap-check will retry rotation then).
-					estimatedBytes = -1;
-				}
-			}
-			await adapter.append(AUDIT_FILE, line);
-			// Only accumulate when the counter holds a real value. If the
-			// re-stat sentinel (-1) is active (rotation failed last round),
-			// `+=N` would raise it positive, the next `< 0` check would skip
-			// the re-stat, and the file would grow unbounded.
-			if (estimatedBytes >= 0) estimatedBytes += Buffer.byteLength(line);
-		} catch (e) {
-			// Warn-level so disk-full / permission-denied surfaces at the
-			// default log threshold — the audit log is a security feature.
-			// Rate-limited to one entry per minute. Never re-throw — audit
-			// writes must not block tool execution.
-			warnAuditFailureRateLimited(e);
-		}
-	};
-}
-
-// ── SSE keepalive ────────────────────────────────────
-
-/**
- * Intercepts `res.writeHead` to detect when the SDK opens an SSE stream
- * (Content-Type: text/event-stream), then writes `: keepalive\n\n` comments
- * at KEEPALIVE_INTERVAL_MS. SSE comments are ignored by clients but constitute
- * socket activity, preventing the proxy's inactivity timeout from firing during
- * long modal waits. Non-SSE responses are left untouched.
- * Returns a cleanup function that stops the interval and restores writeHead.
- */
-export function startSseKeepalive(res: ServerResponse): () => void {
-	let timer: ReturnType<typeof setInterval> | undefined;
-
-	const stop = (): void => {
-		if (timer !== undefined) {
-			clearInterval(timer);
-			timer = undefined;
-		}
-	};
-
-	const origWriteHead = res.writeHead.bind(res) as typeof res.writeHead;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	(res as any).writeHead = function (...args: Parameters<typeof res.writeHead>) {
-		const result = (
-			origWriteHead as (...a: Parameters<typeof res.writeHead>) => ServerResponse
-		)(...args);
-		// Only start keepalives for SSE responses. Non-SSE JSON responses complete
-		// in milliseconds, but the guard prevents accidental corruption if any
-		// non-SSE path ever stalls beyond KEEPALIVE_INTERVAL_MS.
-		const hdrs = (args[args.length - 1] ?? {}) as OutgoingHttpHeaders;
-		const ctHdr = hdrs["Content-Type"] ?? hdrs["content-type"] ?? res.getHeader("content-type");
-		const isSse = String(ctHdr ?? "")
-			.toLowerCase()
-			.startsWith("text/event-stream");
-		if (!isSse) return result;
-		if (timer === undefined && !res.writableEnded) {
-			timer = setInterval(() => {
-				if (res.writableEnded || res.destroyed) {
-					stop();
-					return;
-				}
-				try {
-					res.write(": keepalive\n\n");
-				} catch {
-					stop();
-				}
-			}, KEEPALIVE_INTERVAL_MS);
-		}
-		return result;
-	};
-
-	const onDone = (): void => stop();
-	res.on("finish", onDone);
-	res.on("close", onDone);
-
-	return () => {
-		stop();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		(res as any).writeHead = origWriteHead;
-		res.off("finish", onDone);
-		res.off("close", onDone);
-	};
-}
 
 // ── MCP server ───────────────────────────────────────
 

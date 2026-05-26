@@ -2003,7 +2003,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				if (newPath !== f.path && app.vault.getFileByPath(newPath))
 					return error(`Destination already exists: ${newPath}`);
 				// Gate the manage op through the vault-write boundary. Without
-				// this, `manage` tier with `mcpVaultWrites: "none"` could rename
+				// this, `manage` tier with `mcpVaultWrites: "scoped"` could rename
 				// ANY vault file — the runWrite call below only checks `review`,
 				// and `reviewFn` is undefined when no vault-wide write mode is
 				// on. gateVaultWrite enforces writeDir / writeVault / writeReviewed
@@ -2110,7 +2110,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				if (!isVaultPathSafe(app, target.path)) return error("Path not found.");
 				const isFolder = "children" in target;
 				// gateVaultWrite enforces writeDir/writeReviewed/writeVault.
-				// Without it, `manage` tier with `mcpVaultWrites: "none"` would
+				// Without it, `manage` tier with `mcpVaultWrites: "scoped"` would
 				// let any agent trash any file or folder.
 				return gateVaultWrite({
 					destPath: target.path,
@@ -2246,7 +2246,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// way vault_modify does: writeVault → apply; writeReviewed →
 				// batch-review modal; otherwise reject if any target sits
 				// outside. Without this gate, `manage` users with
-				// `mcpVaultWrites: "none"` could mutate frontmatter anywhere
+				// `mcpVaultWrites: "scoped"` could mutate frontmatter anywhere
 				// in the vault via a search query.
 				const writeDir = getWriteDir();
 				const outOfScope = matched.filter((f) => !isPathWithinDir(f.path, writeDir));

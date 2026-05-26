@@ -2,14 +2,8 @@ import type { TFile, WorkspaceLeaf } from "obsidian";
 import { Menu, Notice, Plugin, debounce } from "obsidian";
 import { getVaultBasePath } from "./obsidian-internals";
 import { confirmModal, inputModal } from "./modals";
-import { BatchReviewModal, DiffReviewModal } from "./diff-review-modal";
 import { AnalyzeManager } from "./analyze";
-import {
-	type AgentSandboxSettings,
-	DEFAULT_SETTINGS,
-	AgentSandboxSettingTab,
-	enabledTiersFromSettings,
-} from "./settings";
+import { type AgentSandboxSettings, DEFAULT_SETTINGS, AgentSandboxSettingTab } from "./settings";
 import { DockerManager } from "./docker";
 import type { ContainerState } from "./status-bar";
 import { FirewallStatusBar, StatusBarManager } from "./status-bar";
@@ -20,11 +14,11 @@ import {
 	getTerminalConnectionLog,
 	resetTerminalConnectionLog,
 } from "./terminal-view";
-import { isValidPathPrefixList, isValidWriteDir, splitCsv } from "./validation";
+import { isValidWriteDir } from "./validation";
 import { pollUntilReady, resolveTtydBrowserUrl } from "./ttyd-client";
 import { setLogLevel, logger, errMsg } from "./logger";
-import { ObsidianMcpServer, generateToken } from "./mcp-server";
-import { reviewsRequired } from "./permission-tiers";
+import { generateToken } from "./mcp-server";
+import { McpLifecycle } from "./mcp-lifecycle";
 import { ActivityUi, AgentOutputNotifier } from "./activity";
 import { showSessionCleanup, showSessionPicker } from "./session-ui";
 import { resetTemplaterSuppression } from "./templater-adapter";
@@ -49,7 +43,7 @@ export default class AgentSandboxPlugin extends Plugin {
 	private healthPollId: number | null = null;
 	private firewallPollId: number | null = null;
 	private lastFirewallRefreshAt = 0;
-	private mcpServer: ObsidianMcpServer | null = null;
+	private mcpLifecycle!: McpLifecycle;
 	private layoutReadyHandled = false;
 	private lastKnownContainerId: string = "";
 	private activityUi!: ActivityUi;
@@ -115,8 +109,14 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.statusBar.setDetails(TOOLTIP_STOPPED);
 		this.registerDomEvent(statusBarEl, "click", (evt) => void this.showStatusMenu(evt));
 
+		this.mcpLifecycle = new McpLifecycle(this.app, () => this.settings, {
+			saveSettings: () => this.saveSettings(),
+			updateTooltip: () => this.updateTooltip(),
+			onActivity: (update) => this.activityUi.route(update),
+			clearActivity: () => this.activityUi.clear(),
+		});
 		this.activityUi = new ActivityUi(this.app, this.statusBar, () =>
-			this.mcpServer?.getActivity(),
+			this.mcpLifecycle.getActivity(),
 		);
 		this.agentOutput = new AgentOutputNotifier(
 			() => this.settings.agentOutputNotify,
@@ -253,7 +253,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.addCommand({
 			id: "sandbox-toggle-mcp",
 			name: "Sandbox: Toggle MCP Server",
-			callback: this.safeFire("Toggle MCP server", () => this.toggleMcpServer()),
+			callback: this.safeFire("Toggle MCP server", () => this.mcpLifecycle.toggle()),
 		});
 
 		this.addCommand({
@@ -337,11 +337,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		);
 
 		if (this.settings.mcpEnabled) {
-			// Route through the lifecycle queue so a fast settings-tab toggle
-			// fired during onload can't race the initial start. Bypassing the
-			// queue leaves a window where a second start's commit can race
-			// the first start's failure-cleanup branch.
-			void this.queueMcpOp(() => this.startMcpServer());
+			void this.mcpLifecycle.applyEnabled(true);
 		}
 
 		this.registerEvent(
@@ -403,16 +399,10 @@ export default class AgentSandboxPlugin extends Plugin {
 		// 4. Detach terminal leaves last (TerminalView.onClose may log a
 		//    final activity event before the MCP server is gone).
 		// The 2s race inside mcpServer.stop() bounds worst-case wait.
-		// Drain any queued lifecycle op first so a toggle/restart enqueued
-		// just before unload can't construct a fresh server after stop()
-		// returns. queueMcpOp's tail catches both success and failure paths,
-		// so awaiting once flushes whatever is pending without throwing.
-		await this.mcpQueue.catch((e) =>
-			logger.warn("Plugin", "Pending MCP queue op rejected during unload", e),
-		);
-		await this.mcpServer
-			?.stop()
-			.catch((e) => logger.warn("Plugin", "MCP stop during unload failed", e));
+		// Drain queued ops and stop server — shutdown() flushes the queue first
+		// so a toggle/restart enqueued just before unload can't construct a
+		// fresh server after stop() returns.
+		await this.mcpLifecycle?.shutdown();
 		this.agentOutput?.dispose();
 		// ActivityUi holds a setInterval for the stale-rolling tick — clear()
 		// drops it. Idempotent.
@@ -436,15 +426,28 @@ export default class AgentSandboxPlugin extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		let needsSave = false;
+		// One-shot migration: "none" was renamed to "scoped" to match the tier vocabulary.
+		if ((this.settings.mcpVaultWrites as string) === "none") {
+			this.settings.mcpVaultWrites = "scoped";
+			needsSave = true;
+		}
 		if (!this.settings.mcpToken) {
 			this.settings.mcpToken = generateToken();
+			needsSave = true;
+		}
+		if (needsSave) {
 			// Guard the save so a disk/permission failure on first install
 			// doesn't abort onload — the unhandled reject would make the
 			// plugin appear to "not load" with no visible error.
 			try {
 				await this.saveData(this.settings);
 			} catch (e) {
-				logger.error("Plugin", "Could not persist initial MCP token; using ephemeral", e);
+				logger.error(
+					"Plugin",
+					"Could not persist settings migration; changes may not persist",
+					e,
+				);
 				new Notice(
 					"Could not save plugin settings; MCP token will not persist across restarts.",
 				);
@@ -725,127 +728,13 @@ export default class AgentSandboxPlugin extends Plugin {
 
 	// ── MCP server ────────────────────────────────────────
 
-	// Serialise MCP lifecycle ops so a rapid toggle/restart sequence can't
-	// leave a dangling server (start firing while a prior stop is still
-	// shutting down, or a restart racing against a toggle).
-	private mcpQueue: Promise<void> = Promise.resolve();
-	private async queueMcpOp(op: () => Promise<void>): Promise<void> {
-		const next = this.mcpQueue.then(op, op);
-		this.mcpQueue = next;
-		return next;
+	// Shims for settings.ts — it calls these on the plugin instance.
+	async applyMcpEnabled(enabled: boolean): Promise<void> {
+		return this.mcpLifecycle.applyEnabled(enabled);
 	}
 
 	async restartMcpIfRunning(): Promise<void> {
-		await this.queueMcpOp(async () => {
-			if (!this.mcpServer?.isRunning()) return;
-			await this.stopMcpServer();
-			await this.startMcpServer();
-		});
-	}
-
-	/** Apply a new mcpEnabled value to the running server (start or stop). */
-	async applyMcpEnabled(enabled: boolean): Promise<void> {
-		await this.queueMcpOp(async () => {
-			if (enabled && !this.mcpServer?.isRunning()) {
-				await this.startMcpServer();
-			} else if (!enabled && this.mcpServer?.isRunning()) {
-				await this.stopMcpServer();
-			}
-			this.updateTooltip();
-		});
-	}
-
-	private async startMcpServer(): Promise<void> {
-		if (this.mcpServer?.isRunning()) return;
-		try {
-			// Re-validate path-prefix lists at start. The settings UI rejects
-			// bad inputs at save time, but a hand-edited data.json could
-			// carry an invalid value through. An unparseable list (e.g.
-			// embedded '..') would degrade pathFilter to "matches nothing"
-			// silently — inert filter, no surfaced misconfiguration.
-			if (!isValidPathPrefixList(this.settings.mcpPathAllowlist ?? "")) {
-				throw new Error(
-					"Invalid mcpPathAllowlist in settings. Use comma-separated path prefixes (e.g. 'notes/, archive/').",
-				);
-			}
-			if (!isValidPathPrefixList(this.settings.mcpPathBlocklist ?? "")) {
-				throw new Error(
-					"Invalid mcpPathBlocklist in settings. Use comma-separated path prefixes.",
-				);
-			}
-			const allowlist = splitCsv(this.settings.mcpPathAllowlist);
-			const blocklist = splitCsv(this.settings.mcpPathBlocklist);
-			this.mcpServer = new ObsidianMcpServer(this.app, {
-				port: this.settings.mcpPort,
-				bindAddress: this.settings.mcpBindAddress,
-				token: this.settings.mcpToken,
-				enabledTiers: enabledTiersFromSettings(this.settings),
-				getWriteDir: () => this.settings.vaultWriteDir,
-				pathFilter:
-					allowlist.length > 0 || blocklist.length > 0
-						? { allowlist, blocklist }
-						: undefined,
-				hooks: {
-					review: reviewsRequired(this.settings.mcpVaultWrites)
-						? async (req) => new DiffReviewModal(this.app, req).review()
-						: undefined,
-					reviewBatch: reviewsRequired(this.settings.mcpVaultWrites)
-						? async (req) => new BatchReviewModal(this.app, req).review()
-						: undefined,
-					onActivity: (update) => this.activityUi.route(update),
-				},
-				toolTimeoutMs: this.settings.mcpToolTimeout * 1000,
-				reviewTimeoutMs: this.settings.mcpReviewTimeout * 1000,
-			});
-			await this.mcpServer.start();
-		} catch (error: unknown) {
-			// Discard the half-constructed instance so the next start rebuilds
-			// with current settings — otherwise mcpServer pins port/token/tiers
-			// captured before the user fixed whatever caused the failure (e.g.
-			// port conflict), and a retry hits the early-return in start()
-			// and silently succeeds against the stale config.
-			try {
-				await this.mcpServer?.stop();
-			} catch {
-				/* nothing usable started */
-			}
-			this.mcpServer = null;
-			// Reset mcpEnabled so the toggle reflects runtime reality —
-			// otherwise it stays ON, every plugin reload retries the failing
-			// start, and the user sees a Notice each restart while believing
-			// MCP is enabled.
-			if (this.settings.mcpEnabled) {
-				this.settings.mcpEnabled = false;
-				this.saveSettings();
-			}
-			new Notice(`MCP server failed to start: ${errMsg(error)}`);
-		}
-	}
-
-	private async stopMcpServer(): Promise<void> {
-		if (!this.mcpServer) return;
-		await this.mcpServer.stop();
-		this.mcpServer = null;
-		this.activityUi.clear();
-	}
-
-	private async toggleMcpServer(): Promise<void> {
-		await this.queueMcpOp(async () => {
-			if (this.mcpServer?.isRunning()) {
-				await this.stopMcpServer();
-				this.settings.mcpEnabled = false;
-				this.saveSettings();
-				new Notice("MCP server stopped.");
-			} else {
-				this.settings.mcpEnabled = true;
-				this.saveSettings();
-				await this.startMcpServer();
-				if (this.mcpServer?.isRunning()) {
-					new Notice(`MCP server listening on port ${this.settings.mcpPort}.`);
-				}
-			}
-			this.updateTooltip();
-		});
+		return this.mcpLifecycle.restartIfRunning();
 	}
 
 	// ── Status bar menu ────────────────────────────────────
@@ -887,12 +776,12 @@ export default class AgentSandboxPlugin extends Plugin {
 				.onClick(this.safeFire("Toggle firewall", () => this.toggleFirewall())),
 		);
 
-		const mcpRunning = this.mcpServer?.isRunning() ?? false;
+		const mcpRunning = this.mcpLifecycle.isRunning();
 		menu.addItem((item) =>
 			item
 				.setTitle(mcpRunning ? "Disable MCP Server" : "Enable MCP Server")
 				.setIcon("server")
-				.onClick(this.safeFire("Toggle MCP server", () => this.toggleMcpServer())),
+				.onClick(this.safeFire("Toggle MCP server", () => this.mcpLifecycle.toggle())),
 		);
 
 		menu.addSeparator();
@@ -964,9 +853,9 @@ export default class AgentSandboxPlugin extends Plugin {
 			port: this.settings.ttydPort,
 			firewall: this.firewallBar.getState(),
 			mcp: {
-				running: this.mcpServer?.isRunning() ?? false,
+				running: this.mcpLifecycle.isRunning(),
 				port: this.settings.mcpPort,
-				toolCount: this.mcpServer?.getToolCount() ?? 0,
+				toolCount: this.mcpLifecycle.getToolCount(),
 			},
 		});
 	}
@@ -1164,7 +1053,7 @@ export default class AgentSandboxPlugin extends Plugin {
 
 			const info = await this.docker.getContainerInfo();
 
-			const mcpRunning = this.mcpServer?.isRunning() ?? false;
+			const mcpRunning = this.mcpLifecycle.isRunning();
 			const fwState = this.firewallBar.getState();
 			const fwLine =
 				fwState === "enabled" ? "on" : fwState === "disabled" ? "off" : "unknown";

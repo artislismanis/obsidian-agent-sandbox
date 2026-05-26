@@ -18,7 +18,7 @@ const execOpts: ExecSyncOptions = {
 	timeout: 30000,
 	env: {
 		...process.env,
-		OAS_VAULT_PATH: VAULT_DIR,
+		OAS_VAULT_HOST_PATH: VAULT_DIR,
 		OAS_VAULT_WRITE_DIR: "agent-workspace",
 		TEST_HOST_TTYD_PORT: String(TTYD_PORT),
 		OAS_CONTAINER_MEMORY: "4G",

@@ -148,24 +148,24 @@ describe("buildWslCommand", () => {
 
 	it("includes env vars in the command", () => {
 		const cmd = buildWslCommand("/home/user/project", "Ubuntu", "docker compose up -d", {
-			OAS_VAULT_PATH: "/mnt/c/Users/foo/vault",
+			OAS_VAULT_HOST_PATH: "/mnt/c/Users/foo/vault",
 		});
-		expect(cmd).toContain("export OAS_VAULT_PATH='/mnt/c/Users/foo/vault'");
+		expect(cmd).toContain("export OAS_VAULT_HOST_PATH='/mnt/c/Users/foo/vault'");
 		expect(cmd).toContain("&& cd '/home/user/project'");
 	});
 
 	it("escapes single quotes in env var values", () => {
 		const cmd = buildWslCommand("/home/user/project", "Ubuntu", "docker compose up -d", {
-			OAS_VAULT_PATH: "/mnt/c/Users/it's me/vault",
+			OAS_VAULT_HOST_PATH: "/mnt/c/Users/it's me/vault",
 		});
-		expect(cmd).toContain("OAS_VAULT_PATH='/mnt/c/Users/it'\\\\''s me/vault'");
+		expect(cmd).toContain("OAS_VAULT_HOST_PATH='/mnt/c/Users/it'\\\\''s me/vault'");
 	});
 
 	it("handles env var values with spaces", () => {
 		const cmd = buildWslCommand("/home/user/project", "Ubuntu", "docker compose up -d", {
-			OAS_VAULT_PATH: "/mnt/c/Users/My User/vault",
+			OAS_VAULT_HOST_PATH: "/mnt/c/Users/My User/vault",
 		});
-		expect(cmd).toContain("OAS_VAULT_PATH='/mnt/c/Users/My User/vault'");
+		expect(cmd).toContain("OAS_VAULT_HOST_PATH='/mnt/c/Users/My User/vault'");
 	});
 
 	it("omits env prefix when no env vars provided", () => {
@@ -175,10 +175,10 @@ describe("buildWslCommand", () => {
 
 	it("includes multiple env vars in the command", () => {
 		const cmd = buildWslCommand("/home/user/project", "Ubuntu", "docker compose up -d", {
-			OAS_VAULT_PATH: "/mnt/c/Users/foo/vault",
+			OAS_VAULT_HOST_PATH: "/mnt/c/Users/foo/vault",
 			OAS_VAULT_WRITE_DIR: "agent-workspace",
 		});
-		expect(cmd).toContain("OAS_VAULT_PATH=");
+		expect(cmd).toContain("OAS_VAULT_HOST_PATH=");
 		expect(cmd).toContain("OAS_VAULT_WRITE_DIR='agent-workspace'");
 	});
 
@@ -233,9 +233,9 @@ describe("buildLocalCommand", () => {
 
 	it("includes env vars", () => {
 		const cmd = buildLocalCommand("/opt/project", "docker compose up -d", {
-			OAS_VAULT_PATH: "/home/user/vault",
+			OAS_VAULT_HOST_PATH: "/home/user/vault",
 		});
-		expect(cmd).toContain("export OAS_VAULT_PATH='/home/user/vault'");
+		expect(cmd).toContain("export OAS_VAULT_HOST_PATH='/home/user/vault'");
 		expect(cmd).toContain("&& cd '/opt/project'");
 	});
 
@@ -288,19 +288,19 @@ describe("buildLocalWindowsCommand", () => {
 
 	it("includes env vars using set command", () => {
 		const cmd = buildLocalWindowsCommand("C:\\project", "docker compose up -d", {
-			OAS_VAULT_PATH: "C:\\Users\\foo\\vault",
+			OAS_VAULT_HOST_PATH: "C:\\Users\\foo\\vault",
 		});
-		expect(cmd).toContain('set "OAS_VAULT_PATH=C:\\Users\\foo\\vault"');
+		expect(cmd).toContain('set "OAS_VAULT_HOST_PATH=C:\\Users\\foo\\vault"');
 		expect(cmd).toContain("&& cd /d");
 	});
 
 	it("handles multiple env vars", () => {
 		const cmd = buildLocalWindowsCommand("C:\\project", "docker compose up -d", {
-			OAS_VAULT_PATH: "C:\\Users\\foo\\vault",
+			OAS_VAULT_HOST_PATH: "C:\\Users\\foo\\vault",
 			OAS_VAULT_WRITE_DIR: "agent-workspace",
 			OAS_TTYD_PORT: "7681",
 		});
-		expect(cmd).toContain('set "OAS_VAULT_PATH=C:\\Users\\foo\\vault"');
+		expect(cmd).toContain('set "OAS_VAULT_HOST_PATH=C:\\Users\\foo\\vault"');
 		expect(cmd).toContain('set "OAS_VAULT_WRITE_DIR=agent-workspace"');
 		expect(cmd).toContain('set "OAS_TTYD_PORT=7681"');
 		expect(cmd).toContain(" && cd /d ");
@@ -349,9 +349,9 @@ describe("control-byte rejection across env vars (CRLF + NUL)", () => {
 	it("buildWslCommand rejects newlines in non-sensitive env vars", () => {
 		expect(() =>
 			buildWslCommand("/home/user", "Ubuntu", "docker compose up -d", {
-				OAS_VAULT_PATH: "/mnt/c/vault\nevil",
+				OAS_VAULT_HOST_PATH: "/mnt/c/vault\nevil",
 			}),
-		).toThrow(/OAS_VAULT_PATH/);
+		).toThrow(/OAS_VAULT_HOST_PATH/);
 	});
 
 	it("buildLocalWindowsCommand rejects newlines in non-sensitive env vars", () => {

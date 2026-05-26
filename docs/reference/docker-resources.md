@@ -35,9 +35,9 @@ Inspect: `docker volume ls | grep oas-`.
 | Host path | Container path | Mode |
 |---|---|---|
 | `workspace/` | `/workspace/` | rw |
-| `$OAS_VAULT_PATH` | `/workspace/vault/` | ro |
-| `$OAS_VAULT_PATH/$OAS_VAULT_WRITE_DIR/` | `/workspace/vault/$OAS_VAULT_WRITE_DIR/` | rw |
-| `$OAS_VAULT_PATH/.oas/` | `/workspace/vault/.oas/` | rw |
+| `$OAS_VAULT_HOST_PATH` | `/workspace/vault/` | ro |
+| `$OAS_VAULT_HOST_PATH/$OAS_VAULT_WRITE_DIR/` | `/workspace/vault/$OAS_VAULT_WRITE_DIR/` | rw |
+| `$OAS_VAULT_HOST_PATH/.oas/` | `/workspace/vault/.oas/` | rw |
 | `container/firewall-extras.txt` | `/etc/oas/firewall-extras.txt` | ro |
 
 The read-only vault + rw write-dir is the core security invariant: the agent can read the whole vault but only write inside `$OAS_VAULT_WRITE_DIR` (unless the user grants `writeReviewed` or `writeVault` MCP tiers).
@@ -65,7 +65,7 @@ Injected into the container by the plugin at compose-up time (see `container/doc
 
 Host-only (consumed by compose to shape the run, not visible inside the container):
 
-- `OAS_VAULT_PATH` — bind-mount source for the vault.
+- `OAS_VAULT_HOST_PATH` — bind-mount source for the vault.
 - `OAS_TTYD_BIND` — host interface ttyd listens on (port mapping only).
 - `OAS_CONTAINER_MEMORY`, `OAS_CONTAINER_CPUS` — resource limits.
 - `OAS_IP_MASQ` — whether to enable NAT masquerading.

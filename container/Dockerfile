@@ -1,16 +1,8 @@
 # ── Version ARGs (global scope for multi-stage FROM) ────────
 ARG UV_VERSION=0.7
 
-# Base images are pinned by digest, not just tag. A tag re-push can swap
-# the underlying image silently between rebuilds; the digest guarantees
-# byte-for-byte the same starting point. Dependabot's docker ecosystem
-# tracks both tag bumps and digest updates and will open a PR to refresh
-# these — review and merge to pick up security patches.
-#
-# Refresh digests:
-#   curl -sI -H "Authorization: Bearer $(curl -sL 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/ubuntu:pull' | jq -r .token)" \
-#     -H 'Accept: application/vnd.oci.image.index.v1+json' \
-#     'https://registry-1.docker.io/v2/library/ubuntu/manifests/24.04' | grep -i digest
+# Base images pinned by digest — Dependabot opens PRs on tag bumps.
+# Manual refresh: see container/CLAUDE.md "Pinned binary downloads".
 FROM ghcr.io/astral-sh/uv:${UV_VERSION}@sha256:629240833dd25d03949509fc01ceff56ae74f5e5f0fd264da634dd2f70e9cc70 AS uv
 FROM ubuntu:24.04@sha256:c4a8d5503dfb2a3eb8ab5f807da5bc69a85730fb49b5cfca2330194ebcc41c7b
 
@@ -21,21 +13,14 @@ ARG NODE_MAJOR=24
 ARG TTYD_VERSION=1.7.7
 ARG NVM_VERSION=0.40.3
 # SHA256 of https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh
-# Pinning the hash defends against tag-move / upstream compromise of the
-# install script, which would otherwise execute as root during build.
-# When bumping NVM_VERSION, recompute via:
-#   curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v<new>/install.sh | sha256sum
+# Recompute when bumping NVM_VERSION — see container/CLAUDE.md "Pinned binary downloads".
 ARG NVM_INSTALL_SHA256=2d8359a64a3cb07c02389ad88ceecd43f2fa469c06104f92f98df5b6f315275f
 ARG ATUIN_VERSION=18.8.0
 ARG BASH_PREEXEC_VERSION=0.5.0
 ARG MEMORY_SERVER_VERSION=2026.1.26
 
 # ── Binary download SHA256 pins ───────────────────────────────
-# Defends against tag-move / upstream compromise of the release binaries
-# we curl during the build. When bumping any of the *_VERSION ARGs above,
-# you MUST recompute the matching SHA via:
-#   curl -fsSL <url> | sha256sum
-# and update the corresponding ARG below. See container/CLAUDE.md.
+# Bump a *_VERSION ARG? Recompute its SHA — see container/CLAUDE.md "Pinned binary downloads".
 ARG TTYD_SHA256_AMD64=8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55
 ARG TTYD_SHA256_ARM64=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165
 ARG BASH_PREEXEC_SHA256=6ef95f16012bdfec0ab6ee853e8892d51eee295c8639944f9b983b3d40e0e9f7
@@ -126,10 +111,6 @@ RUN echo 'claude ALL=(ALL) PASSWD: /usr/bin/apt-get, /usr/bin/apt' \
       > /etc/sudoers.d/claude-apt \
     && chmod 440 /etc/sudoers.d/claude-apt \
     && visudo -c -f /etc/sudoers.d/claude-apt
-
-# Script COPYs and atuin binary are deferred to Phase 3 so that editing
-# a script (verify.sh, session.sh, etc.) or bumping ATUIN_VERSION does
-# not invalidate the expensive nvm/Node/Python/Claude Code layers.
 
 # ══════════════════════════════════════════════════════════════
 # Phase 2: claude user — nvm, Node, Python, Claude Code

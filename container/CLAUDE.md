@@ -28,11 +28,7 @@ This produces `oas-sandbox:latest`. Start via the Obsidian plugin (preferred) or
 
 ## Not visible inside the running container
 
-**This folder is deliberately not mounted into Claude's visible filesystem.** Claude running as an agent inside the sandbox cannot read or modify Dockerfile, compose config, or scripts under `/workspace/`. That's by design — it keeps the build contract explicit and reviewable, and prevents accidental mutation of infrastructure from inside an agent session.
-
-Two exceptions:
-- `scripts/verify.sh` is `COPY`d into the image at `/usr/local/bin/verify.sh` so Claude can introspect runtime state without source access.
-- `firewall-extras.txt` is bind-mounted read-only at `/etc/oas/firewall-extras.txt` — outside `/workspace/`, so Claude can't see it via vault tools (and outside the agent's normal browse roots), but `init-firewall.sh` reads it on every apply.
+This folder is not mounted into the container. For the rationale and exceptions, see [`docs/explanation/architecture.md`](../docs/explanation/architecture.md).
 
 ## Adding a system tool
 
@@ -46,21 +42,13 @@ Two exceptions:
 
 ## Firewall allowlist
 
-`scripts/init-firewall.sh` restricts outbound traffic to a hardcoded allowlist. Editing the allowlist is a sensitive change — widening it relaxes the sandbox. Keep additions narrow and document why (comment above the entry).
+See [`docs/how-to/configure-firewall.md`](../docs/how-to/configure-firewall.md) for how to add entries. The safety constraint that lives here: **never weaken the allowlist without clear justification** (this is duplicated in "Safety constraints" below for visibility).
 
-For domains/CIDRs that should not live in source control (private endpoints, personal integrations), append them to `firewall-extras.txt` instead. That file is mounted read-only into the container, invisible to the agent, and applied automatically by `init-firewall.sh`. The plugin's "Additional firewall domains" setting is the user-friendly equivalent for shareable additions.
-
-Currently allowed categories:
-- Anthropic (API, statsig, sentry)
-- npm (npmjs.org, yarnpkg.com)
-- GitHub (github.com, api, raw, objects, releases, cli)
-- PyPI (pypi.org, files.pythonhosted.org)
-- CDNs (jsdelivr, cdnjs, unpkg)
-- Ubuntu apt mirrors (archive, security, ports, keyserver)
+Currently allowed categories: Anthropic (api.anthropic.com, sentry.io), npm, GitHub, PyPI, CDNs (jsdelivr, cdnjs, unpkg), Ubuntu apt mirrors.
 
 ## Sudo model
 
-The `claude` user has a narrow sudoers entry for `apt-get` and `apt` only, password-gated. The password is set at container start time from the `OAS_SUDO_PASSWORD` environment variable (passed in via docker-compose, typically from `container/.env` or the plugin's "Sudo password" setting). `entrypoint.sh` unsets `OAS_SUDO_PASSWORD` before dropping privileges, so the password is not visible inside session shells. See `README.md` "Development" section for the trust model and intended usage.
+See [`docs/explanation/security-model.md`](../docs/explanation/security-model.md) for the full trust model. Short version: `claude` has `apt-get`/`apt` only, password-gated via `OAS_SUDO_PASSWORD`, which `entrypoint.sh` unsets before dropping privileges.
 
 ## Pinned binary downloads
 
@@ -76,11 +64,19 @@ curl -fsSL <url> | sha256sum
 ```
 
 For arch-split downloads (ttyd, atuin) compute both `_AMD64` and
-`_ARM64` SHAs by substituting `x86_64` / `aarch64` in the URL. The base
-images (`ubuntu:24.04`, `ghcr.io/astral-sh/uv`) are pinned by digest at
+`_ARM64` SHAs by substituting `x86_64` / `aarch64` in the URL.
+
+The base images (`ubuntu:24.04`, `ghcr.io/astral-sh/uv`) are pinned by digest at
 the top of the Dockerfile; Dependabot's docker ecosystem refreshes them
-on tag bumps. The Dockerfile header has the refresh command if you ever
-need to update digests manually.
+on tag bumps. To refresh manually:
+
+```bash
+# ubuntu:24.04 digest
+curl -sI \
+  -H "Authorization: Bearer $(curl -sL 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/ubuntu:pull' | jq -r .token)" \
+  -H 'Accept: application/vnd.oci.image.index.v1+json' \
+  'https://registry-1.docker.io/v2/library/ubuntu/manifests/24.04' | grep -i digest
+```
 
 ## Safety constraints for this folder
 

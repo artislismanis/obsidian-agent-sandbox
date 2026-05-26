@@ -255,7 +255,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
   2. Observe the loading text in the open terminal tab.
   3. After ≥5 s, run **Sandbox: Start Container**.
 - **Expected:** Loading text reads "Connecting to terminal… (attempt N/15, retry in Xs)" with X growing exponentially (500ms × 1.5^n), capped at 5s. When container comes up, terminal establishes.
-- **Notes:** P1. Use the plugin commands (not `docker compose` directly) — bare Docker commands bypass the plugin's env vars (`OAS_VAULT_PATH`, `OAS_TTYD_PORT`, etc.) and produce a misconfigured container.
+- **Notes:** P1. Use the plugin commands (not `docker compose` directly) — bare Docker commands bypass the plugin's env vars (`OAS_VAULT_HOST_PATH`, `OAS_TTYD_PORT`, etc.) and produce a misconfigured container.
 
 ### 2.11a Startup progress indicator detail
 
@@ -734,7 +734,7 @@ These require specific host hardware/OS. Run on each supported platform before r
 ### 10.1 Windows + WSL2: vault path conversion
 
 - **Setup:** Windows host, WSL2 Docker mode, vault at `C:\vault`.
-- **Steps:** Start container. Inside: `echo $OAS_VAULT_PATH`.
+- **Steps:** Start container. Inside: `echo $OAS_VAULT_HOST_PATH`.
 - **Expected:** Resolves to `/mnt/c/vault`. No `wsl.exe` console flashes during start/stop.
 - **Notes:** P0 on Windows.
 

@@ -30,7 +30,11 @@ main.ts (Plugin entry, commands, lifecycle, context menu, firewall toggle)
 ├── modals.ts            — confirmModal / inputModal helpers (reused across modules)
 ├── activity.ts          — ActivityUi (per-session prefix routing) + AgentOutputNotifier
 ├── diff-review-modal.ts — DiffReviewModal + BatchReviewModal for reviewed writes
-├── mcp-server.ts        — ObsidianMcpServer: HTTP+SSE transport, auth, audit log
+├── mcp-server.ts        — ObsidianMcpServer: HTTP+SSE transport, auth, session lifecycle
+├── mcp-lifecycle.ts     — McpLifecycle: queue, start/stop/toggle, apply/restart wiring
+├── mcp-rate-limiter.ts  — RateLimiter: per-tool sliding-window rate limiter
+├── mcp-audit.ts         — AuditEntry / AuditLog / createFileAuditSink: JSONL audit trail
+├── mcp-sse.ts           — startSseKeepalive: SSE keepalive to prevent proxy timeouts
 ├── mcp-tools.ts         — buildTools(): all read/write/manage MCP tools
 ├── mcp-extensions.ts    — Extensions tier: Dataview / Templater / Tasks / Canvas / Periodic Notes
 ├── mcp-cache.ts         — VaultCache: graph + tag/property counts, invalidated on metadata `resolved`
@@ -52,7 +56,7 @@ main.ts (Plugin entry, commands, lifecycle, context menu, firewall toggle)
 - **Shell escaping**: `buildWslCommand()` in docker.ts handles both bash single-quote escaping and cmd.exe double-quote escaping. Distro names are validated against `/^[\w][\w.-]*$/`.
 - **ttyd protocol**: Binary WebSocket frames with ASCII command prefix. Directions are asymmetric: `'0'` carries OUTPUT (server→client) and INPUT (client→server); `'1'` carries TITLE_CHANGED (server→client) and RESIZE (client→server); `'2'` is SET_PREFERENCES (server→client, ignored by this client). The plugin only consumes inbound OUTPUT — title/preferences are dropped. Connection requires `['tty']` subprotocol and a JSON handshake with `{columns, rows}` on open. Uses Obsidian's `requestUrl` for HTTP polling (bypasses CORS) and native WebSocket for the terminal stream. No authentication — security relies on the bind address (127.0.0.1 by default).
 - **Clipboard**: Auto-copies on text selection via `onSelectionChange`. Paste via `Ctrl+Shift+V`.
-- **Vault path injection**: Plugin auto-detects vault path via `FileSystemAdapter.getBasePath()`, converts Windows→WSL format via `windowsToWslPath()`, and passes `OAS_VAULT_PATH` env var to all docker compose commands.
+- **Vault path injection**: Plugin auto-detects vault path via `FileSystemAdapter.getBasePath()`, converts Windows→WSL format via `windowsToWslPath()`, and passes `OAS_VAULT_HOST_PATH` env var to all docker compose commands.
 - **Container lifecycle**: `DockerManager.start()` runs `docker compose up -d` only — compose's own idempotency reconciles config changes (reuses the running container when env vars match, recreates when they differ). `restart()` is the explicit `down` + `up -d` escape hatch for forcing a clean recreate. `stop()` and `stopDetached()` both run `docker compose down`. `main.ts` gates terminal-leaf detachment on `DockerManager.parseIsRunning()` at layout-ready so persisted terminal tabs can re-attach to a still-running container after Obsidian reopens.
 - **Multiple terminals**: Each "Open Sandbox Terminal" creates an independent terminal tab with its own WebSocket connection and unique instance ID. Terminals open at the bottom via horizontal split.
 - **Debounced save**: Settings saves are debounced to 500ms and flushed on plugin unload.

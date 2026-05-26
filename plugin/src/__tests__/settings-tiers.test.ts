@@ -43,8 +43,8 @@ describe("enabledTiersFromSettings", () => {
 		for (const def of GATED_TIERS) expect(tiers.has(def.tier)).toBe(true);
 	});
 
-	it("mcpVaultWrites='none' enables neither write tier", () => {
-		const tiers = enabledTiersFromSettings({ ...DEFAULT_SETTINGS, mcpVaultWrites: "none" });
+	it("mcpVaultWrites='scoped' enables neither write tier", () => {
+		const tiers = enabledTiersFromSettings({ ...DEFAULT_SETTINGS, mcpVaultWrites: "scoped" });
 		expect(tiers.has("writeReviewed")).toBe(false);
 		expect(tiers.has("writeVault")).toBe(false);
 	});

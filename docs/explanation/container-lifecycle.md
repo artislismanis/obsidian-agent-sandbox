@@ -74,7 +74,7 @@ On plugin disable (`onunload`):
 - Stop the MCP server.
 - Flush settings.
 - Stop polls.
-- Do **not** stop the container unless `autoStopContainer` says to — `onunload` also fires on settings-restart, and you don't want a settings change to kill your work.
+- Stop the container unconditionally via `stopDetached()`. `autoStopContainer` only governs the Obsidian-quit path above — disable is an explicit user action.
 
 ## Multiple terminals
 

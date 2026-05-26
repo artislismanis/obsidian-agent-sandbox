@@ -181,7 +181,7 @@ echo ""
 echo "── Container env ──────────────────────────────────"
 # Only env vars that docker-compose.yml actually injects into the
 # container (see container/docker-compose.yml `environment:` block).
-# Host-side configuration knobs like OAS_VAULT_PATH, OAS_CONTAINER_MEMORY,
+# Host-side configuration knobs like OAS_VAULT_HOST_PATH, OAS_CONTAINER_MEMORY,
 # OAS_TTYD_BIND, etc. are consumed by `docker compose` on the host at
 # launch time to build mount sources, resource limits, and port
 # bindings — they're not exposed inside the container. Resource limits
@@ -279,7 +279,7 @@ if [ -d "/workspace/vault" ] && [ "$(ls -A /workspace/vault 2>/dev/null)" ]; the
   echo "  Vault: mounted at /workspace/vault (${VAULT_ITEMS} items)"
 else
   echo "  WARNING: No vault content at /workspace/vault"
-  echo "    Set OAS_VAULT_PATH in container/.env and restart the container"
+  echo "    Set OAS_VAULT_HOST_PATH in container/.env and restart the container"
 fi
 
 # Probe ttyd with the same curl flags as Dockerfile HEALTHCHECK and

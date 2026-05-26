@@ -3,7 +3,7 @@
 ```
 obsidian-agent-sandbox/
 ├── plugin/            Obsidian plugin source (TypeScript, xterm.js, esbuild)
-│   ├── src/                     22 modules; selected highlights below — see plugin/CLAUDE.md for the full map
+│   ├── src/                     see `ls plugin/src/*.ts`; selected highlights below — see plugin/CLAUDE.md for the full map
 │   │   ├── main.ts              Plugin entry; commands; MCP wiring; UI routing
 │   │   ├── settings.ts          Settings interface + tabbed UI + tier derivation
 │   │   ├── docker.ts            DockerManager: WSL/local compose commands + firewall

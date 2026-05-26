@@ -1,6 +1,6 @@
 # Testing
 
-The project is covered by three layers of automated tests plus a short manual checklist for things that require human judgment or cross-process workflows. Run the automated suites first — if a behavior is covered, fix the code, don't re-verify by hand.
+Three layers of automated tests plus a short manual checklist for things that require human judgment or cross-process workflows. If a behavior is covered by the automated suites, fix the code, don't re-verify by hand.
 
 ## Quick reference
 
@@ -12,7 +12,7 @@ npm run test              # Layer 1 — unit tests              (~1.5s,   no dep
 npm run test:integration  # Layer 2 — container integration   (~30s,    needs Docker)
 npm run test:e2e          # Layer 3 — real Obsidian UI        (~25s,    needs display / xvfb)
 npm run test:e2e:headless # same as above but wrapped in xvfb-run
-npm run check             # lint + format:check + tsc + unit tests (run before committing)
+npm run check             # lint + format:check + tsc + unit tests with coverage (run before committing)
 ```
 
 Exit code `0` means the suite passed. Any non-zero code = one or more failures. Vitest and WebDriverIO both print a per-test summary at the end.
@@ -36,9 +36,9 @@ Exit code `0` means the suite passed. Any non-zero code = one or more failures. 
 
 - **Obsidian desktop** — `wdio-obsidian-service` downloads it automatically the first time, cached in `plugin/.obsidian-cache/`
 - **A display server** — locally any X/Wayland session works; in CI or SSH use `npm run test:e2e:headless` which wraps the runner in `xvfb-run`
-- **Built plugin artifacts** — the `pretest:e2e` npm hook runs `npm run build` automatically; `dist/main.js`, `dist/manifest.json`, `dist/styles.css` must exist before the suite launches Obsidian
+- **Built plugin artifacts** — run `npm run build` before `npm run test:e2e`; `dist/main.js`, `dist/manifest.json`, `dist/styles.css` must exist before the suite launches Obsidian
 
-On first run, wdio will download Obsidian from GitHub releases. If you see a 504 or network error, just retry — the download is resumable and transient GitHub failures are common.
+On first run, wdio downloads Obsidian from GitHub releases into `plugin/.obsidian-cache/`. Network errors are transient; retry.
 
 ## Running the suites
 

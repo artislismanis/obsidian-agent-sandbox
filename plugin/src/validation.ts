@@ -41,7 +41,7 @@ export function isValidWriteDir(dir: string): boolean {
 /**
  * Verify that `writeDir` resolves inside `vaultPath` on the host.
  * This is the load-bearing escape guard: the compose bind-mount source is
- * `${OAS_VAULT_PATH}/${OAS_VAULT_WRITE_DIR}` and Docker resolves it on the
+ * `${OAS_VAULT_HOST_PATH}/${OAS_VAULT_WRITE_DIR}` and Docker resolves it on the
  * host before the container starts. The entrypoint check runs after the
  * mount is established, so it cannot prevent escape — only this host-side
  * check can.

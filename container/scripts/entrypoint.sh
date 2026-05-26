@@ -146,6 +146,6 @@ fi
 #
 # -d 6 raises ttyd's log level from the default (notice) to info, so each
 # WebSocket open/close lands in `docker logs oas-sandbox` with timestamp
-# and remote addr. Override via OAS_TTYD_DEBUG (1=err … 7=debug) if you
+# and remote addr. Override via OAS_TTYD_DEBUG (libwebsockets bitmask: 1=ERR 2=WARN 4=NOTICE 8=INFO 16=DEBUG) if you
 # need more detail; ttyd's WS ping interval defaults to 5s and is fine.
 exec gosu claude ttyd -W -d "${OAS_TTYD_DEBUG:-6}" -p "${OAS_TTYD_PORT:-7681}" /usr/local/bin/session.sh

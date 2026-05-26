@@ -1,6 +1,6 @@
 # Roadmap
 
-What's left to do. Implemented work has been removed; the git log is the source of truth for what shipped.
+What's left to do.
 
 ## Pre-1.0 stabilisation
 
