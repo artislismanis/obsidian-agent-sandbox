@@ -461,12 +461,16 @@ export class DockerManager {
 			envVars.OAS_IP_MASQ = "false";
 		}
 
+		const resolvedCmd = dockerCmd.startsWith("docker compose ")
+			? `docker compose ${this.composeFiles()} ${dockerCmd.slice("docker compose ".length)}`
+			: dockerCmd;
+
 		const command =
 			dockerMode === "wsl"
-				? buildWslCommand(effectiveComposePath, wslDistro, dockerCmd, envVars)
+				? buildWslCommand(effectiveComposePath, wslDistro, resolvedCmd, envVars)
 				: process.platform === "win32"
-					? buildLocalWindowsCommand(composePath, dockerCmd, envVars)
-					: buildLocalCommand(composePath, dockerCmd, envVars);
+					? buildLocalWindowsCommand(composePath, resolvedCmd, envVars)
+					: buildLocalCommand(composePath, resolvedCmd, envVars);
 		try {
 			const { stdout } = await exec(command, { timeout, windowsHide: true });
 			return stdout.trim();
@@ -585,6 +589,8 @@ export class DockerManager {
 			return;
 		}
 
+		const downCmd = `docker compose ${this.composeFiles()} down`;
+
 		if (dockerMode === "wsl") {
 			// On Windows, spawn wsl.exe directly (no bash on host). Validate
 			// the distro name even on this detached path — args go as an array
@@ -592,19 +598,19 @@ export class DockerManager {
 			// unhelpful ways.
 			if (!VALID_DISTRO_NAME.test(wslDistro)) return;
 			const wslPath = windowsToWslPath(composePath);
-			const innerCmd = buildInnerCommand(wslPath, "docker compose down", downEnv);
+			const innerCmd = buildInnerCommand(wslPath, downCmd, downEnv);
 			shell = "wsl";
 			args = ["-d", wslDistro, "--", "bash", "-c", innerCmd];
 		} else if (process.platform === "win32") {
 			// Native Docker on Windows — use cmd.exe (doubles internal quotes).
 			shell = "cmd.exe";
-			args = ["/c", buildLocalWindowsCommand(composePath, "docker compose down", downEnv)];
+			args = ["/c", buildLocalWindowsCommand(composePath, downCmd, downEnv)];
 		} else {
 			// Linux / Mac — pass the inner command directly to bash -c. Calling
 			// buildLocalCommand here would yield `bash -c "..."` and we'd then
 			// wrap that in another `bash -c`, double-shelling for no reason.
 			shell = "bash";
-			args = ["-c", buildInnerCommand(composePath, "docker compose down", downEnv)];
+			args = ["-c", buildInnerCommand(composePath, downCmd, downEnv)];
 		}
 
 		// detached:true on Linux/Mac puts the child into its own process group
@@ -689,6 +695,12 @@ export class DockerManager {
 			}
 			return this.run("docker compose up -d");
 		});
+	}
+
+	private composeFiles(): string {
+		const { sudoPassword } = this.getSettings();
+		if (!sudoPassword) return "-f docker-compose.yml";
+		return "-f docker-compose.yml -f docker-compose.no-new-privileges-off.override.yml";
 	}
 
 	private firewallExec(args: string, timeout?: number): Promise<string> {
@@ -820,6 +832,28 @@ export class DockerManager {
 	async getContainerId(): Promise<string> {
 		const output = await this.run(`docker compose ps -q ${SERVICE_NAME}`, PROBE_TIMEOUT);
 		return output.trim();
+	}
+
+	/**
+	 * Returns image tag and start time for the running container.
+	 * Called only from the "Check Status" command — kept off the hot probe path.
+	 * Returns null if the container is not running or inspect fails.
+	 */
+	async getContainerInfo(): Promise<{ id: string; image: string; startedAt: string } | null> {
+		try {
+			const id = await this.getContainerId();
+			if (!id) return null;
+			// Two calls to avoid shell-quoting the Go template separator across
+			// bash and cmd.exe; Go template braces are safe unquoted in both.
+			const [image, startedAt] = await Promise.all([
+				this.run(`docker inspect ${id} --format {{.Config.Image}}`, EXEC_TIMEOUT),
+				this.run(`docker inspect ${id} --format {{.State.StartedAt}}`, EXEC_TIMEOUT),
+			]);
+			if (!image.trim() || !startedAt.trim()) return null;
+			return { id, image: image.trim(), startedAt: startedAt.trim() };
+		} catch {
+			return null;
+		}
 	}
 
 	/**

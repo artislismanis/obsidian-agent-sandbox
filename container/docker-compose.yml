@@ -54,10 +54,11 @@ services:
       - SETGID
       - FSETID
       - KILL
-    # Defence in depth: prevent setuid/setgid binaries inside the container
-    # from gaining privileges (e.g. via a future image bump that adds one).
-    # Has no effect on the existing sudo+gosu flow since those run via the
-    # entrypoint as uid 0 before priv-drop.
+    # Defence in depth: blocks setuid/setgid escalation after gosu drops to
+    # `claude` — which also blocks the password-gated sudoers entry. The plugin
+    # lifts this restriction at runtime when a sudo password is configured (see
+    # docker-compose.no-new-privileges-off.override.yml); direct CLI users keep
+    # the restrictive default.
     security_opt:
       - no-new-privileges:true
     # Use Docker's tini-equivalent as PID 1 so orphaned children of long-lived

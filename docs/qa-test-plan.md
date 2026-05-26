@@ -19,6 +19,7 @@ These aren't test scenarios; they're the baseline. Verify each before touching S
 - [ ] Host OS: Linux (native Docker), WSL2 with Docker Engine + mirrored networking, macOS with Docker Desktop, or Windows with Rancher Desktop / Docker Desktop.
 - [ ] `docker info` succeeds from the host shell Obsidian will inherit `PATH` from.
 - [ ] `oas-sandbox:latest` image built: `cd container && docker compose build`.
+- [ ] `docker compose version` reports ≥ 2.24 (required for `!reset` syntax in the sudo override — see 2.19).
 - [ ] Obsidian desktop ≥ `1.5.0` installed.
 - [ ] A real vault to test against (not the e2e fixture). Recommend a fresh vault with a handful of notes, at least one with frontmatter, and one folder with 2-3 cross-linked notes.
 - [ ] Plugin artifacts built and installed into the vault: `cd plugin && npm run build`, then copy `dist/main.js`, `dist/manifest.json`, `dist/styles.css` into `<vault>/.obsidian/plugins/obsidian-agent-sandbox/`.
@@ -173,7 +174,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 ### 2.4 Config change triggers recreate
 
 - **Setup:** Container running.
-- **Steps:** Change Write directory in settings. Click Restart (or trigger restart via the command).
+- **Steps:** In settings, change Write directory. Close the settings tab. In the **Restart Container?** modal that appears (covered in 1.2), click Restart. (If you previously chose "Later", the modal won't reappear automatically — use **Sandbox: Restart Container** from the command palette instead.)
 - **Expected:** New container ID appears in status bar. Old container is gone.
 - **Notes:** P1. Cleanup: revert write directory if it broke anything downstream.
 
@@ -215,9 +216,15 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 ### 2.7b Status bar icon glyphs
 
 - **Setup:** Container in various states.
-- **Steps:** Cycle through stopped → starting → running → error states (stop container, start it, break it by stopping Docker). Toggle firewall.
-- **Expected:** Pill text reads `Sandbox: ⏹ Stopped`, `Sandbox: ⏳ Starting`, `Sandbox: ▶ Running`, `Sandbox: ⚠ Error`, `Sandbox: 🔍 Checking`. Firewall pill reads `🛡 FW`. Awaiting-input sessions append a trailing ` ⚠` to the sandbox pill. All glyphs render as icons, not `?` or tofu boxes.
-- **Notes:** P1. Font fallback issues here are platform-specific (esp. older Windows).
+- **Steps:** Cycle through stopped → starting → running → error states. Toggle firewall.
+- **Expected:** All glyphs render as icons, not `?` or tofu boxes:
+  - `Sandbox: ⏹ Stopped` — container stopped. Visible at plugin load when auto-start is off.
+  - `Sandbox: ⏳ Starting` — during `docker compose up -d`. Start the container and watch the transition.
+  - `Sandbox: ▶ Running` — healthy container.
+  - `Sandbox: ⚠ Error` — stop the Docker daemon while the plugin polls; next poll surfaces this state.
+  - `Sandbox: 🔍 Checking` — emitted only during `backgroundStartup()`. Re-observe by disabling then re-enabling the plugin, or restarting Obsidian with auto-start on.
+  - `🛡 FW` — firewall pill; appears when firewall is enabled.
+- **Notes:** P1. Font fallback issues here are platform-specific (esp. older Windows). Awaiting-input badge (trailing ` ⚠` on the sandbox pill) requires an authenticated Claude session — see 3.20.
 
 ### 2.8 Terminal themes
 
@@ -237,22 +244,25 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 - **Setup:** Terminal open. Settings → Terminal → Auto-copy on selection = off.
 - **Steps:** Select text by drag.
-- **Expected:** Clipboard unchanged. Ctrl+C (or right-click Copy) still copies on explicit action.
+- **Expected:** Clipboard unchanged after selection alone. With a selection active, Ctrl+C copies the selection (matches Terminal.app / iTerm2 convention) — confirm clipboard updated and no `^C` printed in the terminal. With no active selection, Ctrl+C sends SIGINT as normal (e.g. interrupts a running `sleep 30`). Right-click Copy also copies on explicit action.
 - **Notes:** P1.
 
 ### 2.11 Connection retry / exponential backoff
 
-- **Setup:** Stop container (`docker compose down`). Plugin still enabled.
-- **Steps:** Open a terminal tab. Observe loading text. After ~5 s, start the container again from another shell.
+- **Setup:** Container running, one Sandbox terminal tab open.
+- **Steps:**
+  1. Run **Sandbox: Stop Container** from the command palette.
+  2. Observe the loading text in the open terminal tab.
+  3. After ≥5 s, run **Sandbox: Start Container**.
 - **Expected:** Loading text reads "Connecting to terminal… (attempt N/15, retry in Xs)" with X growing exponentially (500ms × 1.5^n), capped at 5s. When container comes up, terminal establishes.
-- **Notes:** P1.
+- **Notes:** P1. Use the plugin commands (not `docker compose` directly) — bare Docker commands bypass the plugin's env vars (`OAS_VAULT_PATH`, `OAS_TTYD_PORT`, etc.) and produce a misconfigured container.
 
 ### 2.11a Startup progress indicator detail
 
 - **Setup:** Obsidian closed, container stopped, auto-start on.
-- **Steps:** Open Obsidian. Hover the status bar tooltip during launch.
-- **Expected:** Detail cycles through "Starting: checking Docker availability…" → "Starting: probing WSL (5s fast-fail)…" → "Starting: probing container status…" → "Starting: docker compose up -d (auto-start)…". Each stage observable for at least ~500 ms; transitions in correct order.
-- **Notes:** P2. On non-WSL platforms the WSL probe should still appear briefly and resolve to "not WSL".
+- **Steps:** Open Obsidian. Open DevTools (Ctrl+Shift+I) → Console tab. Filter by "Sandbox:".
+- **Expected:** All four phase strings appear in the console in order: "Starting: checking Docker availability…" → "Starting: probing WSL (5s fast-fail)…" → "Starting: probing container status…" → "Starting: docker compose up -d (auto-start)…". Visual hover of the status bar tooltip is best-effort — on warm systems the transitions can be sub-second and hard to observe.
+- **Notes:** P2. On non-WSL platforms the WSL probe should still appear and resolve to "not WSL".
 
 ### 2.12 Out-of-band recreate detection
 
@@ -289,26 +299,27 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 - **Expected:** Clipboard contains a multi-line log of the connection lifecycle (attempts, URLs sans token, timestamps). Paste into a scratchpad to verify.
 - **Notes:** P2. Useful for support; verify it doesn't leak the MCP token.
 
-### 2.17a Image rebuild triggers recreate
+### 2.17 Image rebuild triggers recreate
 
 - **Setup:** Container running on `oas-sandbox:latest`.
 - **Steps:** On host: `cd container && docker compose build`. Run **Sandbox: Restart Container**.
 - **Expected:** `docker inspect oas-sandbox --format '{{.Image}}'` shows the new image id. Any baked-in change is visible in a new terminal.
 - **Notes:** P1.
 
-### 2.17b Workspace edits persist across container restart
+### 2.18 Workspace persistence
 
 - **Setup:** Container running, terminal open.
 - **Steps:** In the container: `echo "marker $(date +%s)" >> /workspace/.claude/persist-check.md`. Restart container. New terminal: `cat /workspace/.claude/persist-check.md`.
 - **Expected:** File and marker line present after restart.
 - **Notes:** P1. Cleanup: `rm /workspace/.claude/persist-check.md`.
 
-### 2.17 Custom sudo password
+### 2.19 Custom sudo password
 
 - **Setup:** Container not running.
-- **Steps:** Set Sudo password in Advanced. Restart container. In a terminal: `sudo -k && sudo echo test` (enter new password).
-- **Expected:** Accepts new password. Setting it to empty disables sudo entirely.
-- **Notes:** P1. Reset to default afterwards.
+- **Steps:** Set Sudo password in Advanced. Restart container. In a terminal: `sudo -k && sudo apt-get update` (enter new password when prompted).
+- **Expected:** Accepts new password; `apt-get update` runs. Setting password to empty then restarting disables sudo entirely (`sudo apt-get update` should refuse without the error mentioning `no-new-privileges`).
+- **Notes:** P1. Reset to default afterwards. Sudoers is restricted to `apt-get`/`apt` only — other `sudo` commands will be rejected regardless of password.
+- **Note:** Toggling the sudo password between empty and non-empty changes the container's `security_opt` set, so the next start/restart recreates the container (compose detects the config drift). New container ID expected.
 
 ---
 
@@ -462,6 +473,13 @@ For an exhaustive per-tool sweep that runs itself (Claude drives, this plan stay
 - **Steps:** 1) `claude -p "What MCP tools do you have?"` — confirm `vault_create_anywhere`, `vault_modify_anywhere`, `vault_append_anywhere`, `vault_frontmatter_set_anywhere` are present. 2) `claude -p "Create a file notes/anywhere-test.md with 'ok'"` (outside write directory). 3) Set mode to `none`, toggle MCP. 4) Repeat step 2.
 - **Expected:** Step 2 succeeds, file in `notes/`. Step 4 fails: no `_anywhere` tools; scoped `vault_create` rejects with "outside write directory". No diff modal in full mode.
 - **Notes:** P0. Cleanup: delete `notes/anywhere-test.md`, confirm mode back to default.
+
+### 3.20 Awaiting-input badge
+
+- **Setup:** Active Claude session (terminal open, Claude running). `agent` tier enabled (always-on when MCP is on).
+- **Steps:** Trigger a tool call that causes Claude to pause awaiting human input (e.g. a reviewed-write that opens the diff modal, or a direct `agent_status_set` call via MCP).
+- **Expected:** Sandbox pill in the status bar gains a trailing ` ⚠` while the agent is awaiting input: `Sandbox: ▶ Running ⚠`. Badge clears when the session is no longer awaiting input.
+- **Notes:** P2. Driven by `agent_status_set` tool in `mcp-tools.ts`; requires authenticated Claude. This is why it doesn't belong in Stage 2.
 
 ---
 

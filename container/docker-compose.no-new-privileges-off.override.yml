@@ -1,0 +1,14 @@
+# Override: lift the no-new-privileges restriction so the password-gated
+# sudoers entry (apt-get/apt only) works after gosu drops to claude.
+#
+# Applied automatically by the plugin when Settings → Advanced → Sudo password
+# is non-empty. Direct CLI users running `docker compose up -d` from container/
+# get the restrictive default (no-new-privileges:true) unless they explicitly
+# add this file via `-f`.
+#
+# Requires Docker Compose ≥ 2.24 for `!reset` list-merge syntax.
+name: oas
+
+services:
+  sandbox:
+    security_opt: !reset []
