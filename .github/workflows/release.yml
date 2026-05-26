@@ -100,7 +100,7 @@ jobs:
         # SHA-pinned: a moving major-tag pin on the action that signs
         # releases is a supply-chain liability — a tag re-push would
         # compromise every future release signature with no rollback.
-        # SHA is v3.2.0 — keep comment in sync when bumping.
+        # SHA is v4.1.0 — keep comment in sync when bumping.
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
         with:
           subject-path: |
