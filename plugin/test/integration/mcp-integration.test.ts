@@ -583,7 +583,9 @@ function runProxyOnce(
 			settled = true;
 			try {
 				proc.kill();
-			} catch {}
+			} catch {
+				// kill() throws if the process already exited; ignore
+			}
 			server.close();
 			if (err) rejectP(err);
 			else resolveP(val!);
@@ -620,7 +622,9 @@ function runProxyOnce(
 					try {
 						settle(JSON.parse(line) as Record<string, unknown>);
 						return;
-					} catch {}
+					} catch {
+						// line is not valid JSON yet; keep buffering
+					}
 				}
 				buf = lines[lines.length - 1];
 			});
