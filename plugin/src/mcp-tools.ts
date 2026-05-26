@@ -236,7 +236,7 @@ export function validateNewVaultPath(
 ): McpToolResult | null {
 	if (pathHasParentSegment(path) || path.startsWith("/") || path.startsWith("\\"))
 		return error("Path may not contain a '..' segment or start with '/' or '\\'.");
-	if (/^[A-Za-z]:/.test(path) || path.includes(":"))
+	if (path.includes(":"))
 		return error("Path may not contain drive letters or ':' (alt-data-stream).");
 	if (!isPathAllowedByFilter(path, pathFilter))
 		return error("Path is blocked by allow/block list.");

@@ -74,3 +74,17 @@ export function exponentialBackoff(attemptIdx: number): number {
 export function buildWsUrl(port: number, bindAddress?: string): string {
 	return `ws://${resolveHost(bindAddress)}:${port}/ws`;
 }
+
+/**
+ * Build the browser-facing ttyd URL for "Open in Browser" / status-bar menu.
+ *
+ * Uses `localhost` (not `127.0.0.1`) for loopback/unset addresses so the URL
+ * is valid in browsers that may not resolve bare IP literals as localhost.
+ * LAN IPs are used verbatim (same logic as `resolveHost`, different loopback
+ * representation).
+ */
+export function resolveTtydBrowserUrl(port: number, bindAddress: string | undefined): string {
+	const v = (bindAddress ?? "").trim();
+	const host = !v || v === "127.0.0.1" || v === "0.0.0.0" || v === "::1" ? "localhost" : v;
+	return `http://${host}:${port}`;
+}

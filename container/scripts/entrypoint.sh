@@ -39,7 +39,7 @@ if [[ -n "${OAS_HOST_IP:-}" ]]; then
     trap 'rm -f "$tmp"' EXIT
     grep -v 'host\.docker\.internal' /etc/hosts > "$tmp"
     echo "${OAS_HOST_IP}  host.docker.internal" >> "$tmp"
-    cp "$tmp" /etc/hosts
+    cat "$tmp" > /etc/hosts
     rm -f "$tmp"
     trap - EXIT
 fi
@@ -63,8 +63,10 @@ ensure_ownership() {
             # rootless Docker idmap) reject chown by design — but DO log
             # rather than swallow silently, so the operator can see why
             # the chmod fallback path triggered.
-            if ! chown -R "${claude_uid}:${claude_gid}" "$dir" 2>/dev/null; then
-                echo "entrypoint: chown -R failed on $dir (rc=$?) — likely a non-Linux-native mount" >&2
+            chown -R "${claude_uid}:${claude_gid}" "$dir" 2>/dev/null
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+                echo "entrypoint: chown -R failed on $dir (rc=$rc) — likely a non-Linux-native mount" >&2
             fi
             # Verify it worked — on 9p/drvfs mounts (Windows), chown may
             # succeed silently without effect. Fall back to chmod so the
@@ -73,8 +75,10 @@ ensure_ownership() {
             new_uid=$(stat -c '%u' "$dir" 2>/dev/null || echo "")
             if [[ "$new_uid" != "$claude_uid" ]]; then
                 echo "entrypoint: chown ineffective on $dir (9p/drvfs mount?), using chmod"
-                if ! chmod -R a+rwX "$dir" 2>/dev/null; then
-                    echo "entrypoint: chmod -R fallback failed on $dir (rc=$?)" >&2
+                chmod -R a+rwX "$dir" 2>/dev/null
+                rc=$?
+                if [ "$rc" -ne 0 ]; then
+                    echo "entrypoint: chmod -R fallback failed on $dir (rc=$rc)" >&2
                 fi
             fi
         fi

@@ -265,7 +265,7 @@ for entry in "${ALLOWED_DOMAINS[@]}"; do
     set -e
     ips="$(_resolve_domain "$entry" "$tries")" || exit 1
     for ip in $ips; do
-      ipset add allowed_ips_new "${ip}/32" -exist
+      ipset add allowed_ips_new "${ip}/32" -exist || exit 1
     done
   ) &
   PIDS+=($!)
