@@ -327,6 +327,51 @@ describe("ObsidianMcpServer", () => {
 			expect(res.headers["access-control-allow-origin"]).toBeUndefined();
 		});
 
+		it("returns 404 with -32001 for a stale session id", async () => {
+			const res = await httpRequest(
+				"POST",
+				"/mcp",
+				{
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${TEST_TOKEN}`,
+					"Mcp-Session-Id": "00000000-0000-0000-0000-000000000000",
+				},
+				JSON.stringify({
+					jsonrpc: "2.0",
+					id: 1,
+					method: "tools/call",
+					params: { name: "vault_list_files", arguments: {} },
+				}),
+			);
+			expect(res.status).toBe(404);
+			const body = JSON.parse(res.body);
+			expect(body.id).toBe(1);
+			expect(body.error.code).toBe(-32001);
+			expect(body.error.message).toMatch(/Session expired/);
+		});
+
+		it("returns 400 with -32600 for a non-initialize POST without a session id", async () => {
+			const res = await httpRequest(
+				"POST",
+				"/mcp",
+				{
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${TEST_TOKEN}`,
+				},
+				JSON.stringify({
+					jsonrpc: "2.0",
+					id: 7,
+					method: "tools/call",
+					params: { name: "vault_list_files", arguments: {} },
+				}),
+			);
+			expect(res.status).toBe(400);
+			const body = JSON.parse(res.body);
+			expect(body.id).toBe(7);
+			expect(body.error.code).toBe(-32600);
+			expect(body.error.message).toMatch(/initialize/);
+		});
+
 		it("returns 400 for GET without session", async () => {
 			const res = await httpRequest("GET", "/mcp", {
 				Authorization: `Bearer ${TEST_TOKEN}`,

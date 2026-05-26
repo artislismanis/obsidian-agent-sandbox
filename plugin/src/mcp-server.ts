@@ -900,6 +900,43 @@ export class ObsidianMcpServer {
 			return;
 		}
 
+		if (sessionId && !this.transports.has(sessionId)) {
+			const requestId: unknown =
+				body !== null && typeof body === "object"
+					? ((body as { id?: unknown }).id ?? null)
+					: null;
+			res.writeHead(404, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					jsonrpc: "2.0",
+					id: requestId,
+					error: { code: -32001, message: "Session expired — re-initialize" },
+				}),
+			);
+			return;
+		}
+
+		if (!sessionId) {
+			const parsed =
+				body !== null && typeof body === "object"
+					? (body as { method?: string; id?: unknown })
+					: null;
+			if (parsed?.method !== "initialize") {
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(
+					JSON.stringify({
+						jsonrpc: "2.0",
+						id: parsed?.id ?? null,
+						error: {
+							code: -32600,
+							message: "Missing Mcp-Session-Id; call initialize first",
+						},
+					}),
+				);
+				return;
+			}
+		}
+
 		const server = this.createMcpServer();
 		const transport = new StreamableHTTPServerTransport({
 			sessionIdGenerator: () => randomUUID(),
