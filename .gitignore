@@ -5,8 +5,8 @@ plugin/dist/
 node_modules/
 
 # IDE
-.idea
-.vscode
+.idea/
+.vscode/
 
 # OS
 .DS_Store

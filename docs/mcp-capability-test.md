@@ -17,6 +17,8 @@ The plan covers only the MCP surface. Container lifecycle, terminal UX, review m
 | E | ON | OFF | ON | none | read, writeScoped, agent, navigate, extensions |
 | F | ON | ON | OFF | none | read, writeScoped, agent, navigate, manage |
 
+Cell B's active set extends cell A's with `writeReviewed`; cell C extends A's with `writeVault`. The `+ writeReviewed` / `+ writeVault` notation is additive, not replacement.
+
 **Full-sweep cells (A, B, C):** run all scenarios; skip only those whose `Requires:` tag is not in the active set.
 
 **Smoke cells (D, E, F):** run only scenarios whose `Requires:` tag set is no longer satisfied by the cell — mark the rest `SKIPPED (cell D/E/F)`. Always run S0.1 and S9.5 regardless.
@@ -301,7 +303,18 @@ These probe behaviour that isn't tool-specific.
 
 Pick `rateLimits.defaultReadsPerMin` from S0.1. Issue `defaultReadsPerMin + 5` calls of `vault_list { }` in rapid succession (sequentially, no sleep). Record the index at which the first rate-limit error appears and its **verbatim** message.
 
-> **Context budget note:** Each `vault_list` response can be large. To avoid exhausting context, issue the burst via Bash rather than MCP tool calls: `for i in $(seq 1 $N); do curl -s -X POST http://127.0.0.1:28080/... ; done`. Capture only the response that first returns a rate-limit error verbatim; summarise the rest as "200 OK".
+> **Context budget note:** Each `vault_list` response can be large. To avoid exhausting context, issue the burst via Bash rather than MCP tool calls. Capture only the response that first returns a rate-limit error verbatim; summarise the rest as "200 OK".
+>
+> ```bash
+> # Example burst — replace TOKEN and PORT with values from S0.2 / plugin settings:
+> for i in $(seq 1 $N); do
+>   curl -sS -o /dev/null -w "%{http_code}\n" \
+>     -H "Authorization: Bearer $TOKEN" \
+>     -H "Content-Type: application/json" \
+>     -X POST "http://127.0.0.1:$PORT/mcp" \
+>     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"vault_list","arguments":{}}}'
+> done
+> ```
 
 ### S9.2 Unknown tool
 
@@ -322,6 +335,20 @@ If at least one tier is disabled per S0.1, pick any tool from that tier and call
 ### S9.6 Concurrent tool calls
 
 Issue three `vault_list { }` calls in parallel within a single tool-invocation batch. Record whether all three complete, any ordering anomalies, and whether interleaved responses arrive correctly. If the client does not support parallel invocation, issue them in rapid sequential bursts instead and note the method used.
+
+### S9.7 Path-traversal probe
+
+`Requires: (any)`
+
+Prerequisite: `<vault-root>/evil.md` → `/etc/hosts` symlink must exist. Create it from the host before running this scenario:
+
+```bash
+ln -sf /etc/hosts <vault>/evil.md
+```
+
+(`container/test-scripts/security-checks.sh` creates this fixture automatically once that script lands; remove it after the run.)
+
+Call `vault_read { path: "evil.md" }`. Capture the verbatim error. Confirm that the content of `/etc/hosts` (first line begins `#`) does **not** appear anywhere in the response.
 
 ---
 
