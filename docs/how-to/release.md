@@ -46,12 +46,19 @@ npm run test:integration   # needs Docker + oas-sandbox:latest
 npm run test:e2e:headless  # needs xvfb or local display
 ```
 
-Security boundary smoke (required before shipping — covers P0 scenarios from Stage 7/8):
+Security boundary smoke (required before shipping — covers P0 scenarios from Stage 7/8, P1/P2 regressions from Stage 9):
 
 ```bash
 # Needs: live container, firewall enabled, example.com in Additional firewall domains,
 #        internal.corp.example in container/firewall-extras.txt, jq on host PATH
 bash container/test-scripts/security-checks.sh /path/to/test-vault
+```
+
+Stress smoke (required before shipping — covers Stage 12 edge cases):
+
+```bash
+# Needs: live container, MCP enabled, jq on host PATH
+bash container/test-scripts/stress-checks.sh /path/to/test-vault
 ```
 
 ### 2. Update the changelog (optional)
