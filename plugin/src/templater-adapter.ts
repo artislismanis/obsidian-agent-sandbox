@@ -13,7 +13,7 @@
  */
 
 import type { App, TFile } from "obsidian";
-import { logger } from "./logger";
+import { logger, errMsg } from "./logger";
 import { getInstalledPlugin } from "./obsidian-internals";
 import { isPathWithinDir } from "./validation";
 
@@ -128,7 +128,7 @@ export async function applyTemplaterFolderTemplate(
 		return { ok: true, template: tplFile.path };
 	} catch (e) {
 		logger.error("templater", "folder-template application failed", e);
-		return { ok: false, reason: "failed", error: e instanceof Error ? e.message : String(e) };
+		return { ok: false, reason: "failed", error: errMsg(e) };
 	}
 }
 

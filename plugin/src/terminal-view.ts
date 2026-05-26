@@ -3,7 +3,7 @@ import { ItemView, Notice, Scope } from "obsidian";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import type { TerminalSettings, TerminalThemeMode } from "./settings";
-import { logger } from "./logger";
+import { logger, errMsg } from "./logger";
 import { refreshLeafHeader } from "./obsidian-internals";
 import { pollUntilReady, buildWsUrl, exponentialBackoff } from "./ttyd-client";
 import { isValidSessionName } from "./validation";
@@ -250,8 +250,7 @@ export class TerminalView extends ItemView {
 						// post-tmux `setViewState` rejecting on a workspace
 						// state race) instead of letting the rejection vanish.
 						void fn().catch((err: unknown) => {
-							const msg = err instanceof Error ? err.message : String(err);
-							new Notice(`Rename session failed: ${msg}`);
+							new Notice(`Rename session failed: ${errMsg(err)}`);
 						});
 					}),
 			);
@@ -368,10 +367,7 @@ export class TerminalView extends ItemView {
 			// and leaving the user with an empty pane and no retry button.
 			logger.error("Terminal", "connect() failed", e);
 			try {
-				this.showError(
-					this.contentEl,
-					`Terminal initialization failed: ${e instanceof Error ? e.message : String(e)}`,
-				);
+				this.showError(this.contentEl, `Terminal initialization failed: ${errMsg(e)}`);
 			} catch {
 				/* showError itself can throw if contentEl was torn down */
 			}

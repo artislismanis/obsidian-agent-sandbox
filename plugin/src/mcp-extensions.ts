@@ -21,6 +21,7 @@ import {
 	isPathAllowedByFilter,
 	validateNewVaultPath,
 	coercedBoolean,
+	assertUnchangedDuringReview,
 } from "./mcp-tools";
 import { logger, errMsg } from "./logger";
 import { getInstalledPlugin, isVaultPathSafe } from "./obsidian-internals";
@@ -285,12 +286,8 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 						// changed between review and apply. Without this, an
 						// approved reviewed-tier canvas edit would silently clobber
 						// the user's concurrent edits in the canvas UI.
-						const current = await app.vault.read(f);
-						if (current !== raw) {
-							throw new Error(
-								`Canvas '${f.path}' changed during review — aborting to avoid clobbering an external edit. Re-run the tool to see the current contents.`,
-							);
-						}
+						const conflict = await assertUnchangedDuringReview(app, f, raw, f.path);
+						if (conflict) throw new Error(conflict);
 						await app.vault.modify(f, updated);
 					},
 					successMsg: `Modified ${f.path} (${doc.summary || "no-op"}).`,

@@ -8,7 +8,7 @@ import type { App } from "obsidian";
 import { Modal, Notice } from "obsidian";
 import type { TerminalView } from "./terminal-view";
 import { VIEW_TYPE_TERMINAL } from "./view-types";
-import { logger } from "./logger";
+import { logger, errMsg } from "./logger";
 
 /** Opens a modal listing currently-open sandbox terminal tabs with a filter. */
 export function showSessionPicker(app: App): void {
@@ -79,7 +79,7 @@ export async function showSessionCleanup(
 		// listEmptySessions throws on docker/tmux probe failure (vs a silent
 		// `catch → []` that would make a daemon outage look like "all clean").
 		// Surface the cause so the cleanup modal doesn't vanish unexplained.
-		new Notice(`Could not list sessions: ${err instanceof Error ? err.message : String(err)}`);
+		new Notice(`Could not list sessions: ${errMsg(err)}`);
 		return;
 	}
 	if (candidates.length === 0) {
@@ -133,8 +133,7 @@ export async function showSessionCleanup(
 					});
 					new Notice(`Killed ${killed}/${toKill.length} session(s).`);
 				})().catch((err: unknown) => {
-					const msg = err instanceof Error ? err.message : String(err);
-					new Notice(`Kill sessions failed: ${msg}`);
+					new Notice(`Kill sessions failed: ${errMsg(err)}`);
 				});
 			});
 		});

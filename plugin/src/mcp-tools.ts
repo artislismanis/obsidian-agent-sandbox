@@ -203,17 +203,15 @@ function filterPaths(paths: Iterable<string>, pathFilter?: PathFilter): string[]
  * Returns null when the file is unchanged (caller may proceed), or an error
  * result the caller should return as-is.
  */
-async function assertUnchangedDuringReview(
+export async function assertUnchangedDuringReview(
 	app: App,
 	file: TFile,
 	expected: string,
 	filePath: string,
-): Promise<McpToolResult | null> {
+): Promise<string | null> {
 	const current = await app.vault.read(file);
 	if (current === expected) return null;
-	return error(
-		`File '${filePath}' changed during review — aborting to avoid clobbering an external edit. Re-run the tool to see the current contents.`,
-	);
+	return `File '${filePath}' changed during review — aborting to avoid clobbering an external edit. Re-run the tool to see the current contents.`;
 }
 
 /**
@@ -274,10 +272,7 @@ export async function forEachMarkdownChunked(
 			chunk.map((f) =>
 				app.vault.cachedRead(f).catch((err) => {
 					readFailures++;
-					logger.warn(
-						"MCP",
-						`cachedRead failed for ${f.path}: ${err instanceof Error ? err.message : String(err)}`,
-					);
+					logger.warn("MCP", `cachedRead failed for ${f.path}: ${errMsg(err)}`);
 					return "";
 				}),
 			),
@@ -372,7 +367,7 @@ export async function gateVaultWrite(args: {
 				expected,
 				args.destPath,
 			);
-			if (conflict) return conflict;
+			if (conflict) return error(conflict);
 		}
 		return runApply();
 	}
@@ -1282,7 +1277,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					expected,
 					op.filePath,
 				);
-				if (conflict) return conflict;
+				if (conflict) return error(conflict);
 			}
 		}
 		// Catch apply errors and return them as clean tool errors. Propagating
