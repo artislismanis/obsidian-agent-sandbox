@@ -273,6 +273,19 @@ These probe behaviour that isn't tool-specific.
 
 Pick `rateLimits.defaultReadsPerMin` from S0.1. Issue `defaultReadsPerMin + 5` calls of `vault_list { }` in rapid succession (sequentially, no sleep). Record the index at which the first rate-limit error appears and its **verbatim** message.
 
+> **Context budget note:** Each `vault_list` response can be large. To avoid exhausting context, issue the burst via Bash rather than MCP tool calls. Capture only the response that first returns a rate-limit error verbatim; summarise the rest as "200 OK".
+>
+> ```bash
+> # Example burst — replace TOKEN and PORT with values from S0.2 / plugin settings:
+> for i in $(seq 1 $N); do
+>   curl -sS -o /dev/null -w "%{http_code}\n" \
+>     -H "Authorization: Bearer $TOKEN" \
+>     -H "Content-Type: application/json" \
+>     -X POST "http://127.0.0.1:$PORT/mcp" \
+>     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"vault_list","arguments":{}}}'
+> done
+> ```
+
 ### S9.2 Unknown tool
 
 Call `mcp__obsidian__vault_does_not_exist` with `{}`. Capture the error.
@@ -289,9 +302,9 @@ Call `vault_read` with `{}`. Capture the verbatim error.
 
 If at least one tier is disabled per S0.1, pick any tool from that tier and call it with otherwise-valid inputs. Confirm it isn't exposed and capture the error — distinguish "tool not found" from "tier disabled".
 
-### S9.6 Concurrent calls
+### S9.6 Concurrent tool calls
 
-Drive two searches in parallel (as a single tool-call batch if the client supports it): `vault_search { query: "alpha" }` and `vault_search { query: "beta" }`. Confirm both return results without deadlock or `isError`. Cross-check against `<vault>/.oas/mcp-audit.jsonl` to confirm both calls reached the server. Note: full interleaving behaviour is only visible in a live conversation session; see `qa-test-plan.md` Stage 3.9 for the human-driven companion check.
+Issue three `vault_list { }` calls in parallel within a single tool-invocation batch. Record whether all three complete, any ordering anomalies, and whether interleaved responses arrive correctly. If the client does not support parallel invocation, issue them in rapid sequential bursts instead and note the method used.
 
 ---
 

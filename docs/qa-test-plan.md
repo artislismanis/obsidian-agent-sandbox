@@ -105,7 +105,7 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 - **Steps:** Command palette → **Sandbox: Start Container**.
 - **Expected:**
   - **Linux native Docker / macOS Docker Desktop / WSL2 mirrored mode:** Notice `Port conflict: 7681 already in use on 127.0.0.1. Stop the other process or change the port in settings.` Container does not start. *(Note: Notice always says `127.0.0.1` even if Bind address is set to something else — known cosmetic bug.)*
-  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns. Container starts; terminal tab spins without connecting; no Notice. **Record this as a known gap**, not a pass.
+  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns. Container starts; terminal tab spins without connecting; no Notice. **Record this as a known gap**, not a pass. See `docs/proposals/port-conflict-detection-improvements.md` Task 1.
 - **Cleanup:** Release the port. Restart container if it started in the NAT-mode gap case.
 - **Notes:** P1 on platforms where pre-flight works. Known gap on WSL2 NAT.
 

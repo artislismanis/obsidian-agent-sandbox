@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import * as http from "http";
 import type { IncomingHttpHeaders } from "http";
 
@@ -45,7 +45,7 @@ vi.mock("@modelcontextprotocol/sdk/server/streamableHttp.js", () => {
 	return { StreamableHTTPServerTransport: MockTransport };
 });
 
-import { ObsidianMcpServer, generateToken } from "../mcp-server";
+import { ObsidianMcpServer, generateToken, startSseKeepalive } from "../mcp-server";
 
 const TEST_PORT = 39182;
 const TEST_TOKEN = "test-token-abc123";
@@ -548,6 +548,81 @@ describe("ObsidianMcpServer", () => {
 				expect(s.isRunning()).toBe(false);
 			}
 		});
+	});
+});
+
+describe("startSseKeepalive", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	function makeMockRes() {
+		const events: Record<string, (() => void)[]> = {};
+		const res = {
+			writeHead: vi.fn().mockReturnThis(),
+			write: vi.fn(),
+			getHeader: vi.fn().mockReturnValue(undefined),
+			writableEnded: false,
+			destroyed: false,
+			on(ev: string, fn: () => void) {
+				(events[ev] ??= []).push(fn);
+				return this;
+			},
+			off(ev: string, fn: () => void) {
+				events[ev] = (events[ev] ?? []).filter((f) => f !== fn);
+				return this;
+			},
+			emit(ev: string) {
+				(events[ev] ?? []).forEach((f) => f());
+			},
+		};
+		return res;
+	}
+
+	it("does not start interval for non-SSE responses", () => {
+		const res = makeMockRes();
+		startSseKeepalive(res as never);
+		// writeHead without Content-Type: text/event-stream
+		(res.writeHead as (code: number, hdrs: Record<string, string>) => void)(200, {
+			"Content-Type": "application/json",
+		});
+		vi.advanceTimersByTime(10_000);
+		expect(res.write).not.toHaveBeenCalled();
+	});
+
+	it("emits keepalive comments for SSE responses", () => {
+		const res = makeMockRes();
+		startSseKeepalive(res as never);
+		(res.writeHead as (code: number, hdrs: Record<string, string>) => void)(200, {
+			"Content-Type": "text/event-stream",
+		});
+		vi.advanceTimersByTime(5_001);
+		expect(res.write).toHaveBeenCalledWith(": keepalive\n\n");
+	});
+
+	it("stops interval when cleanup is called", () => {
+		const res = makeMockRes();
+		const stop = startSseKeepalive(res as never);
+		(res.writeHead as (code: number, hdrs: Record<string, string>) => void)(200, {
+			"Content-Type": "text/event-stream",
+		});
+		stop();
+		vi.advanceTimersByTime(10_000);
+		expect(res.write).not.toHaveBeenCalled();
+	});
+
+	it("stops interval on finish event", () => {
+		const res = makeMockRes();
+		startSseKeepalive(res as never);
+		(res.writeHead as (code: number, hdrs: Record<string, string>) => void)(200, {
+			"Content-Type": "text/event-stream",
+		});
+		res.emit("finish");
+		vi.advanceTimersByTime(10_000);
+		expect(res.write).not.toHaveBeenCalled();
 	});
 });
 

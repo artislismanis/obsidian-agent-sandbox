@@ -252,7 +252,7 @@ function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
  * long modal waits. Non-SSE responses are left untouched.
  * Returns a cleanup function that stops the interval and restores writeHead.
  */
-function startSseKeepalive(res: ServerResponse): () => void {
+export function startSseKeepalive(res: ServerResponse): () => void {
 	let timer: ReturnType<typeof setInterval> | undefined;
 
 	const stop = (): void => {
