@@ -813,7 +813,7 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 					.default("daily")
 					.describe("Which periodic note to resolve (default: daily)"),
 				date: z.string().optional().describe("ISO date (YYYY-MM-DD). Defaults to today."),
-				create: z.boolean().optional().describe("Create if missing (default false)"),
+				create: coercedBoolean().optional().describe("Create if missing (default false)"),
 			},
 
 			handler: async ({ periodicity, date: dateArg, create = false }) => {

@@ -1584,7 +1584,7 @@ describe("Zod schema defaults — vault_periodic_note", () => {
 					: null,
 			enabledPlugins: new Set(["periodic-notes"]),
 		};
-		app.vault.getFileByPath = vi.fn(() => null); // no file exists
+		app.vault.getFileByPath = vi.fn((_p: string) => null); // no file exists
 		return app;
 	}
 

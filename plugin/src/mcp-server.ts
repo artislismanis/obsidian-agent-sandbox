@@ -1,5 +1,5 @@
 import { createServer } from "http";
-import type { Server, IncomingMessage, ServerResponse } from "http";
+import type { Server, IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "http";
 import type { App } from "obsidian";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -245,10 +245,11 @@ function createFileAuditSink(app: App): (entry: AuditEntry) => Promise<void> {
 // ── SSE keepalive ────────────────────────────────────
 
 /**
- * Intercepts `res.writeHead` to detect when the SDK opens an SSE stream,
- * then writes `: keepalive\n\n` comments at KEEPALIVE_INTERVAL_MS.
- * SSE comments are ignored by clients but constitute socket activity,
- * preventing the proxy's inactivity timeout from firing during long modal waits.
+ * Intercepts `res.writeHead` to detect when the SDK opens an SSE stream
+ * (Content-Type: text/event-stream), then writes `: keepalive\n\n` comments
+ * at KEEPALIVE_INTERVAL_MS. SSE comments are ignored by clients but constitute
+ * socket activity, preventing the proxy's inactivity timeout from firing during
+ * long modal waits. Non-SSE responses are left untouched.
  * Returns a cleanup function that stops the interval and restores writeHead.
  */
 function startSseKeepalive(res: ServerResponse): () => void {
@@ -267,6 +268,15 @@ function startSseKeepalive(res: ServerResponse): () => void {
 		const result = (
 			origWriteHead as (...a: Parameters<typeof res.writeHead>) => ServerResponse
 		)(...args);
+		// Only start keepalives for SSE responses. Non-SSE JSON responses complete
+		// in milliseconds, but the guard prevents accidental corruption if any
+		// non-SSE path ever stalls beyond KEEPALIVE_INTERVAL_MS.
+		const hdrs = (args[args.length - 1] ?? {}) as OutgoingHttpHeaders;
+		const ctHdr = hdrs["Content-Type"] ?? hdrs["content-type"] ?? res.getHeader("content-type");
+		const isSse = String(ctHdr ?? "")
+			.toLowerCase()
+			.startsWith("text/event-stream");
+		if (!isSse) return result;
 		if (timer === undefined && !res.writableEnded) {
 			timer = setInterval(() => {
 				if (res.writableEnded || res.destroyed) {

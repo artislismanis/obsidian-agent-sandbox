@@ -660,7 +660,7 @@ Locate (and optionally create) a periodic note — daily/weekly/monthly/quarterl
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `periodicity` | `"daily" \| "weekly" \| "monthly" \| "quarterly" \| "yearly"` | yes | Which periodic note to resolve (default: daily) |
+| `periodicity` | `"daily" \| "weekly" \| "monthly" \| "quarterly" \| "yearly"` | no | Which periodic note to resolve (default: daily) |
 | `date` | `string` | no | ISO date (YYYY-MM-DD). Defaults to today. |
 | `create` | `boolean` | no | Create if missing (default false) |
 
