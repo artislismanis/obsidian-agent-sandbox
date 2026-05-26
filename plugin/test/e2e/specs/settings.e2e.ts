@@ -144,7 +144,7 @@ describe("Settings — validation and warnings", function () {
 								string,
 								{
 									settings: {
-										mcpVaultWrites: "none" | "reviewed" | "full";
+										mcpVaultWrites: "scoped" | "reviewed" | "full";
 										mcpTierNavigate: boolean;
 										mcpTierManage: boolean;
 									};
@@ -164,7 +164,7 @@ describe("Settings — validation and warnings", function () {
 			});
 
 			expect(values).not.toBeNull();
-			expect(values!.vaultWrites).toBe("none");
+			expect(values!.vaultWrites).toBe("scoped");
 			expect(values!.navigate).toBe(false);
 			expect(values!.manage).toBe(false);
 		});
