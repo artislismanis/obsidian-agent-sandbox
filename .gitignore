@@ -5,8 +5,8 @@ plugin/dist/
 node_modules/
 
 # IDE
-.idea/
-.vscode/
+.idea
+.vscode
 
 # OS
 .DS_Store
@@ -41,10 +41,26 @@ plugin/wdio-logs/
 # container runs and is just inert clutter when stopped.
 workspace/vault/
 
+# Claude Code sandbox masking layer bind-mounts /dev/null over these
+# host-config paths inside the sandbox. They appear as untracked
+# character devices in `git status` but can never be committed.
+.bashrc
+.bash_profile
+.profile
+.zshrc
+.zprofile
+.gitconfig
+.gitmodules
+.ripgreprc
+
 # Claude Code local overrides
 **/.claude/settings.local.json
 # Claude Code scheduler state — runtime artefact, never committed
 **/.claude/scheduled_tasks.lock
+# Project-root .claude/ is entirely per-machine runtime state (sandbox masks,
+# agent worktrees). workspace/.claude/ has committed project files — this
+# root-anchored pattern deliberately leaves that untouched.
+/.claude/
 tmux-*.log
 
 # test artifacts
