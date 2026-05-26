@@ -329,7 +329,9 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 This is where the bulk of the value lives — interactive Claude against the plugin's own Obsidian MCP server.
 
-For an exhaustive per-tool sweep that runs itself (Claude drives, this plan stays human-driven), see [mcp-capability-test.md](./mcp-capability-test.md). The two are complementary: this stage validates the happy paths and the tier-toggle UX from a human's perspective; the capability test plan validates schema shapes, error messages, and per-tier gating exhaustively.
+For an exhaustive per-tool sweep that runs itself (Claude drives, this plan stays human-driven), see [mcp-capability-test.md](./mcp-capability-test.md). The two are complementary: this stage validates the UI/UX from a human's perspective; the capability test plan validates schema shapes, error messages, and per-tier gating exhaustively.
+
+**Tier-toggle scenarios** (Navigate disabled → tool absent; write mode `full` → `_anywhere` tools appear) have moved to the capability-test permission-cells matrix — see cells D/E for navigate-gate verification and cell A vs C for write-mode comparison.
 
 **Tier model (`src/permission-tiers.ts`):**
 - Always-on when MCP is enabled: `read`, `writeScoped`, `agent`.
@@ -337,144 +339,56 @@ For an exhaustive per-tool sweep that runs itself (Claude drives, this plan stay
 - Vault write mode (dropdown): `none` (default) / `reviewed` (`writeReviewed` tier, diff modal per change) / `full` (`writeVault` tier, unrestricted, no review).
 - Tool naming: scoped writes are `vault_create` / `vault_modify` / `vault_append` / `vault_frontmatter_set`; reviewed mode adds `_reviewed` suffix; full mode adds `_anywhere` suffix.
 
-### 3.1 MCP tool announcement
-
-- **Steps:** In a terminal: `claude -p "What MCP tools do you have? List them."`
-- **Expected:** With defaults (gated tiers off, vault write mode `none`), the response lists the always-on set: reads (`vault_read`, `vault_list`, `vault_search`, `vault_search_fuzzy`, `vault_file_info`, `vault_tags`, `vault_frontmatter`, `vault_links`, `vault_backlinks`, `vault_headings`, `vault_orphans`, `vault_unresolved`, `vault_recent`, `vault_properties`, `vault_graph_neighborhood`, `vault_graph_path`, `vault_graph_clusters`, `vault_context`, `vault_suggest_links`) and scoped writes (`vault_create`, `vault_modify`, `vault_append`, `vault_frontmatter_set`). All prefixed `mcp__obsidian__`.
-- **Notes:** P0. If absent, the plugin's MCP server isn't reachable from the container — check token, port, bind address, firewall.
-
-### 3.2 Vault search
-
-- **Setup:** A note in your vault containing a unique distinctive word, e.g. "zorblax".
-- **Steps:** `claude -p "Search my vault for zorblax"`.
-- **Expected:** `vault_search` call returns the file path and snippet.
-- **Notes:** P0.
-
-### 3.3 Vault read
-
-- **Steps:** `claude -p "Read the file Welcome.md and summarise it in one sentence"` (use any real vault file).
-- **Expected:** Calls `vault_read`, returns content, summarises.
-- **Notes:** P0.
-
-### 3.4 Write scoped — create
-
-- **Setup:** Default Write directory `agent-workspace/`.
-- **Steps:** `claude -p "Create a file agent-workspace/hello.md with content 'Hello world'"`.
-- **Expected:** File appears in vault file explorer. Content matches.
-- **Notes:** P0. Cleanup: delete the file.
-
-### 3.5 Write scoped — denied outside scope
-
-- **Steps:** `claude -p "Create a file notes/intrusion.md with 'should fail'"` (path outside Write directory).
-- **Expected:** Tool returns a clear "outside write directory" error; file is NOT created.
-- **Notes:** P0.
-
-### 3.6 Navigate tier — open file
+### 3.1 Navigate tier — UI assertion
 
 - **Setup:** Navigate tier enabled. Toggle MCP off then on so the server picks up the change.
 - **Steps:** `claude -p "Open Welcome.md in the editor"`.
-- **Expected:** File becomes the active tab in Obsidian.
+- **Expected:** File becomes the active tab in Obsidian. (The `vault_open` call itself is covered by S6.1 in the capability test.)
 - **Notes:** P1.
 
-### 3.7 Navigate tier — disabled removes tool
-
-- **Setup:** Disable Navigate, restart MCP.
-- **Steps:** `claude -p "What MCP tools do you have?"` then attempt `Open ... in the editor`.
-- **Expected:** `vault_open` absent from the list. Attempting to open returns a graceful "not available" rather than a crash.
-- **Notes:** P1. Re-enable Navigate before continuing.
-
-### 3.8 Manage tier — rename with backlinks
-
-- **Setup:** Manage tier on. Two notes A.md and B.md both linking to `notes/old.md`.
-- **Steps:** `claude -p "Rename notes/old.md to notes/new.md"`.
-- **Expected:** File renamed; A.md and B.md wikilinks updated automatically.
-- **Notes:** P0.
-
-### 3.9 Manage tier — move
-
-- **Steps:** `claude -p "Move notes/new.md into folder archive/"`.
-- **Expected:** File moves; links update.
-- **Notes:** P1.
-
-### 3.10 Manage tier — delete + create folder
-
-- **Steps:** `claude -p "Delete archive/new.md"` then `claude -p "Create a folder called scratch/2026"`.
-- **Expected:** Deletion succeeds (file gone from vault). Folder appears.
-- **Notes:** P1. Cleanup: remove the scratch folder.
-
-### 3.11 Always-on tiers have no toggle
+### 3.2 Always-on tiers have no toggle
 
 - **Setup:** Settings → MCP, with MCP enabled.
 - **Steps:** Inspect the permissions section.
 - **Expected:** Three toggles only (Navigate, Manage, Extensions) and one dropdown (Vault write mode: `none` / `reviewed` / `full`). No UI control for `read`, `writeScoped`, or `agent`; their tools always appear in `vault_*` listings while MCP is on.
 - **Notes:** P2. Confirms `docs/reference/settings.md` matches reality.
 
-### 3.12 MCP token rotation kicks live connections
+### 3.3 MCP token rotation kicks live connections
 
 - **Setup:** Active Claude session connected to MCP.
 - **Steps:** Click Regenerate token in plugin settings. In the same terminal, try another tool call.
 - **Expected:** The next call fails auth. Restarting the container per the regenerate-button description, then restarting Claude, restores tool access.
 - **Notes:** P1.
 
-### 3.13 MCP turn-off mid-session
+### 3.4 MCP turn-off mid-session
 
 - **Setup:** Active Claude session that recently used a vault tool.
 - **Steps:** Toggle MCP off via command palette. Submit another tool-using prompt.
 - **Expected:** Tools fail cleanly (404 / connection refused). Re-enabling MCP lets a new Claude invocation pick them back up.
 - **Notes:** P1.
 
-### 3.14 Read-toolbelt spot-check against a real vault
-
-- **Setup:** A vault with: ≥1 note with frontmatter (incl. an array property and a number), 2-3 notes with `#tags`, a note with `[[wikilinks]]` to another note, ≥1 orphan, ≥1 unresolved wikilink target.
-- **Steps:** Drive each with `claude -p`:
-  - `vault_list` on root.
-  - `vault_search_fuzzy` for a near-miss term (one typo).
-  - `vault_tags`.
-  - `vault_frontmatter` on the frontmatter note.
-  - `vault_links` and `vault_backlinks` on the linker/linked notes.
-  - `vault_headings` on a note with ≥3 headings.
-  - `vault_orphans`, `vault_unresolved`, `vault_recent`, `vault_properties`.
-  - `vault_graph_neighborhood` and `vault_graph_path` on two connected notes.
-  - `vault_context` and `vault_suggest_links` on a note.
-- **Expected:** Each returns plausible data without `isError: true`. Metadata-cache-backed tools (`vault_backlinks`, `vault_tags`, `vault_orphans`) reflect actual vault state.
-- **Notes:** P1. Real-cache smoke for the read surface.
-
-### 3.15 `vault_append` adds without rewriting
-
-- **Setup:** `notes/log.md` with 3 stable lines.
-- **Steps:** `claude -p "Append 'new entry' to notes/log.md"`.
-- **Expected:** File has 4 lines; original 3 untouched. Under reviewed mode (Stage 4), diff modal shows only the addition.
-- **Notes:** P1.
-
-### 3.16 MCP cache invalidates on live edits
+### 3.5 MCP cache invalidates on live edits
 
 - **Setup:** `notes/cache.md` with first line `version A`. Vault open in Obsidian.
 - **Steps:** 1) `claude -p "Read notes/cache.md and quote the first line"`. 2) Edit in Obsidian so first line becomes `version B`; save. 3) Within ~2 s: re-read via Claude.
 - **Expected:** Second read returns `version B`. Document observed window if >5 s.
 - **Notes:** P1. Stale reads after user edits are silent and confusing.
 
-### 3.17 Concurrent MCP tool calls
+### 3.6 Concurrent MCP tool calls
 
 - **Setup:** Vault with ≥10 notes containing "alpha" and ≥10 containing "beta".
 - **Steps:** `claude -p "In parallel, search the vault for 'alpha' and for 'beta' and read the first three hits of each."`
 - **Expected:** All calls complete without deadlock or `isError`. DevTools shows interleaved tool-call logs.
-- **Notes:** P1. No automated coverage of parallel tool calls against the live app.
+- **Notes:** P1. No automated coverage of parallel tool calls against the live app; see S9.6 in the capability test for the LLM-driven probe.
 
-### 3.18 File ownership after Claude writes (Linux)
+### 3.7 File ownership after Claude writes (Linux)
 
 - **Setup:** Linux host, vault on host filesystem. Note host uid: `id -u`.
 - **Steps:** `claude -p "Create agent-workspace/owner-test.md with content 'check uid'"`. Then: `ls -la <vault>/agent-workspace/owner-test.md` and edit in Obsidian.
 - **Expected:** Obsidian edits the file without permission errors. Owner uid matches host uid, or mode is permissive enough that the host user can write.
 - **Notes:** P1. Cleanup: delete the file.
 
-### 3.19 Vault write mode = `full` (`_anywhere` tier)
-
-- **Setup:** Settings → MCP → Vault write mode = `full`. Toggle MCP off then on to refresh the tool list.
-- **Steps:** 1) `claude -p "What MCP tools do you have?"` — confirm `vault_create_anywhere`, `vault_modify_anywhere`, `vault_append_anywhere`, `vault_frontmatter_set_anywhere` are present. 2) `claude -p "Create a file notes/anywhere-test.md with 'ok'"` (outside write directory). 3) Set mode to `none`, toggle MCP. 4) Repeat step 2.
-- **Expected:** Step 2 succeeds, file in `notes/`. Step 4 fails: no `_anywhere` tools; scoped `vault_create` rejects with "outside write directory". No diff modal in full mode.
-- **Notes:** P0. Cleanup: delete `notes/anywhere-test.md`, confirm mode back to default.
-
-### 3.20 Awaiting-input badge
+### 3.8 Awaiting-input badge
 
 - **Setup:** Active Claude session (terminal open, Claude running). `agent` tier enabled (always-on when MCP is on).
 - **Steps:** Trigger a tool call that causes Claude to pause awaiting human input (e.g. a reviewed-write that opens the diff modal, or a direct `agent_status_set` call via MCP).
