@@ -37,6 +37,10 @@ function envInt(name, fallback) {
 const PORT = envInt("OAS_MCP_PORT", 28080);
 const TOKEN = process.env.OAS_MCP_TOKEN || "";
 const HOST = "host.docker.internal";
+// Socket inactivity timeout. The plugin sends SSE keepalive comments every
+// 5 s during reviewed-write modal waits, so this default is safe. Raise it
+// (e.g. OAS_MCP_TIMEOUT_MS=60000) only if keepalives are disabled or the
+// server is under extreme load.
 const HTTP_TIMEOUT_MS = envInt("OAS_MCP_TIMEOUT_MS", 15000);
 const DEBUG = process.env.OAS_MCP_DEBUG === "1";
 

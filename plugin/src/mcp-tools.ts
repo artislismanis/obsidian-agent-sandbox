@@ -62,6 +62,14 @@ export function error(msg: string): McpToolResult {
 }
 
 /**
+ * Coerce string "true"/"false" → boolean; pass non-string booleans through.
+ * Avoids z.coerce.boolean() which maps any non-empty string (including "false") → true.
+ */
+export function coercedBoolean() {
+	return z.preprocess((v) => (v === "false" ? false : v === "true" ? true : v), z.boolean());
+}
+
+/**
  * Build a tool definition whose handler receives args typed to the inferred
  * zod schema. Runtime parsing runs before the handler; schema-mismatch
  * inputs return an error result instead of throwing or feeding undefined
@@ -524,7 +532,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				"Search for text across all markdown files in the vault. Returns matching file paths with context.",
 			inputSchema: {
 				query: z.string().describe("Search query text"),
-				limit: z.number().optional().describe("Max results (default 20)"),
+				limit: z.coerce.number().optional().describe("Max results (default 20)"),
 			},
 			handler: async ({ query, limit: limitArg }) => {
 				const limit = limitArg ?? 20;
@@ -564,7 +572,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				"Fuzzy full-text search across all markdown files — tolerates typos and approximate matches. Results are score-sorted.",
 			inputSchema: {
 				query: z.string().describe("Search query text (fuzzy matched)"),
-				limit: z.number().optional().describe("Max results (default 20)"),
+				limit: z.coerce.number().optional().describe("Max results (default 20)"),
 			},
 			handler: async ({ query, limit: limitArg }) => {
 				const limit = limitArg ?? 20;
@@ -796,7 +804,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			title: "Recently modified files",
 			description: "List recently modified files sorted by modification time.",
 			inputSchema: {
-				limit: z.number().optional().describe("Max results (default 20)"),
+				limit: z.coerce.number().optional().describe("Max results (default 20)"),
 				folder: z.string().optional().describe("Filter by folder path"),
 				extension: z.string().optional().describe("Filter by extension"),
 			},
@@ -922,7 +930,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			inputSchema: {
 				file: z.string().optional().describe("File name"),
 				path: z.string().optional().describe("Exact path from vault root"),
-				depth: z.number().optional().describe("Max hops (1-5, default 1)"),
+				depth: z.coerce.number().optional().describe("Max hops (1-5, default 1)"),
 			},
 			refine: requireFileOrPath,
 			handler: async ({ file, path, depth: depthArg }) => {
@@ -1047,8 +1055,11 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			title: "Graph clusters",
 			description: "Find groups of densely connected notes.",
 			inputSchema: {
-				minSize: z.number().optional().describe("Min cluster size (default 3)"),
-				maxClusters: z.number().optional().describe("Max clusters to return (default 10)"),
+				minSize: z.coerce.number().optional().describe("Min cluster size (default 3)"),
+				maxClusters: z.coerce
+					.number()
+					.optional()
+					.describe("Max clusters to return (default 10)"),
 			},
 
 			handler: async ({ minSize = 3, maxClusters = 10 }) => {
@@ -1165,7 +1176,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			inputSchema: {
 				file: z.string().optional().describe("File name"),
 				path: z.string().optional().describe("Exact path from vault root"),
-				limit: z.number().optional().describe("Max suggestions (default 10)"),
+				limit: z.coerce.number().optional().describe("Max suggestions (default 10)"),
 			},
 			refine: requireFileOrPath,
 			handler: async ({ file, path, limit = 10 }) => {
@@ -1588,9 +1599,10 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					path: z.string().optional().describe("Exact path from vault root"),
 					search: z.string().describe("Text or regex pattern to find"),
 					replace: z.string().describe("Replacement text"),
-					regex: z.boolean().optional().describe("Treat search as regex (default false)"),
-					caseSensitive: z
-						.boolean()
+					regex: coercedBoolean()
+						.optional()
+						.describe("Treat search as regex (default false)"),
+					caseSensitive: coercedBoolean()
 						.optional()
 						.describe("Case-sensitive match (default true)"),
 				},
@@ -1776,7 +1788,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						.string()
 						.optional()
 						.describe("Target heading text (e.g. '## Details')"),
-					line: z.number().optional().describe("Target line number (1-based)"),
+					line: z.coerce.number().optional().describe("Target line number (1-based)"),
 					position: z
 						.enum(["before", "after", "replace"])
 						.optional()
@@ -1936,7 +1948,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			inputSchema: {
 				file: z.string().optional().describe("File name"),
 				path: z.string().optional().describe("Exact path from vault root"),
-				newTab: z.boolean().optional().describe("Open in a new tab"),
+				newTab: coercedBoolean().optional().describe("Open in a new tab"),
 			},
 			refine: requireFileOrPath,
 			handler: async ({ file, path, newTab }) => {
@@ -2199,7 +2211,9 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					.describe(
 						"Value to set — string, number, boolean, array, or object. Omit to delete.",
 					),
-				dryRun: z.boolean().optional().describe("Preview only, no changes (default true)"),
+				dryRun: coercedBoolean()
+					.optional()
+					.describe("Preview only, no changes (default true)"),
 			},
 			refine: (args) =>
 				!args.query && !args.folder ? "Provide at least one of 'query' or 'folder'." : null,

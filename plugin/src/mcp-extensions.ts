@@ -20,6 +20,7 @@ import {
 	forEachMarkdownChunked,
 	isPathAllowedByFilter,
 	validateNewVaultPath,
+	coercedBoolean,
 } from "./mcp-tools";
 import { logger, errMsg } from "./logger";
 import { getInstalledPlugin, isVaultPathSafe } from "./obsidian-internals";
@@ -150,10 +151,10 @@ const CanvasNodeSchema = z
 	.object({
 		id: z.string().min(1),
 		type: z.string().min(1),
-		x: z.number().optional(),
-		y: z.number().optional(),
-		width: z.number().optional(),
-		height: z.number().optional(),
+		x: z.coerce.number().optional(),
+		y: z.coerce.number().optional(),
+		width: z.coerce.number().optional(),
+		height: z.coerce.number().optional(),
 	})
 	.catchall(z.unknown());
 const CanvasEdgeSchema = z
@@ -203,16 +204,15 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 			tier: "extensions",
 			title: "Modify canvas",
 			description:
-				"Apply changes to a .canvas file. Supports adding or removing nodes and edges. The `changes` payload is a JSON object with optional `addNodes`, `removeNodeIds`, `addEdges`, `removeEdgeIds` arrays. Set `create: true` to materialise the canvas (with the requested nodes/edges) when it doesn't yet exist.",
+				'Apply changes to a .canvas file. Supports adding or removing nodes and edges. The `changes` parameter must be a JSON-encoded STRING (not a plain object) — e.g. `{"addNodes":[{"id":"1","type":"text","x":0,"y":0}]}`. Set `create: true` to materialise the canvas (with the requested nodes/edges) when it doesn\'t yet exist.',
 			inputSchema: {
 				path: z.string().describe("Canvas file path from vault root"),
 				changes: z
 					.string()
 					.describe(
-						"JSON: { addNodes?: CanvasNode[]; removeNodeIds?: string[]; addEdges?: CanvasEdge[]; removeEdgeIds?: string[] }",
+						"JSON-encoded string: { addNodes?: CanvasNode[]; removeNodeIds?: string[]; addEdges?: CanvasEdge[]; removeEdgeIds?: string[] }. Must be a string, not an object.",
 					),
-				create: z
-					.boolean()
+				create: coercedBoolean()
 					.optional()
 					.describe(
 						"Create the canvas if it doesn't exist, seeded with the requested changes (default false).",
@@ -478,7 +478,7 @@ export function registerTasksTools(app: App, push: ToolPusher, gate: WriteGate):
 					.optional()
 					.describe("Keep only tasks with this priority or higher"),
 				folder: z.string().optional().describe("Restrict scan to a folder prefix"),
-				limit: z.number().optional().describe("Max results (default 100)"),
+				limit: z.coerce.number().optional().describe("Max results (default 100)"),
 			},
 
 			handler: async ({
@@ -553,7 +553,7 @@ export function registerTasksTools(app: App, push: ToolPusher, gate: WriteGate):
 				"Toggle a checklist item between done and open at a specific file:line. Delegates to the Tasks plugin's apiV1.executeToggleTaskDoneCommand so it applies the plugin's full done-handling (recurring tasks, done-date, etc).",
 			inputSchema: {
 				path: z.string().describe("File path from vault root"),
-				line: z.number().describe("1-based line number of the task"),
+				line: z.coerce.number().describe("1-based line number of the task"),
 			},
 
 			handler: async ({ path, line }) => {
@@ -810,7 +810,8 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 			inputSchema: {
 				periodicity: z
 					.enum(["daily", "weekly", "monthly", "quarterly", "yearly"])
-					.describe("Which periodic note to resolve"),
+					.default("daily")
+					.describe("Which periodic note to resolve (default: daily)"),
 				date: z.string().optional().describe("ISO date (YYYY-MM-DD). Defaults to today."),
 				create: z.boolean().optional().describe("Create if missing (default false)"),
 			},
