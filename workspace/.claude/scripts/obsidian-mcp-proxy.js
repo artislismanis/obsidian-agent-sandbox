@@ -178,9 +178,7 @@ function httpPost(message) {
 					if (status < 200 || status >= 300) {
 						// A stale-session 404 (-32001) means the server restarted
 						// but is still reachable — don't flip the probe to false.
-						const isStale =
-							(status === 404 || status === 400) &&
-							/not initialized|Session expired|Invalid session/i.test(buf);
+						const isStale = status === 404 && /Session expired/i.test(buf);
 						if (!isStale) lastProbeResult = false;
 						const err = new Error(
 							`Obsidian MCP returned HTTP ${status} (${(buf || "").slice(0, 200) || "no body"})`,
@@ -306,10 +304,7 @@ async function handleMessage(msg) {
 		}
 		for (const r of responses) writeFrame(r);
 	} catch (err) {
-		const isStale =
-			err.status &&
-			(err.status === 404 || err.status === 400) &&
-			/not initialized|Session expired|Invalid session/i.test(err.body || "");
+		const isStale = err.status === 404 && /Session expired/i.test(err.body || "");
 
 		if (isStale && cachedInitializeMsg) {
 			try {
@@ -321,8 +316,9 @@ async function handleMessage(msg) {
 						try {
 							sessionId = null;
 							await httpPost(cachedInitializeMsg);
-							// Fire-and-forget: completes the MCP handshake with the new
-							// session but we don't need to wait for the ack.
+							// Fire-and-forget: the MCP SDK doesn't gate tool calls on this
+							// notification (server treats it as informational), so we don't
+							// need to await it before retrying the original request.
 							httpPost({ jsonrpc: "2.0", method: "notifications/initialized", params: {} }).catch(
 								() => {},
 							);

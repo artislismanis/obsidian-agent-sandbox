@@ -176,6 +176,9 @@ describe.skipIf(SKIP)("MCP HTTP server (standalone, no Obsidian)", () => {
 	});
 });
 
+// No skipIf(SKIP): this suite runs in-process with a mock App and does not
+// need Docker, unlike the other integration suites in this file. It lives
+// here only because it reuses helpers (httpPostFull, mcpInitialize, parseJsonOrSse).
 describe("stale session after MCP server restart", () => {
 	// This suite verifies that a session id captured before a server restart
 	// is rejected with HTTP 404 / -32001 rather than letting it fall through
