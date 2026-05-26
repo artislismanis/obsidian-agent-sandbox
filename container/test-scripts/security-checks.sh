@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+# Run from repo root: bash container/test-scripts/security-checks.sh <vault-root> [--firewall-off]
+#
+# Automates Stage 7 (symlink/path-traversal) and most of Stage 8 (firewall) from qa-test-plan.md.
+# UI-bound scenarios (firewall toggle icon, allowlist refresh button) remain in qa-test-plan.md.
+#
+# Implementation notes (verified from plugin source):
+#   - mcpToken:       top-level key in .obsidian/plugins/obsidian-agent-sandbox/data.json
+#   - mcpBindAddress: default "127.0.0.1"  (plugin/src/settings.ts)
+#   - mcpPort:        default 28080         (plugin/src/settings.ts)
+#   - Tool errors:    result.isError == true (plugin/src/mcp-server.ts)
+#   - Protocol errors: top-level .error object (standard JSON-RPC)
+#   - Session protocol: POST initialize → capture Mcp-Session-Id header → reuse per MCP spec
+#   - Compose project: "oas" (CLAUDE.md naming convention)
+#
+# Prerequisites (printed before running):
+#   - Obsidian open with plugin enabled and MCP enabled
+#   - Firewall enabled; "example.com" in plugin's Additional firewall domains
+#   - "internal.corp.example" in container/firewall-extras.txt; container restarted
+#   - jq on the host PATH
+#
+# For T8.6: toggle firewall off in Obsidian, then re-run with --firewall-off.
+set -uo pipefail
+
+VAULT=${1:?Usage: $0 <vault-root> [--firewall-off]}
+MCP_PORT=${MCP_PORT:-28080}
+MCP_BIND=${MCP_BIND:-127.0.0.1}
+MCP_BASE="http://$MCP_BIND:$MCP_PORT/mcp"
+PASS=0
+FAIL=0
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+pass() { echo "PASS $1"; PASS=$((PASS+1)); }
+fail() { echo "FAIL $1"; FAIL=$((FAIL+1)); }
+skip() { echo "SKIP $1"; }
+
+# assert that the JSON response represents an MCP tool error or JSON-RPC error
+assert_error() {  # $1=response-json $2=label
+    if echo "$1" | jq -e '.result.isError == true or (.error // empty | length > 0)' \
+            >/dev/null 2>&1; then
+        pass "$2"
+    else
+        fail "$2"
+    fi
+}
+
+# assert that the JSON response is a successful tool result
+assert_ok() {  # $1=response-json $2=label
+    if echo "$1" | jq -e '.result.isError == true or (.error // empty | length > 0)' \
+            >/dev/null 2>&1; then
+        fail "$2"
+    else
+        pass "$2"
+    fi
+}
+
+# assert that a marker string does NOT appear in the response (host-content leak check)
+assert_no_content() {  # $1=response-json $2=label $3=forbidden-marker
+    if echo "$1" | grep -qF "$3"; then
+        fail "$2 (host content leaked: '$3')"
+    else
+        pass "$2"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# MCP session
+# ---------------------------------------------------------------------------
+
+MCP_TOKEN=$(jq -r '.mcpToken' \
+    "$VAULT/.obsidian/plugins/obsidian-agent-sandbox/data.json" 2>/dev/null || true)
+if [[ -z "$MCP_TOKEN" || "$MCP_TOKEN" == "null" ]]; then
+    echo "FATAL: could not read mcpToken from plugin settings." >&2
+    echo "       Ensure Obsidian is running with the plugin installed." >&2
+    exit 1
+fi
+
+init_session() {
+    local headers
+    headers=$(curl -sS -D - -o /dev/null \
+        -H "Authorization: Bearer $MCP_TOKEN" \
+        -H "Content-Type: application/json" \
+        -X POST "$MCP_BASE" \
+        -d '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"security-checks","version":"1.0"}}}' \
+        2>/dev/null)
+    MCP_SESSION=$(echo "$headers" | grep -i "^mcp-session-id:" | tr -d '\r' | awk '{print $2}')
+    if [[ -z "$MCP_SESSION" ]]; then
+        echo "FATAL: could not establish MCP session." >&2
+        echo "       Is Obsidian running with the plugin and MCP enabled?" >&2
+        exit 1
+    fi
+}
+
+mcp_call() {  # $1=tool-name $2=args-json  →  prints response JSON
+    curl -sS \
+        -H "Authorization: Bearer $MCP_TOKEN" \
+        -H "Content-Type: application/json" \
+        -H "Mcp-Session-Id: $MCP_SESSION" \
+        -X POST "$MCP_BASE" \
+        -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"$1\",\"arguments\":$2}}"
+}
+
+# ---------------------------------------------------------------------------
+# Teardown (runs on EXIT so fixtures are removed even if a probe fails)
+# ---------------------------------------------------------------------------
+
+teardown() {
+    pushd "$VAULT" >/dev/null
+    rm -f evil.md escape
+    rm -f innocent/inner
+    rmdir innocent 2>/dev/null || true
+    rm -f agent-workspace/safe-link
+    popd >/dev/null
+}
+trap teardown EXIT
+
+# ---------------------------------------------------------------------------
+# Preflight
+# ---------------------------------------------------------------------------
+
+command -v jq     >/dev/null || { echo "FATAL: jq not found" >&2; exit 1; }
+command -v docker >/dev/null || { echo "FATAL: docker not found" >&2; exit 1; }
+
+echo "=== Security checks ==="
+echo "Vault:  $VAULT"
+echo "MCP:    $MCP_BASE"
+echo ""
+echo "Prerequisites:"
+echo "  [required] Obsidian running with plugin enabled, MCP enabled"
+echo "  [required] Firewall enabled; 'example.com' in Additional firewall domains"
+echo "  [required] 'internal.corp.example' in container/firewall-extras.txt (container restarted)"
+echo "  [T8.6 only] Firewall toggled off in Obsidian before running with --firewall-off"
+echo ""
+
+init_session
+echo "Session: ${MCP_SESSION:0:8}…"
+echo ""
+
+# ---------------------------------------------------------------------------
+# Symlink fixture setup
+# ---------------------------------------------------------------------------
+
+pushd "$VAULT" >/dev/null
+ln -sf /etc/hosts evil.md
+ln -sf /tmp escape
+mkdir -p innocent && ln -sf /tmp innocent/inner
+if [[ -d notes ]]; then
+    ln -sf "$(pwd)/notes" agent-workspace/safe-link
+else
+    SKIP_74=1
+fi
+popd >/dev/null
+
+# ---------------------------------------------------------------------------
+# T7 — MCP path-traversal boundary
+# ---------------------------------------------------------------------------
+
+echo "--- T7: path-traversal ---"
+
+RESP=$(mcp_call vault_read '{"path":"evil.md"}')
+assert_error "$RESP" "7.1 escaping symlink read denied"
+assert_no_content "$RESP" "7.1 /etc/hosts content not leaked" "127.0.0.1"
+
+RESP=$(mcp_call vault_create '{"path":"escape/note.md","content":"hi"}')
+assert_error "$RESP" "7.2 create into symlinked dir denied"
+
+RESP=$(mcp_call vault_read '{"path":"innocent/inner/x.md"}')
+assert_error "$RESP" "7.3 nested symlink denied"
+
+if [[ "${SKIP_74:-0}" == "1" ]]; then
+    skip "7.4 (no 'notes' folder in vault)"
+else
+    RESP=$(mcp_call vault_list '{"path":"agent-workspace/safe-link"}')
+    assert_ok "$RESP" "7.4 safe symlink inside vault allowed"
+fi
+
+# ---------------------------------------------------------------------------
+# T8 — Firewall
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "--- T8: firewall ---"
+
+docker compose -f container/docker-compose.yml -p oas exec -T sandbox \
+    curl -fsI -m 8 https://example.com >/dev/null 2>&1 \
+    && pass "8.2a example.com reachable" \
+    || fail "8.2a example.com blocked"
+
+docker compose -f container/docker-compose.yml -p oas exec -T sandbox \
+    curl -fsI -m 8 https://example.org >/dev/null 2>&1 \
+    && fail "8.2b example.org should be blocked" \
+    || pass "8.2b example.org blocked"
+
+docker compose -f container/docker-compose.yml -p oas exec -T sandbox \
+    curl -fsI -m 8 https://internal.corp.example >/dev/null 2>&1 \
+    && pass "8.3a extras-file domain reachable" \
+    || fail "8.3a extras-file domain blocked"
+
+# vault_read only accepts vault-relative paths; an absolute /etc/oas/... path is
+# rejected as outside-vault before any symlink check fires. Either error confirms
+# the file is inaccessible via MCP; assert_no_content double-checks no leak.
+RESP=$(mcp_call vault_read '{"path":"/etc/oas/firewall-extras.txt"}')
+assert_error "$RESP" "8.3b host path not vault-readable"
+assert_no_content "$RESP" "8.3b no extras-file content leaked" "internal.corp.example"
+
+SOURCES=$(docker compose -f container/docker-compose.yml -p oas exec -T sandbox \
+    /usr/local/bin/init-firewall.sh --list-sources 2>&1)
+if echo "$SOURCES" | grep -q '\[baseline\]' && \
+   echo "$SOURCES" | grep -q '\[plugin\]'   && \
+   echo "$SOURCES" | grep -q '\[file\]'; then
+    pass "8.4 all three source tags present"
+else
+    fail "8.4 missing source tag(s)"
+fi
+
+for arg in "${@:2}"; do
+    if [[ "$arg" == "--firewall-off" ]]; then
+        docker compose -f container/docker-compose.yml -p oas exec -T sandbox \
+            curl -fsI -m 8 https://example.org >/dev/null 2>&1 \
+            && pass "8.6 egress restored when firewall off" \
+            || fail "8.6 egress still blocked"
+        break
+    fi
+done
+
+# ---------------------------------------------------------------------------
+# Results
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "Results: $PASS passed, $FAIL failed"
+[[ $FAIL -eq 0 ]]
