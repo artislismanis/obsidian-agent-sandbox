@@ -40,6 +40,32 @@ Exit code `0` means the suite passed. Any non-zero code = one or more failures. 
 
 On first run, wdio downloads Obsidian from GitHub releases into `plugin/.obsidian-cache/`. Network errors are transient; retry.
 
+### Lint infrastructure (pre-push, one-time install)
+
+Four host-side tools mirror the `lint-infra.yml` and `links.yml` CI jobs. Install once:
+
+```bash
+# shellcheck — shell script linter (in Ubuntu repos; brew install shellcheck on macOS)
+sudo apt install shellcheck
+
+# hadolint — Dockerfile linter (not in Ubuntu repos)
+curl -sSL https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64 \
+  -o /tmp/hadolint && chmod +x /tmp/hadolint && sudo mv /tmp/hadolint /usr/local/bin/hadolint
+# brew install hadolint   # macOS
+
+# actionlint — GitHub Actions workflow linter
+bash <(curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) \
+  && sudo mv actionlint /usr/local/bin/
+# brew install actionlint  # macOS
+
+# lychee — markdown link checker
+curl -sSL https://github.com/lycheeverse/lychee/releases/latest/download/lychee-x86_64-unknown-linux-gnu.tar.gz \
+  | tar xz -C /tmp && sudo mv /tmp/lychee-x86_64-unknown-linux-gnu/lychee /usr/local/bin/
+# brew install lychee      # macOS
+```
+
+Verify: `shellcheck --version && hadolint --version && actionlint --version && lychee --version`
+
 ## Running the suites
 
 ### Layer 1 — unit tests
@@ -139,15 +165,32 @@ Some scenarios can't be reliably automated in this harness:
 
 ## Running in CI
 
-A typical CI job looks like:
+Four GitHub Actions workflows run on every PR. To mirror them locally before pushing (run from repo root):
 
-```yaml
-- run: cd plugin && npm ci
-- run: cd plugin && npm run check          # lint + format + unit
-- run: cd container && docker compose build
-- run: cd plugin && npm run test:integration
-- run: cd plugin && npm run test:e2e:headless
+```bash
+# check.yml — lint + format + type-check + unit tests + build + e2e
+cd plugin && npm ci && npm run check && npm run build && npm run test:e2e:headless
+
+# integration.yml — docker build + container integration suite
+cd ../container && docker compose build
+cd ../plugin && npm run test:integration
+
+# lint-infra.yml — shellcheck + hadolint + actionlint
+find container/scripts container/configs workspace/.claude \
+    -type f \( -name '*.sh' -o -name '*.bash' \) | xargs shellcheck -S error
+hadolint --config container/.hadolint.yaml container/Dockerfile
+actionlint
+
+# links.yml — lychee markdown link check (git ls-files avoids scanning .obsidian-cache/)
+git ls-files '*.md' | xargs lychee --no-progress --max-concurrency 4 \
+    --exclude '^https?://api\.github\.com/' \
+    --exclude '^https?://github\.com/[^/]+/[^/]+/(issues|pull|discussions|commit)/' \
+    --exclude '^https?://anthropic\.com/' \
+    --exclude 'https?://claude\.ai/' \
+    --accept 200,206,301,302,307,308
 ```
+
+All four must exit 0 before pushing. See "Lint infrastructure" under Prerequisites for how to install `shellcheck`, `hadolint`, `actionlint`, and `lychee`.
 
 Cache `plugin/.obsidian-cache/` by the key printed at the start of an e2e run (`obsidian-cache-key: [...]`).
 

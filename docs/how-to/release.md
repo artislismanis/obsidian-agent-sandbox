@@ -32,19 +32,32 @@ All commands run from repo root unless noted.
 ### 1. Pre-flight
 
 ```bash
-cd plugin
-npm ci
-npm run check
+cd plugin && npm ci && npm run check && npm run build
 ```
 
 All unit tests green, lint clean, format clean, type-check clean. If anything fails, fix before proceeding.
 
-Optional but strongly recommended:
+Strongly recommended before tagging:
 
 ```bash
+# From plugin/
 npm run test:integration   # needs Docker + oas-sandbox:latest
 npm run test:e2e:headless  # needs xvfb or local display
+
+# From repo root — mirrors lint-infra.yml and links.yml CI jobs
+find container/scripts container/configs workspace/.claude \
+    -type f \( -name '*.sh' -o -name '*.bash' \) | xargs shellcheck -S error
+hadolint --config container/.hadolint.yaml container/Dockerfile
+actionlint
+git ls-files '*.md' | xargs lychee --no-progress --max-concurrency 4 \
+    --exclude '^https?://api\.github\.com/' \
+    --exclude '^https?://github\.com/[^/]+/[^/]+/(issues|pull|discussions|commit)/' \
+    --exclude '^https?://anthropic\.com/' \
+    --exclude 'https?://claude\.ai/' \
+    --accept 200,206,301,302,307,308
 ```
+
+See `docs/testing.md` "Lint infrastructure" for how to install `shellcheck`, `hadolint`, `actionlint`, and `lychee`.
 
 Security boundary smoke (required before shipping — covers P0 scenarios from Stage 7/8, P1/P2 regressions from Stage 9):
 
