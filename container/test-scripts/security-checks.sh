@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run from repo root: bash container/test-scripts/security-checks.sh <vault-root> [--firewall-off]
 #
-# Automates Stage 7 (symlink/path-traversal) and most of Stage 8 (firewall) from qa-test-plan.md.
+# Automates Stage 7 (symlink/path-traversal), most of Stage 8 (firewall), and Stage 9
+# tool-bug regression probes from qa-test-plan.md.
 # UI-bound scenarios (firewall toggle icon, allowlist refresh button) remain in qa-test-plan.md.
 #
 # Implementation notes (verified from plugin source):
@@ -113,6 +114,7 @@ teardown() {
     rm -f innocent/inner
     rmdir innocent 2>/dev/null || true
     rm -f agent-workspace/safe-link
+    rm -f agent-workspace/regression.canvas
     popd >/dev/null
 }
 trap teardown EXIT
@@ -152,6 +154,9 @@ if [[ -d notes ]]; then
 else
     SKIP_74=1
 fi
+# Regression fixture: minimal canvas file for T9.4/T9.5
+mkdir -p agent-workspace
+printf '{"nodes":[],"edges":[]}\n' > agent-workspace/regression.canvas
 popd >/dev/null
 
 # ---------------------------------------------------------------------------
@@ -225,6 +230,49 @@ for arg in "${@:2}"; do
         break
     fi
 done
+
+# ---------------------------------------------------------------------------
+# T9 — Tool-bug regression probes (P1/P2 fixes from capability-test triage)
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "--- T9: tool-bug regressions ---"
+
+# 9.1a — String "false" must coerce to boolean false (not be rejected by Zod)
+RESP=$(mcp_call vault_search '{"query":"__t9probe__","caseSensitive":"false"}')
+assert_ok "$RESP" "9.1a caseSensitive=\"false\" coerces to bool"
+
+# 9.1b — String "true" must coerce to boolean true
+RESP=$(mcp_call vault_search '{"query":"__t9probe__","caseSensitive":"true"}')
+assert_ok "$RESP" "9.1b caseSensitive=\"true\" coerces to bool"
+
+# 9.2 — String numeric must coerce to number
+RESP=$(mcp_call vault_search '{"query":"__t9probe__","limit":"3"}')
+assert_ok "$RESP" "9.2 limit=\"3\" coerces to number"
+
+# 9.3 — vault_periodic_note with no args must default periodicity to "daily"
+# Gate: probe for PeriodicNotesPlugin availability first; SKIP if absent.
+PROBE=$(mcp_call vault_periodic_note '{}')
+if echo "$PROBE" | jq -e '.result.isError == true' >/dev/null 2>&1; then
+    ERR_MSG=$(echo "$PROBE" | jq -r '.result.content[0].text // ""')
+    if echo "$ERR_MSG" | grep -qi "plugin not available\|not installed\|not enabled"; then
+        skip "9.3 (Periodic Notes plugin not available)"
+    else
+        fail "9.3 vault_periodic_note {} failed unexpectedly"
+    fi
+else
+    pass "9.3 vault_periodic_note {} defaults to daily (no periodicity required)"
+fi
+
+# 9.4 — vault_canvas_modify with plain-object changes must be rejected
+RESP=$(mcp_call vault_canvas_modify \
+    '{"path":"agent-workspace/regression.canvas","changes":{"ops":[]}}')
+assert_error "$RESP" "9.4 canvas changes as plain object rejected"
+
+# 9.5 — vault_canvas_modify with JSON-string changes must succeed
+RESP=$(mcp_call vault_canvas_modify \
+    '{"path":"agent-workspace/regression.canvas","changes":"{\"ops\":[]}"}')
+assert_ok "$RESP" "9.5 canvas changes as JSON string accepted"
 
 # ---------------------------------------------------------------------------
 # Results
