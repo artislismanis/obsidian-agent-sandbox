@@ -319,6 +319,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 - **Steps:** Set Sudo password in Advanced. Restart container. In a terminal: `sudo -k && sudo apt-get update` (enter new password when prompted).
 - **Expected:** Accepts new password; `apt-get update` runs. Setting password to empty then restarting disables sudo entirely (`sudo apt-get update` should refuse without the error mentioning `no-new-privileges`).
 - **Notes:** P1. Reset to default afterwards. Sudoers is restricted to `apt-get`/`apt` only — other `sudo` commands will be rejected regardless of password.
+- **Note:** Toggling the sudo password between empty and non-empty changes the container's `security_opt` set, so the next start/restart recreates the container (compose detects the config drift). New container ID expected.
 
 ---
 

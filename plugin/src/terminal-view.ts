@@ -507,7 +507,7 @@ export class TerminalView extends ItemView {
 				event.ctrlKey &&
 				!event.shiftKey &&
 				!event.altKey &&
-				event.key === "c" &&
+				event.key.toLowerCase() === "c" &&
 				term.hasSelection() &&
 				!this.getSettings().clipboardAutoCopy
 			) {

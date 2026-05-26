@@ -461,14 +461,8 @@ export class DockerManager {
 			envVars.OAS_IP_MASQ = "false";
 		}
 
-		// Add compose file flags: when a sudo password is set, include the
-		// no-new-privileges-off override so password-gated apt-get/apt sudo
-		// works inside the container after gosu drops to claude.
-		const composeFilePart = sudoPassword
-			? "-f docker-compose.yml -f docker-compose.no-new-privileges-off.override.yml"
-			: "-f docker-compose.yml";
 		const resolvedCmd = dockerCmd.startsWith("docker compose ")
-			? `docker compose ${composeFilePart} ${dockerCmd.slice("docker compose ".length)}`
+			? `docker compose ${this.composeFiles()} ${dockerCmd.slice("docker compose ".length)}`
 			: dockerCmd;
 
 		const command =
@@ -595,10 +589,7 @@ export class DockerManager {
 			return;
 		}
 
-		const composeFilePart = settings.sudoPassword
-			? "-f docker-compose.yml -f docker-compose.no-new-privileges-off.override.yml"
-			: "-f docker-compose.yml";
-		const downCmd = `docker compose ${composeFilePart} down`;
+		const downCmd = `docker compose ${this.composeFiles()} down`;
 
 		if (dockerMode === "wsl") {
 			// On Windows, spawn wsl.exe directly (no bash on host). Validate
@@ -704,6 +695,12 @@ export class DockerManager {
 			}
 			return this.run("docker compose up -d");
 		});
+	}
+
+	private composeFiles(): string {
+		const { sudoPassword } = this.getSettings();
+		if (!sudoPassword) return "-f docker-compose.yml";
+		return "-f docker-compose.yml -f docker-compose.no-new-privileges-off.override.yml";
 	}
 
 	private firewallExec(args: string, timeout?: number): Promise<string> {
@@ -842,7 +839,7 @@ export class DockerManager {
 	 * Called only from the "Check Status" command — kept off the hot probe path.
 	 * Returns null if the container is not running or inspect fails.
 	 */
-	async getContainerInfo(): Promise<{ image: string; startedAt: string } | null> {
+	async getContainerInfo(): Promise<{ id: string; image: string; startedAt: string } | null> {
 		try {
 			const id = await this.getContainerId();
 			if (!id) return null;
@@ -853,7 +850,7 @@ export class DockerManager {
 				this.run(`docker inspect ${id} --format {{.State.StartedAt}}`, EXEC_TIMEOUT),
 			]);
 			if (!image.trim() || !startedAt.trim()) return null;
-			return { image: image.trim(), startedAt: startedAt.trim() };
+			return { id, image: image.trim(), startedAt: startedAt.trim() };
 		} catch {
 			return null;
 		}

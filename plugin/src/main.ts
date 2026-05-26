@@ -28,21 +28,10 @@ import { reviewsRequired } from "./permission-tiers";
 import { ActivityUi, AgentOutputNotifier } from "./activity";
 import { showSessionCleanup, showSessionPicker } from "./session-ui";
 import { resetTemplaterSuppression } from "./templater-adapter";
+import { formatUptime } from "./format";
 
 const TOOLTIP_STOPPED = "Container is not running\nClick for options";
 const HEALTH_POLL_INTERVAL = 30_000;
-
-function formatUptime(startedAt: string): string {
-	const elapsed = Date.now() - new Date(startedAt).getTime();
-	if (isNaN(elapsed) || elapsed < 0) return "unknown";
-	const totalSecs = Math.floor(elapsed / 1000);
-	const days = Math.floor(totalSecs / 86400);
-	const hours = Math.floor((totalSecs % 86400) / 3600);
-	const mins = Math.floor((totalSecs % 3600) / 60);
-	if (days > 0) return `${days}d ${hours}h ${mins}m`;
-	if (hours > 0) return `${hours}h ${mins}m`;
-	return `${mins}m`;
-}
 // Long safety-net poll — firewall can be toggled out-of-band (user runs
 // init-firewall.sh in the container) and event-driven refreshes can miss it.
 const FIREWALL_REFRESH_INTERVAL = 5 * 60_000;
@@ -908,7 +897,6 @@ export default class AgentSandboxPlugin extends Plugin {
 			item
 				.setTitle(mcpRunning ? "Disable MCP Server" : "Enable MCP Server")
 				.setIcon("server")
-				.setDisabled(busy)
 				.onClick(this.safeFire("Toggle MCP server", () => this.toggleMcpServer())),
 		);
 
@@ -1172,10 +1160,7 @@ export default class AgentSandboxPlugin extends Plugin {
 				return;
 			}
 
-			const [info, containerId] = await Promise.all([
-				this.docker.getContainerInfo(),
-				this.docker.getContainerId(),
-			]);
+			const info = await this.docker.getContainerInfo();
 
 			const mcpRunning = this.mcpServer?.isRunning() ?? false;
 			const fwState = this.firewallBar.getState();
@@ -1183,7 +1168,7 @@ export default class AgentSandboxPlugin extends Plugin {
 				fwState === "enabled" ? "on" : fwState === "disabled" ? "off" : "unknown";
 
 			const lines = ["Sandbox: Running"];
-			if (containerId) lines.push(`ID: ${containerId.slice(0, 12)}`);
+			if (info?.id) lines.push(`ID: ${info.id.slice(0, 12)}`);
 			if (info?.image) lines.push(`Image: ${info.image}`);
 			if (info?.startedAt) lines.push(`Up: ${formatUptime(info.startedAt)}`);
 			lines.push(`MCP: ${mcpRunning ? `on (port ${this.settings.mcpPort})` : "off"}`);
