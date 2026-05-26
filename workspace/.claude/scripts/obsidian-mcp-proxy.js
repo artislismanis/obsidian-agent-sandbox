@@ -57,6 +57,16 @@ let sessionId = null;
 // initialize resolves.
 let pendingInitialize = null;
 
+// Last `initialize` message received from Claude Code. Used to replay the
+// handshake transparently when the server restarts and invalidates the
+// session (HTTP 404 / code -32001).
+let cachedInitializeMsg = null;
+
+// Promise that resolves once an in-flight session-recovery replay has
+// completed. Concurrent requests that detect a stale session await this
+// instead of triggering independent replays.
+let pendingRecovery = null;
+
 function probePort() {
 	return new Promise((resolve) => {
 		const s = net.createConnection({ host: HOST, port: PORT });
@@ -166,12 +176,18 @@ function httpPost(message) {
 					// to Claude instead of an indefinite hang.
 					const status = res.statusCode || 0;
 					if (status < 200 || status >= 300) {
-						lastProbeResult = false;
-						reject(
-							new Error(
-								`Obsidian MCP returned HTTP ${status} (${(buf || "").slice(0, 200) || "no body"})`,
-							),
+						// A stale-session 404 (-32001) means the server restarted
+						// but is still reachable — don't flip the probe to false.
+						const isStale =
+							(status === 404 || status === 400) &&
+							/not initialized|Session expired|Invalid session/i.test(buf);
+						if (!isStale) lastProbeResult = false;
+						const err = new Error(
+							`Obsidian MCP returned HTTP ${status} (${(buf || "").slice(0, 200) || "no body"})`,
 						);
+						err.status = status;
+						err.body = buf;
+						reject(err);
 						return;
 					}
 					if (ct.includes("text/event-stream")) {
@@ -236,6 +252,7 @@ async function handleMessage(msg) {
 	// We resolve in finally so failed initializes still unblock waiters.
 	let initializeResolve;
 	if (msg.method === "initialize") {
+		cachedInitializeMsg = msg;
 		pendingInitialize = new Promise((resolve) => {
 			initializeResolve = resolve;
 		});
@@ -272,6 +289,11 @@ async function handleMessage(msg) {
 		return;
 	}
 
+	// If a session-recovery replay is in progress, wait for it before sending —
+	// sessionId is null during replay and would cause the server to allocate an
+	// unwanted new session for this request.
+	if (pendingRecovery) await pendingRecovery;
+
 	const t0 = Date.now();
 	try {
 		const responses = await httpPost(msg);
@@ -284,6 +306,58 @@ async function handleMessage(msg) {
 		}
 		for (const r of responses) writeFrame(r);
 	} catch (err) {
+		const isStale =
+			err.status &&
+			(err.status === 404 || err.status === 400) &&
+			/not initialized|Session expired|Invalid session/i.test(err.body || "");
+
+		if (isStale && cachedInitializeMsg) {
+			try {
+				// Only one concurrent recovery — peers that also hit 404 await
+				// the same promise rather than each replaying initialize.
+				if (!pendingRecovery) {
+					const recoveryStart = Date.now();
+					pendingRecovery = (async () => {
+						try {
+							sessionId = null;
+							await httpPost(cachedInitializeMsg);
+							// Fire-and-forget: completes the MCP handshake with the new
+							// session but we don't need to wait for the ack.
+							httpPost({ jsonrpc: "2.0", method: "notifications/initialized", params: {} }).catch(
+								() => {},
+							);
+							process.stderr.write(
+								`obsidian-mcp-proxy: session expired, replaying initialize (${Date.now() - recoveryStart}ms)\n`,
+							);
+						} finally {
+							pendingRecovery = null;
+						}
+					})();
+				}
+				await pendingRecovery;
+				// Retry the original request once with the new session.
+				const retryResponses = await httpPost(msg);
+				if (DEBUG) {
+					const label =
+						msg.method === "tools/call" ? `tools/call ${msg.params?.name ?? "?"}` : msg.method;
+					process.stderr.write(
+						`obsidian-mcp-proxy: id=${msg.id} ${label} ${Date.now() - t0}ms (after recovery)\n`,
+					);
+				}
+				for (const r of retryResponses) writeFrame(r);
+			} catch (retryErr) {
+				process.stderr.write(
+					`obsidian-mcp-proxy: id=${msg.id} ${msg.method} failed after recovery: ${retryErr.message}\n`,
+				);
+				writeFrame({
+					jsonrpc: "2.0",
+					id: msg.id,
+					error: { code: -32603, message: retryErr.message || "Obsidian MCP server unavailable" },
+				});
+			}
+			return;
+		}
+
 		process.stderr.write(
 			`obsidian-mcp-proxy: id=${msg.id} ${msg.method} failed after ${Date.now() - t0}ms: ${err.message}\n`,
 		);

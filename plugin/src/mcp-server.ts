@@ -900,6 +900,18 @@ export class ObsidianMcpServer {
 			return;
 		}
 
+		if (sessionId && !this.transports.has(sessionId)) {
+			res.writeHead(404, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					jsonrpc: "2.0",
+					id: null,
+					error: { code: -32001, message: "Session expired — re-initialize" },
+				}),
+			);
+			return;
+		}
+
 		const server = this.createMcpServer();
 		const transport = new StreamableHTTPServerTransport({
 			sessionIdGenerator: () => randomUUID(),

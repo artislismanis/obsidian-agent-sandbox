@@ -5,6 +5,7 @@ import {
 	containerExec,
 	httpPost,
 	httpGet,
+	httpPostFull,
 	parseJsonOrSse,
 	mcpInitialize,
 	mcpRequest,
@@ -172,6 +173,97 @@ describe.skipIf(SKIP)("MCP HTTP server (standalone, no Obsidian)", () => {
 		// for "GET without session" depending on the transport version.
 		expect(status).toBeGreaterThanOrEqual(400);
 		expect(status).toBeLessThan(500);
+	});
+});
+
+describe("stale session after MCP server restart", () => {
+	// This suite verifies that a session id captured before a server restart
+	// is rejected with HTTP 404 / -32001 rather than letting it fall through
+	// to an uninitialized transport (which produces an opaque 400 "Bad Request:
+	// Server not initialized" from the MCP SDK).
+	const STALE_PORT = MCP_PORT + 5;
+	const STALE_TOKEN = "stale-session-test-token";
+
+	it("returns 404 with -32001 for a session id that existed before a restart", async () => {
+		const { ObsidianMcpServer } = await import("../../src/mcp-server");
+
+		const mockApp = {
+			vault: {
+				getFiles: () => [],
+				getMarkdownFiles: () => [],
+				getFileByPath: () => null,
+				read: async () => "",
+				cachedRead: async () => "",
+				create: async (path: string) => ({ path, basename: path, extension: "md" }),
+				modify: async () => {},
+				append: async () => {},
+				trash: async () => {},
+				createFolder: async () => {},
+				adapter: {
+					exists: async () => false,
+					mkdir: async () => {},
+					stat: async () => ({ size: 0 }),
+					rename: async () => {},
+					remove: async () => {},
+					append: async () => {},
+				},
+			},
+			metadataCache: {
+				getFileCache: () => null,
+				getFirstLinkpathDest: () => null,
+				resolvedLinks: {},
+				unresolvedLinks: {},
+				on: () => ({}),
+				off: () => {},
+				offref: () => {},
+			},
+			fileManager: { renameFile: async () => {}, processFrontMatter: async () => {} },
+			workspace: { getLeaf: () => ({ openFile: async () => {} }) },
+		};
+
+		const makeServer = () =>
+			new ObsidianMcpServer(mockApp as never, {
+				port: STALE_PORT,
+				token: STALE_TOKEN,
+				enabledTiers: new Set(["read"]),
+				getWriteDir: () => "agent-workspace",
+				toolTimeoutMs: 10_000,
+				reviewTimeoutMs: 180_000,
+			});
+
+		// 1. Start the server and establish a session.
+		const server1 = makeServer();
+		await server1.start();
+		const init = await mcpInitialize(STALE_PORT, STALE_TOKEN);
+		const staleSessionId = init.sessionId;
+		expect(staleSessionId).toBeTruthy();
+
+		// 2. Restart the server — all previous sessions are gone.
+		await server1.stop();
+		const server2 = makeServer();
+		await server2.start();
+
+		try {
+			// 3. POST a tools/call with the now-stale session id.
+			const res = await httpPostFull(
+				`http://127.0.0.1:${STALE_PORT}/mcp`,
+				{
+					jsonrpc: "2.0",
+					id: 2,
+					method: "tools/call",
+					params: { name: "vault_list_files", arguments: {} },
+				},
+				{ Authorization: `Bearer ${STALE_TOKEN}`, "Mcp-Session-Id": staleSessionId },
+			);
+
+			// 4. Must be 404 with code -32001.
+			expect(res.status).toBe(404);
+			const body = parseJsonOrSse(res.body) as { error: { code: number; message: string } };
+			expect(body.error.code).toBe(-32001);
+			expect(body.error.message).toMatch(/Session expired/);
+		} finally {
+			await server2.stop();
+		}
 	});
 });
 
