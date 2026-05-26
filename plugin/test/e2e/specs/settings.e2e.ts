@@ -56,7 +56,7 @@ describe("Settings — validation and warnings", function () {
 			for (const d of await descriptions.getElements()) {
 				texts.push(await d.getText());
 			}
-			const restartTexts = texts.filter((t) => t.includes("Requires restart"));
+			const restartTexts = texts.filter((t) => t.includes("Requires container restart"));
 			expect(restartTexts.length).toBeGreaterThanOrEqual(3);
 		});
 
@@ -69,7 +69,7 @@ describe("Settings — validation and warnings", function () {
 
 			const autoStartDesc = texts.find((t) => t.includes("Start the container when"));
 			expect(autoStartDesc).toBeDefined();
-			expect(autoStartDesc).not.toContain("Requires restart");
+			expect(autoStartDesc).not.toContain("Requires container restart");
 		});
 	});
 
@@ -80,7 +80,7 @@ describe("Settings — validation and warnings", function () {
 
 			const portDesc = $(".setting-item-description*=host port mapped");
 			await expect(portDesc).toExist();
-			expect(await portDesc.getText()).toContain("Requires restart");
+			expect(await portDesc.getText()).toContain("Requires container restart");
 		});
 
 		it("font size validates range 8-32", async function () {
@@ -117,17 +117,17 @@ describe("Settings — validation and warnings", function () {
 
 			// Settings re-renders on bind address change, so the element is stale.
 			// Re-query the description each time.
-			expect(await settingDesc("Bind address").getText()).toContain("Warning");
+			expect(await settingDesc("Bind address").getText()).toContain("exposes ttyd");
 
 			await settingInput("Bind address").setValue("127.0.0.1");
 			await browser.pause(500);
-			expect(await settingDesc("Bind address").getText()).not.toContain("Warning");
+			expect(await settingDesc("Bind address").getText()).not.toContain("exposes ttyd");
 		});
 
 		it("theme and font have no restart labels", async function () {
 			const themeDesc = settingDesc("Terminal theme");
 			await expect(themeDesc).toExist();
-			expect(await themeDesc.getText()).not.toContain("Requires restart");
+			expect(await themeDesc.getText()).not.toContain("Requires container restart");
 		});
 	});
 
