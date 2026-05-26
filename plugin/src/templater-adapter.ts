@@ -41,7 +41,7 @@ interface TemplaterPlugin {
  * applyTemplaterFolderTemplate so callers can render a preview without
  * actually creating the file.
  */
-export function findTemplaterFolderTemplate(app: App, targetPath: string): TFile | null {
+function findTemplaterFolderTemplate(app: App, targetPath: string): TFile | null {
 	const tp = getTemplaterPlugin(app);
 	if (!tp?.settings?.enable_folder_templates) return null;
 	const folderTemplates = tp.settings.folder_templates ?? [];

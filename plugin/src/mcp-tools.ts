@@ -255,12 +255,6 @@ function isSafeFrontmatterProperty(name: string): boolean {
 	return !FORBIDDEN_FM_PROPS.has(name);
 }
 
-// pathHasParentSegment lives in validation.ts; isVaultPathSafe lives in
-// obsidian-internals.ts (which also handles the FileSystemAdapter fail-open
-// warning). Both split on `/` and `\` so callers don't worry about Windows
-// inputs, and use posix-segment matching to allow legitimate names like
-// `notes/v1..2.md`.
-
 /** Parallel-chunked iteration over markdown files; handler returning true stops the walk.
  *
  * Returns the read-failure count so callers can surface a "scan skipped N

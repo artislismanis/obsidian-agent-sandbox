@@ -63,8 +63,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 # firewall tools (iptables, ipset, iproute2, dnsutils, aggregate),
 # sudo + gosu for the narrow apt-get sudoers entry and priv-drop in entrypoint
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl git jq ca-certificates gnupg locales \
-    ripgrep fd-find tree nano less tmux \
+    curl git jq ca-certificates locales \
+    ripgrep fd-find nano less tmux \
     iptables ipset iproute2 dnsutils aggregate sudo gosu \
     && ln -sf /usr/bin/fdfind /usr/bin/fd \
     && sed -i '/en_US.UTF-8/s/^# //' /etc/locale.gen && locale-gen \

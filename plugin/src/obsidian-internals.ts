@@ -65,7 +65,7 @@ interface PluginsHost {
 }
 
 /** Get the plugin-host object on `app`, or undefined if Obsidian hasn't wired one. */
-export function getPluginsHost(app: App): PluginsHost | undefined {
+function getPluginsHost(app: App): PluginsHost | undefined {
 	return (app as unknown as { plugins?: PluginsHost }).plugins;
 }
 

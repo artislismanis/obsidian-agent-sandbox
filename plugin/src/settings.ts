@@ -246,33 +246,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			);
 	}
 
-	/** Add a plain text Setting that saves on every change with no validation. */
-	private addPlainTextSetting(
-		el: HTMLElement,
-		opts: {
-			name: string;
-			desc: string;
-			key: keyof AgentSandboxSettings;
-			placeholder?: string;
-			requiresRestart?: boolean;
-		},
-	): void {
-		new Setting(el)
-			.setName(opts.name)
-			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
-			.addText((text) => {
-				if (opts.placeholder) text.setPlaceholder(opts.placeholder);
-				text.setValue(String(this.plugin.settings[opts.key])).onChange(async (value) => {
-					(this.plugin.settings[opts.key] as string) = value;
-					this.plugin.saveSettings();
-					if (opts.requiresRestart) this.markRestart();
-				});
-			});
-	}
-
 	/**
-	 * Add a text Setting whose input is validated by a string validator. Invalid
-	 * input shows the error class and is dropped (not saved).
+	 * Add a text Setting that saves on change. When `validator` is supplied,
+	 * invalid input shows the error class and is not saved.
 	 */
 	private addValidatedTextSetting(
 		el: HTMLElement,
@@ -280,7 +256,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			name: string;
 			desc: string;
 			key: keyof AgentSandboxSettings;
-			validator: (value: string) => boolean;
+			validator?: (value: string) => boolean;
 			placeholder?: string;
 			requiresRestart?: boolean;
 			onChange?: () => void;
@@ -292,7 +268,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.addText((text) => {
 				if (opts.placeholder) text.setPlaceholder(opts.placeholder);
 				text.setValue(String(this.plugin.settings[opts.key])).onChange(async (value) => {
-					if (opts.validator(value)) {
+					if (!opts.validator || opts.validator(value)) {
 						(this.plugin.settings[opts.key] as string) = value;
 						this.plugin.saveSettings();
 						if (opts.requiresRestart) this.markRestart();
@@ -428,7 +404,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		);
 
 		if (isWsl) {
-			this.addPlainTextSetting(el, {
+			this.addValidatedTextSetting(el, {
 				name: "WSL distribution",
 				desc: "The WSL distribution used for running Docker commands.",
 				key: "wslDistroName",
@@ -554,7 +530,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		this.addPlainTextSetting(el, {
+		this.addValidatedTextSetting(el, {
 			name: "Terminal font",
 			desc:
 				"Custom font family for the terminal. Leave empty for automatic fallback " +
@@ -865,7 +841,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			}
 		});
 
-		this.addPlainTextSetting(el, {
+		this.addValidatedTextSetting(el, {
 			name: "Sudo password",
 			desc:
 				"Password for the narrow apt-get/apt sudo inside the container. " +
