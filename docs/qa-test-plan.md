@@ -712,62 +712,16 @@ Unit tests cover `isRealPathWithinBase` with mocked realpath. These verify the O
 
 **Setup carried forward:** Stage 0–3, plus the target Obsidian plugin installed and enabled in the vault, and Extensions tier enabled.
 
-Real-plugin scenarios. Unit tests use stubs; these prove the real API plumbing.
+Most Stage 9 scenarios are covered exhaustively by [mcp-capability-test.md](./mcp-capability-test.md) S8 (Extensions tier) and S9.4 (malformed args). Run the capability test under cell A (or cell F to confirm extensions gating) instead of re-exercising these manually. The scenario below is unique to the human-driven QA flow because it validates plugin-specific recurrence semantics that the capability test's S8.4 toggle doesn't specifically check.
 
-### 9.1 Dataview DQL
-
-- **Setup:** Dataview installed. Vault has a few notes with frontmatter `rating`.
-- **Steps:** `claude -p 'Run DQL: TABLE rating FROM "" SORT rating DESC LIMIT 5'`.
-- **Expected:** `vault_dataview_query` returns `{headers, values}` matching what a Dataview block would render.
-- **Notes:** P1.
-
-### 9.2 Dataview disabled → tool absent
-
-- **Setup:** Disable Dataview (keep Extensions tier on).
-- **Steps:** `claude -p "What MCP tools do you have?"`.
-- **Expected:** No `vault_dataview_query`. Subsequent attempt to use it returns a clear "not available".
-- **Notes:** P1. Re-enable Dataview after.
+Retired to the capability test: 9.1 (Dataview DQL → S8.1), 9.2 (Dataview disabled → S8.0 + S9.5 disabled-tier probe), 9.4 (Templater → S8.5), 9.5 (Periodic Notes → S8.8), 9.6 (Canvas → S8.6/S8.7), 9.7 (extensions list → S8.0), 9.8 (malformed args → S9.3/S9.4).
 
 ### 9.3 Tasks toggle with recurring
 
 - **Setup:** Tasks plugin enabled. A note with `- [ ] weekly thing 🔁 every week 📅 2026-04-19`.
 - **Steps:** `claude -p "Toggle the task at notes/recurring.md line 5"`.
 - **Expected:** File now contains both the completed original and a fresh next occurrence (Tasks' recurring semantics).
-- **Notes:** P1.
-
-### 9.4 Templater create
-
-- **Setup:** Templater enabled. Template `Templates/daily.md` with at least one Templater tag (e.g. `<% tp.date.now() %>`).
-- **Steps:** `claude -p "Create a note from Templater template Templates/daily.md named 2026-04-19 in folder Daily"`.
-- **Expected:** `Daily/2026-04-19.md` exists with tags expanded.
-- **Notes:** P1.
-
-### 9.5 Periodic Notes resolve + create
-
-- **Setup:** Periodic Notes installed, daily notes folder = `Daily/`, format `YYYY-MM-DD`.
-- **Steps:** 1) `claude -p "What's the path of today's daily note?"`. 2) `claude -p "Create today's daily note if missing"`.
-- **Expected:** 1) Existing or "Not found". 2) Creates correctly with configured template seeded.
-- **Notes:** P1.
-
-### 9.6 Canvas read/modify
-
-- **Setup:** Create `board.canvas` via Obsidian UI with 2 nodes + 1 edge.
-- **Steps:** 1) `claude -p "Show me the JSON structure of board.canvas"`. 2) `claude -p "Add a text node id 'n3' to board.canvas"`.
-- **Expected:** 1) Returns canvas JSON. 2) File rewritten, new node visible in Obsidian.
-- **Notes:** P2.
-
-### 9.7 plugin_extensions_list reports state
-
-- **Steps:** `claude -p "List the plugin_extensions available"`.
-- **Expected:** One line per integration with `enabled` / `not available` / `always (native format)` matching reality.
-- **Notes:** P2.
-
-### 9.8 Malformed args return validation error
-
-- **Setup:** Any MCP-using client.
-- **Steps:** Invoke `vault_search` with `{ "query": 123 }`, or `vault_read` with `{}`.
-- **Expected:** `isError: true` with message `Invalid arguments: …` (zod detail).
-- **Notes:** P1.
+- **Notes:** P1. The capability test's S8.4 exercises `vault_tasks_toggle` but does not assert the recurring-task engine's next-occurrence behaviour — that's what this scenario uniquely covers.
 
 ---
 
@@ -850,25 +804,33 @@ These require specific host hardware/OS. Run on each supported platform before r
 
 **Setup carried forward:** Stage 0–3.
 
+Shell-verifiable scenarios (T12.1, T12.2, T12.3, T12.7a) run via `container/test-scripts/stress-checks.sh`. The scenarios below require Obsidian to be running or are otherwise UI-bound.
+
+```bash
+bash container/test-scripts/stress-checks.sh /path/to/test-vault
+# Daemon-stop probe (host-disruptive — stops and restarts Docker):
+bash container/test-scripts/stress-checks.sh /path/to/test-vault --with-daemon-stop
+```
+
 ### 12.1 Docker daemon stops mid-session
 
+Automated in `stress-checks.sh T12.1` (with `--with-daemon-stop`). The automated probe verifies MCP becomes unreachable and recovers. The human-observable aspect — status bar transitioning to errored, terminal showing a helpful disconnected message — requires Obsidian to be open.
+
 - **Setup:** Container running, terminal open.
-- **Steps:** From host: stop Docker.
-- **Expected:** Status bar transitions to errored. Terminal shows disconnected state with helpful message. No infinite spinner. Restarting Docker → plugin recovers (auto-start or manual Start succeeds).
-- **Notes:** P0.
+- **Steps:** Run `stress-checks.sh --with-daemon-stop`, then observe the status bar and terminal during the stop/restart cycle.
+- **Expected:** Status bar transitions to errored. Terminal shows disconnected state with helpful message. No infinite spinner. After restart: auto-start or manual Start recovers cleanly.
+- **Notes:** P0. Automated probe passes before observing the UI.
 
 ### 12.2 Vault path with unicode
 
-- **Setup:** Vault path includes non-ASCII (e.g. `~/Документы/vault`).
-- **Steps:** Start container. Open terminal. `ls /vault`.
-- **Expected:** Mount works. Filenames with unicode list correctly.
+Automated in `stress-checks.sh T12.2`. Passes when `vault_list` succeeds through a unicode-path symlink. The human-side check (terminal `ls /vault` showing filenames correctly) is optional confirmation.
+
 - **Notes:** P1.
 
 ### 12.3 Very large note read
 
-- **Setup:** Note ~5 MB.
-- **Steps:** `claude -p "Read the file big.md and tell me its first line"`.
-- **Expected:** Returns the first line. No timeout, no Obsidian UI freeze. Document any hard cap.
+Automated in `stress-checks.sh T12.3` (creates a ~5 MB note and calls `vault_read`). The human-side check — no Obsidian UI freeze — is optional confirmation.
+
 - **Notes:** P2.
 
 ### 12.4 Many concurrent terminals
@@ -893,9 +855,8 @@ These require specific host hardware/OS. Run on each supported platform before r
 
 ### 12.7a Teardown leaves no `oas-*` debris
 
-- **Setup:** Production container running; integration tests have been run at least once.
-- **Steps:** `cd container && docker compose down`. Then: `docker ps -a | grep oas-`, `docker volume ls | grep oas-`, `docker network ls | grep oas-`.
-- **Expected:** No `oas-sandbox` container. `oas-claude-config` and `oas-shell-history` volumes remain. No `oas-test-*` resources. `docker compose down -v` then removes the production volumes.
+Automated in `stress-checks.sh T12.7a`. Runs `docker compose -p oas-test down -v` and greps for leftover `oas-test-*` resources. The production volumes (`oas-claude-config`, `oas-shell-history`) are checked separately.
+
 - **Notes:** P1.
 
 ### 12.7 No remaining DevTools console errors after a full session
