@@ -8,30 +8,9 @@ The plan covers only the MCP surface. Container lifecycle, terminal UX, review m
 
 ## Permission cells
 
-| Cell | Nav | Mng | Ext | Write mode | Active tier tags |
-|------|-----|-----|-----|------------|-----------------|
-| A | ON | ON | ON | none | read, writeScoped, agent, navigate, manage, extensions |
-| B | ON | ON | ON | reviewed | + writeReviewed |
-| C | ON | ON | ON | full | + writeVault |
-| D | OFF | ON | ON | none | read, writeScoped, agent, manage, extensions |
-| E | ON | OFF | ON | none | read, writeScoped, agent, navigate, extensions |
-| F | ON | ON | OFF | none | read, writeScoped, agent, navigate, manage |
+Before running this plan, configure the plugin into one of the six permission cells defined in [qa-test-plan.md](./qa-test-plan.md) **Stage 3.1**. That table shows which tier toggles to enable and which vault-write mode to set. Use the **Stage 3.2 cell setup walkthrough** in the same document to verify the configuration before handing this file to Claude.
 
-Cell B's active set extends cell A's with `writeReviewed`; cell C extends A's with `writeVault`. The `+ writeReviewed` / `+ writeVault` notation is additive, not replacement.
-
-**Full-sweep cells (A, B, C):** run all scenarios; skip only those whose `Requires:` tag is not in the active set.
-
-**Smoke cells (D, E, F):** run only scenarios whose `Requires:` tag set is no longer satisfied by the cell — mark the rest `SKIPPED (cell D/E/F)`. Always run S0.1 and S9.5 regardless.
-
-**Run-file naming convention:** `workspace/mcp-testing/<YYYY-MM-DD>-cell-<letter>-<short-name>.md`  
-Examples: `2026-05-26-cell-A-baseline.md`, `2026-05-26-cell-B-reviewed-write.md`, `2026-05-26-cell-C-full-write.md`.
-
-The three existing run files correspond to cells A, B, and C:
-- `mcp-capability-test-run-2026-05-26.md` → cell A (baseline, write mode none)
-- `mcp-capability-test-run-2026-05-26-review-write.md` → cell B
-- `mcp-capability-test-run-2026-05-26-full-write.md` → cell C
-
----
+Put the cell letter in the run file's header (e.g. `Cell A — baseline`) — Claude uses it to determine which scenarios to run and which to skip (see Cell mode below).
 
 ## Prerequisites
 
@@ -63,7 +42,7 @@ Capture the resolved values in the final report's Environment section.
 
 A full sweep produces a lot of tool output. Without discipline you'll exhaust the conversation context before reaching the final report. Follow these rules:
 
-1. **Persist as you go.** After every group (S0, S1, S2, …) write the partial matrix and verbatim evidence collected so far to `workspace/mcp-testing/<YYYY-MM-DD>-cell-<letter>-<short-name>.md` on the container filesystem (use your `Write` / `Bash` tool, not MCP — this is a host-side scratch file, not a vault note). This file is the canonical record; the conversation is just working memory.
+1. **Persist as you go.** After every group (S0, S1, S2, …) write the partial matrix and verbatim evidence collected so far to `workspace/mcp-testing/<YYYY-MM-DD>-cell-<letter>-<short-name>.md` (e.g. `2026-05-26-cell-A-baseline.md`) using your `Write` / `Bash` tool, not MCP — this is a host-side scratch file, not a vault note. This file is the canonical record; the conversation is just working memory.
 2. **Paraphrase results, quote errors.** For each tool result, record:
    - **Success**: a one-line summary of the returned shape (top-level keys, item count, first item snippet). Paste full payloads only where this doc explicitly asks (e.g. `mcp_capabilities` in S0.1, the cumulative `alpha.md` body in S2, the tree in S5, schemas in S2.7 / S5.5 / S7.1 / S8.5 / S8.8).
    - **Failure**: the **verbatim** error message — code, text, hint, structured fields. Do not paraphrase errors.
@@ -72,16 +51,7 @@ A full sweep produces a lot of tool output. Without discipline you'll exhaust th
 
 ## Instructions to Claude
 
-You are exercising every capability of the Obsidian MCP server.
-
-**Cell mode**
-
-1. Read the cell letter from the run file's header (e.g. "Cell B").
-2. Look up the cell's active tag set in the [Permission cells](#permission-cells) table above.
-3. Before running each scenario, check its `Requires:` value. If any required tag is absent from the active set, mark the scenario `SKIPPED (cell)` without calling any tool, and continue to the next.
-4. Smoke cells (D, E, F): only scenarios that become SKIPPED in this cell need to be visited — these confirm the tier gate is working. S0.1 and S9.5 always run.
-
-For **each scenario**:
+You are exercising every capability of the Obsidian MCP server. For **each scenario**:
 
 1. Run the listed tool call with the exact inputs shown (or the documented variant).
 2. Capture evidence per the rules in [Managing context](#managing-context).
@@ -92,11 +62,13 @@ For **each scenario**:
 
 Run scenarios sequentially. Parallel tool calls are allowed only within one scenario when noted.
 
+**Cell mode.** Read the cell letter from your run file's header (e.g. `Cell D — nav off`). Look up the active tier tags for that cell in [qa-test-plan.md](./qa-test-plan.md) Stage 3.1. Before each scenario, check its `Requires:` line — if any required tag is absent from the active set, mark the scenario `SKIPPED (cell)` and continue. For smoke cells (D, E, F): only scenarios that become SKIPPED in this cell need to be visited, to confirm the gate is working. S0.1 and S9.5 always run regardless of cell.
+
 ---
 
 ## S0 — Setup and capability discovery (mandatory first)
 
-`Requires: (any)` — all S0 scenarios are mandatory regardless of cell.
+**Requires:** `(any)`
 
 ### S0.1 mcp_capabilities
 
@@ -123,7 +95,7 @@ If both paths fail, mark all write scenarios `BLOCKED`.
 
 ## S1 — Read tier (always on)
 
-`Requires: read`
+**Requires:** `read`
 
 Pick `${PROBE}` per S0.2. Record the **exact tool-name string** the server returned in S0.1 for each row (catches drift like `vault_search_fuzzy` vs `vault_searchFuzzy`).
 
@@ -158,7 +130,7 @@ Pick `${PROBE}` per S0.2. Record the **exact tool-name string** the server retur
 
 ## S2 — Write tier — scoped (`writeScoped`, no suffix)
 
-`Requires: writeScoped`
+**Requires:** `writeScoped`
 
 Default `writeScoped` tools — gated to `writeDir`. All inputs are scoped under `${SANDBOX}`.
 
@@ -184,7 +156,7 @@ After S2.11, run `vault_read { path: "${SANDBOX}/alpha.md" }` and paste the fina
 
 ## S3 — Reviewed-write tier (suffix `_reviewed`)
 
-`Requires: writeReviewed`
+**Requires:** `writeReviewed`
 
 Only run if S0.1's `enabledTiers` includes `writeReviewed`. These prompt a diff modal in Obsidian — **a human must approve each one in real time**. Before starting, tell the user: *"S3 will trigger 4 approval modals — approve or reject each as instructed in the plan."*
 
@@ -203,7 +175,7 @@ Record both the modal outcome and the tool's return value for each.
 
 ## S4 — Vault-wide write tier (suffix `_anywhere`)
 
-`Requires: writeVault`
+**Requires:** `writeVault`
 
 Only run if `writeVault` is enabled. These bypass scope and review — **destructive if misused**. Confine all paths to `${SANDBOX}`.
 
@@ -217,7 +189,7 @@ Only run if `writeVault` is enabled. These bypass scope and review — **destruc
 
 ## S5 — Manage tier (rename, move, delete, folders, batch)
 
-`Requires: manage`
+**Requires:** `manage`
 
 All tools below are in the `manage` tier. Skip the whole section (`SKIPPED (manage tier disabled)`) if `manage` was absent from S0.1's `enabledTiers`.
 
@@ -241,7 +213,7 @@ After S5, run `vault_list { path: "${SANDBOX}" }` and paste the resulting tree i
 
 ## S6 — Navigate tier
 
-`Requires: navigate`
+**Requires:** `navigate`
 
 Only run if `navigate` is in S0.1's `enabledTiers`.
 
@@ -254,7 +226,7 @@ Only run if `navigate` is in S0.1's `enabledTiers`.
 
 ## S7 — Agent / meta
 
-`Requires: agent`
+**Requires:** `agent`
 
 | ID | Tool | Inputs |
 |----|------|--------|
@@ -266,28 +238,26 @@ Only run if `navigate` is in S0.1's `enabledTiers`.
 
 ## S8 — Extensions tier (Dataview / Templater / Tasks / Canvas / Periodic Notes)
 
-`Requires: extensions`
+**Requires:** `extensions`
 
 Only run if `extensions` is enabled. Use S8.0 to discover which integrations are wired.
 
 ### S8.0 plugin_extensions_list
 
-`Requires: extensions`
+**Requires:** `extensions`
 
 Inputs: `{}`. Record which extensions report `enabled`. Skip sub-scenarios for any that aren't, marking `SKIPPED (extension unavailable)`.
 
-| ID | Requires | Tool | Inputs |
-|----|----------|------|--------|
-| S8.1 | `extensions +DataviewPlugin` | `vault_dataview_query` | `{ query: "LIST FROM \"${SANDBOX}\"" }` |
-| S8.2 | `extensions +DataviewPlugin` | `vault_dataview_query` (invalid) | `{ query: "NOT A QUERY" }` |
-| S8.3 | `extensions +TasksPlugin` | `vault_tasks_query` | inspect the tool's schema, send a minimal valid query (e.g. all open tasks). If no tasks exist, append `- [ ] test task\n` to `${SANDBOX}/alpha.md` first via `vault_append`. |
-| S8.4 | `extensions +TasksPlugin` | `vault_tasks_toggle` | `{ path: "${SANDBOX}/alpha.md", line: <line-of-task-from-S8.3> }` |
-| S8.5 | `extensions +TemplaterPlugin` | `vault_templater_create` | inspect schema; create `${SANDBOX}/from-template.md` from any available template. If no templates configured, mark `SKIPPED (no templates)` and paste the schema. |
-| S8.6 | `extensions` | `vault_canvas_modify` | create a minimal `${SANDBOX}/board.canvas` with one text node (consult the schema) |
-| S8.7 | `extensions` | `vault_canvas_read` | `{ path: "${SANDBOX}/board.canvas" }` |
-| S8.8 | `extensions +PeriodicNotesPlugin` | `vault_periodic_note` | `{ }` — defaults to today's daily note. Inspect schema first; capture how it behaves when the note already exists. |
-
-The `+Plugin` qualifiers mean both the `extensions` tier tag and the named plugin must be present. Plugin availability is discovered at runtime from S8.0's output, not from the cell definition.
+| ID | Tool | Inputs | Requires |
+|----|------|--------|---------|
+| S8.1 | `vault_dataview_query` | `{ query: "LIST FROM \"${SANDBOX}\"" }` | `extensions +DataviewPlugin` |
+| S8.2 | `vault_dataview_query` (invalid) | `{ query: "NOT A QUERY" }` | `extensions +DataviewPlugin` |
+| S8.3 | `vault_tasks_query` | inspect the tool's schema, send a minimal valid query (e.g. all open tasks). If no tasks exist, append `- [ ] test task\n` to `${SANDBOX}/alpha.md` first via `vault_append`. | `extensions +TasksPlugin` |
+| S8.4 | `vault_tasks_toggle` | `{ path: "${SANDBOX}/alpha.md", line: <line-of-task-from-S8.3> }` | `extensions +TasksPlugin` |
+| S8.5 | `vault_templater_create` | inspect schema; create `${SANDBOX}/from-template.md` from any available template. If no templates configured, mark `SKIPPED (no templates)` and paste the schema. | `extensions +TemplaterPlugin` |
+| S8.6 | `vault_canvas_modify` | create a minimal `${SANDBOX}/board.canvas` with one text node (consult the schema) | `extensions` |
+| S8.7 | `vault_canvas_read` | `{ path: "${SANDBOX}/board.canvas" }` | `extensions` |
+| S8.8 | `vault_periodic_note` | `{ }` — defaults to today's daily note. Inspect schema first; capture how it behaves when the note already exists. | `extensions +PeriodicNotesPlugin` |
 
 > **Flush + `/compact` before S9.**
 
@@ -295,26 +265,13 @@ The `+Plugin` qualifiers mean both the `extensions` tier tag and the named plugi
 
 ## S9 — Cross-cutting / failure modes
 
-`Requires: (any)`
+**Requires:** `(any)`
 
 These probe behaviour that isn't tool-specific.
 
 ### S9.1 Rate limiting
 
 Pick `rateLimits.defaultReadsPerMin` from S0.1. Issue `defaultReadsPerMin + 5` calls of `vault_list { }` in rapid succession (sequentially, no sleep). Record the index at which the first rate-limit error appears and its **verbatim** message.
-
-> **Context budget note:** Each `vault_list` response can be large. To avoid exhausting context, issue the burst via Bash rather than MCP tool calls. Capture only the response that first returns a rate-limit error verbatim; summarise the rest as "200 OK".
->
-> ```bash
-> # Example burst — replace TOKEN and PORT with values from S0.2 / plugin settings:
-> for i in $(seq 1 $N); do
->   curl -sS -o /dev/null -w "%{http_code}\n" \
->     -H "Authorization: Bearer $TOKEN" \
->     -H "Content-Type: application/json" \
->     -X POST "http://127.0.0.1:$PORT/mcp" \
->     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"vault_list","arguments":{}}}'
-> done
-> ```
 
 ### S9.2 Unknown tool
 
@@ -332,29 +289,15 @@ Call `vault_read` with `{}`. Capture the verbatim error.
 
 If at least one tier is disabled per S0.1, pick any tool from that tier and call it with otherwise-valid inputs. Confirm it isn't exposed and capture the error — distinguish "tool not found" from "tier disabled".
 
-### S9.6 Concurrent tool calls
+### S9.6 Concurrent calls
 
-Issue three `vault_list { }` calls in parallel within a single tool-invocation batch. Record whether all three complete, any ordering anomalies, and whether interleaved responses arrive correctly. If the client does not support parallel invocation, issue them in rapid sequential bursts instead and note the method used.
-
-### S9.7 Path-traversal probe
-
-`Requires: (any)`
-
-Prerequisite: `<vault-root>/evil.md` → `/etc/hosts` symlink must exist. Create it from the host before running this scenario:
-
-```bash
-ln -sf /etc/hosts <vault>/evil.md
-```
-
-(`container/test-scripts/security-checks.sh` creates this fixture automatically once that script lands; remove it after the run.)
-
-Call `vault_read { path: "evil.md" }`. Capture the verbatim error. Confirm that the content of `/etc/hosts` (first line begins `#`) does **not** appear anywhere in the response.
+Drive two searches in parallel (as a single tool-call batch if the client supports it): `vault_search { query: "alpha" }` and `vault_search { query: "beta" }`. Confirm both return results without deadlock or `isError`. Cross-check against `<vault>/.oas/mcp-audit.jsonl` to confirm both calls reached the server. Note: full interleaving behaviour is only visible in a live conversation session; see `qa-test-plan.md` Stage 3.9 for the human-driven companion check.
 
 ---
 
 ## S10 — Cleanup
 
-`Requires: (any)`
+**Requires:** `(any)`
 
 Use the highest-privilege write tier available — `writeVault` if enabled, else `writeReviewed`, else `manage`'s `vault_delete` (note which).
 
@@ -437,4 +380,4 @@ Mark `SKIPPED (no delete-capable tier)` if no available tool can reach the clean
 - S3 needs a human at the keyboard for the diff modals. Skip the section entirely if the run is unattended — do not auto-dismiss.
 - Cross-check the run file against `<vault>/.oas/mcp-audit.jsonl` as a second pass — the audit log records every call the server saw.
 - If you find a tool listed in S0.1's `toolsByTier` that isn't covered above, add it to **Coverage gaps** rather than improvising — consistency across runs is the whole point.
-- Run-file convention: `workspace/mcp-testing/<YYYY-MM-DD>-cell-<letter>-<short-name>.md` (e.g. `2026-05-26-cell-A-baseline.md`). Keep runs; diffing successive reports catches regressions cheaply.
+- Run-file convention: `workspace/mcp-testing/<YYYY-MM-DD>-cell-<letter>-<short-name>.md`. Examples: `2026-05-26-cell-A-baseline.md`, `2026-05-26-cell-B-reviewed-write.md`, `2026-05-26-cell-D-nav-off.md`. Keep runs; diffing successive reports catches regressions cheaply.

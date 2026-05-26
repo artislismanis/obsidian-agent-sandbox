@@ -659,49 +659,45 @@ describe("proxy SSE keepalive — timeout regression", () => {
 		PROXY_TIMEOUT_MS + 10_000,
 	);
 
-	it(
-		"succeeds when the upstream server sends SSE keepalive comments while working",
-		async () => {
-			// The fake server responds with text/event-stream and emits keepalive
-			// comments every 1 s (< PROXY_TIMEOUT_MS = 3 s) to keep the socket
-			// active, then delivers the real MCP response after 5 s. The proxy
-			// should wait for the response and return a result frame — not an error.
-			const KEEPALIVE_INTERVAL = 1_000;
-			const RESPONSE_DELAY = 5_000;
+	it("succeeds when the upstream server sends SSE keepalive comments while working", async () => {
+		// The fake server responds with text/event-stream and emits keepalive
+		// comments every 1 s (< PROXY_TIMEOUT_MS = 3 s) to keep the socket
+		// active, then delivers the real MCP response after 5 s. The proxy
+		// should wait for the response and return a result frame — not an error.
+		const KEEPALIVE_INTERVAL = 1_000;
+		const RESPONSE_DELAY = 5_000;
 
-			const keepaliveServer = (req: IncomingMessage, res: ServerResponse) => {
-				req.resume();
-				res.writeHead(200, { "Content-Type": "text/event-stream" });
+		const keepaliveServer = (req: IncomingMessage, res: ServerResponse) => {
+			req.resume();
+			res.writeHead(200, { "Content-Type": "text/event-stream" });
 
-				const iv = setInterval(() => {
-					if (!res.destroyed) res.write(": keepalive\n\n");
-				}, KEEPALIVE_INTERVAL);
+			const iv = setInterval(() => {
+				if (!res.destroyed) res.write(": keepalive\n\n");
+			}, KEEPALIVE_INTERVAL);
 
-				setTimeout(() => {
-					clearInterval(iv);
-					if (res.destroyed) return;
-					const mcpResponse = {
-						jsonrpc: "2.0",
-						id: 1,
-						result: {
-							protocolVersion: "2025-03-26",
-							capabilities: {},
-							serverInfo: { name: "fake-obsidian", version: "0.0.0" },
-						},
-					};
-					res.write(`data: ${JSON.stringify(mcpResponse)}\n\n`);
-					res.end();
-				}, RESPONSE_DELAY);
-			};
+			setTimeout(() => {
+				clearInterval(iv);
+				if (res.destroyed) return;
+				const mcpResponse = {
+					jsonrpc: "2.0",
+					id: 1,
+					result: {
+						protocolVersion: "2025-03-26",
+						capabilities: {},
+						serverInfo: { name: "fake-obsidian", version: "0.0.0" },
+					},
+				};
+				res.write(`data: ${JSON.stringify(mcpResponse)}\n\n`);
+				res.end();
+			}, RESPONSE_DELAY);
+		};
 
-			const frame = await runProxyOnce(keepaliveServer);
+		const frame = await runProxyOnce(keepaliveServer);
 
-			expect(frame.error).toBeUndefined();
-			expect(frame.result).toBeDefined();
-			expect((frame.result as { serverInfo: { name: string } }).serverInfo.name).toBe(
-				"fake-obsidian",
-			);
-		},
-		15_000, // RESPONSE_DELAY (5 s) + proxy guard (8 s) + headroom
-	);
+		expect(frame.error).toBeUndefined();
+		expect(frame.result).toBeDefined();
+		expect((frame.result as { serverInfo: { name: string } }).serverInfo.name).toBe(
+			"fake-obsidian",
+		);
+	}, 15_000); // RESPONSE_DELAY (5 s) + proxy guard (8 s) + headroom
 });

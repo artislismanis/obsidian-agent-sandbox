@@ -105,7 +105,7 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 - **Steps:** Command palette → **Sandbox: Start Container**.
 - **Expected:**
   - **Linux native Docker / macOS Docker Desktop / WSL2 mirrored mode:** Notice `Port conflict: 7681 already in use on 127.0.0.1. Stop the other process or change the port in settings.` Container does not start. *(Note: Notice always says `127.0.0.1` even if Bind address is set to something else — known cosmetic bug.)*
-  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns. Container starts; terminal tab spins without connecting; no Notice. **Record this as a known gap**, not a pass. See `docs/proposals/port-conflict-detection-improvements.md` Task 1.
+  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns. Container starts; terminal tab spins without connecting; no Notice. **Record this as a known gap**, not a pass.
 - **Cleanup:** Release the port. Restart container if it started in the NAT-mode gap case.
 - **Notes:** P1 on platforms where pre-flight works. Known gap on WSL2 NAT.
 
@@ -327,68 +327,102 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 **Setup carried forward:** Stage 0–2, plus Claude logged in inside the container (`docker compose exec sandbox claude` once) and MCP enabled in plugin settings.
 
-This is where the bulk of the value lives — interactive Claude against the plugin's own Obsidian MCP server.
-
-For an exhaustive per-tool sweep that runs itself (Claude drives, this plan stays human-driven), see [mcp-capability-test.md](./mcp-capability-test.md). The two are complementary: this stage validates the UI/UX from a human's perspective; the capability test plan validates schema shapes, error messages, and per-tier gating exhaustively.
-
-**Tier-toggle scenarios** (Navigate disabled → tool absent; write mode `full` → `_anywhere` tools appear) have moved to the capability-test permission-cells matrix — see cells D/E for navigate-gate verification and cell A vs C for write-mode comparison.
+**How Stage 3 works.** This stage has two parts. The human configures the plugin into a permission cell (3.1–3.3) and runs the Claude-driven capability sweep against that configuration; then the human-only scenarios (3.4–3.11) catch what the sweep can't observe. The capability test validates schema shapes, error messages, and per-tier gating exhaustively; the scenarios below catch UI/UX and host-process behaviour that requires a human at the keyboard.
 
 **Tier model (`src/permission-tiers.ts`):**
 - Always-on when MCP is enabled: `read`, `writeScoped`, `agent`.
 - Toggled per-tier: `navigate`, `manage`, `extensions`.
 - Vault write mode (dropdown): `none` (default) / `reviewed` (`writeReviewed` tier, diff modal per change) / `full` (`writeVault` tier, unrestricted, no review).
-- Tool naming: scoped writes are `vault_create` / `vault_modify` / `vault_append` / `vault_frontmatter_set`; reviewed mode adds `_reviewed` suffix; full mode adds `_anywhere` suffix.
 
-### 3.1 Navigate tier — UI assertion
+### 3.1 Permission cells matrix
 
-- **Setup:** Navigate tier enabled. Toggle MCP off then on so the server picks up the change.
-- **Steps:** `claude -p "Open Welcome.md in the editor"`.
-- **Expected:** File becomes the active tab in Obsidian. (The `vault_open` call itself is covered by S6.1 in the capability test.)
+Each cell is a specific combination of plugin settings. Run [mcp-capability-test.md](./mcp-capability-test.md) under each relevant cell. For release validation run all six; for focused regression testing run only cells affected by the change.
+
+| Cell | Nav | Mng | Ext | Write mode | Active tier tags |
+|------|-----|-----|-----|------------|-----------------|
+| A | ON | ON | ON | none | read, writeScoped, agent, navigate, manage, extensions |
+| B | ON | ON | ON | reviewed | + writeReviewed |
+| C | ON | ON | ON | full | + writeVault |
+| D | OFF | ON | ON | none | read, writeScoped, agent, manage, extensions |
+| E | ON | OFF | ON | none | read, writeScoped, agent, navigate, extensions |
+| F | ON | ON | OFF | none | read, writeScoped, agent, navigate, manage |
+
+**Full-sweep cells (A, B, C):** run every capability-test scenario; skip those whose `Requires:` tag is not in the active set.
+
+**Smoke cells (D, E, F):** only visit scenarios that *become* skipped in this cell — these confirm the tier gate is working. Always run S0.1 (capability discovery) and S9.5 (disabled-tier gate check).
+
+**Run-file naming:** `workspace/mcp-testing/<YYYY-MM-DD>-cell-<letter>-<short-name>.md`. Examples: `2026-05-26-cell-A-baseline.md`, `2026-05-26-cell-D-nav-off.md`.
+
+- **Notes:** P0. Gates the entire MCP tool surface.
+
+### 3.2 Cell setup walkthrough
+
+Repeat for each cell before handing the capability test to Claude:
+
+1. **Settings → MCP** — confirm `Enable MCP server` is on.
+2. In the **Permissions** section: set the Navigate / Manage / Extensions toggles and the Vault-wide writes dropdown to match the cell's row in the matrix above.
+3. **Sandbox: Toggle MCP Server** (command palette) — off, then on — so the server re-publishes the tool list with the new settings.
+4. Verify in a terminal: `claude -p "Call mcp_capabilities and tell me which tier tags are enabled."` Confirm the response matches the cell's "Active tier tags" column exactly.
+5. Open `docs/mcp-capability-test.md` and hand it to the in-container Claude session. Save the run to `workspace/mcp-testing/<YYYY-MM-DD>-cell-<letter>-<short-name>.md`.
+
+- **Notes:** P0. If step 4 doesn't match, toggle MCP off/on again before proceeding.
+
+### 3.3 Sanity-diff run against code
+
+After all cells are complete, skim the run files for any PASS scenario that relied on a tool name or tier tag that may have changed in `plugin/src/mcp-tools.ts` since the run was recorded. Most release cycles this is a no-op.
+
 - **Notes:** P1.
 
-### 3.2 Always-on tiers have no toggle
+### 3.4 Always-on tiers have no toggle
 
 - **Setup:** Settings → MCP, with MCP enabled.
 - **Steps:** Inspect the permissions section.
-- **Expected:** Three toggles only (Navigate, Manage, Extensions) and one dropdown (Vault write mode: `none` / `reviewed` / `full`). No UI control for `read`, `writeScoped`, or `agent`; their tools always appear in `vault_*` listings while MCP is on.
+- **Expected:** Three toggles only (Navigate, Manage, Extensions) and one dropdown (Vault write mode: `none` / `reviewed` / `full (no review)`). No UI control for `read`, `writeScoped`, or `agent`; their tools always appear in `vault_*` listings while MCP is on.
 - **Notes:** P2. Confirms `docs/reference/settings.md` matches reality.
 
-### 3.3 MCP token rotation kicks live connections
+### 3.5 Navigate tier — active tab changes (UI assertion)
+
+- **Setup:** Cell A active (Navigate on). MCP toggled off then on.
+- **Steps:** `claude -p "Open Welcome.md in the editor"` (use any real vault file).
+- **Expected:** The active tab in Obsidian changes to that file. The `vault_open` call itself is covered by S6.1 in the capability test.
+- **Notes:** P1.
+
+### 3.6 MCP token rotation kicks live connections
 
 - **Setup:** Active Claude session connected to MCP.
 - **Steps:** Click Regenerate token in plugin settings. In the same terminal, try another tool call.
 - **Expected:** The next call fails auth. Restarting the container per the regenerate-button description, then restarting Claude, restores tool access.
 - **Notes:** P1.
 
-### 3.4 MCP turn-off mid-session
+### 3.7 MCP turn-off mid-session
 
 - **Setup:** Active Claude session that recently used a vault tool.
 - **Steps:** Toggle MCP off via command palette. Submit another tool-using prompt.
 - **Expected:** Tools fail cleanly (404 / connection refused). Re-enabling MCP lets a new Claude invocation pick them back up.
 - **Notes:** P1.
 
-### 3.5 MCP cache invalidates on live edits
+### 3.8 MCP cache invalidates on live edits
 
 - **Setup:** `notes/cache.md` with first line `version A`. Vault open in Obsidian.
 - **Steps:** 1) `claude -p "Read notes/cache.md and quote the first line"`. 2) Edit in Obsidian so first line becomes `version B`; save. 3) Within ~2 s: re-read via Claude.
 - **Expected:** Second read returns `version B`. Document observed window if >5 s.
 - **Notes:** P1. Stale reads after user edits are silent and confusing.
 
-### 3.6 Concurrent MCP tool calls
+### 3.9 Concurrent MCP tool calls
 
 - **Setup:** Vault with ≥10 notes containing "alpha" and ≥10 containing "beta".
 - **Steps:** `claude -p "In parallel, search the vault for 'alpha' and for 'beta' and read the first three hits of each."`
 - **Expected:** All calls complete without deadlock or `isError`. DevTools shows interleaved tool-call logs.
-- **Notes:** P1. No automated coverage of parallel tool calls against the live app; see S9.6 in the capability test for the LLM-driven probe.
+- **Notes:** P1. The capability test adds S9.6 for matrix completeness, but actual interleaving is only observable in a live conversation session — that's why this scenario stays here.
 
-### 3.7 File ownership after Claude writes (Linux)
+### 3.10 File ownership after Claude writes (Linux)
 
 - **Setup:** Linux host, vault on host filesystem. Note host uid: `id -u`.
 - **Steps:** `claude -p "Create agent-workspace/owner-test.md with content 'check uid'"`. Then: `ls -la <vault>/agent-workspace/owner-test.md` and edit in Obsidian.
 - **Expected:** Obsidian edits the file without permission errors. Owner uid matches host uid, or mode is permissive enough that the host user can write.
 - **Notes:** P1. Cleanup: delete the file.
 
-### 3.8 Awaiting-input badge
+### 3.11 Awaiting-input badge
 
 - **Setup:** Active Claude session (terminal open, Claude running). `agent` tier enabled (always-on when MCP is on).
 - **Steps:** Trigger a tool call that causes Claude to pause awaiting human input (e.g. a reviewed-write that opens the diff modal, or a direct `agent_status_set` call via MCP).
@@ -596,13 +630,36 @@ Unit tests verify the gate fires; humans verify the modal renders right.
 
 Unit tests cover `isRealPathWithinBase` with mocked realpath. These verify the OS round-trip.
 
-Scenarios 7.1–7.4 are automated in `container/test-scripts/security-checks.sh`. Run it from repo root (setup requirements are printed by the script). For the LLM-client-side view of a symlink denial as seen by a real MCP client, see `mcp-capability-test.md` S9.7.
+### 7.1 Read of escaping symlink is denied
 
-```bash
-bash container/test-scripts/security-checks.sh /path/to/test-vault
-```
+- **Setup:** From host shell: `cd <vault-root> && ln -s /etc/hosts evil.md`.
+- **Steps:** `claude -p "Read the file evil.md"`.
+- **Expected:** `vault_read` returns "File not found." Real `/etc/hosts` never returned.
+- **Cleanup:** `rm <vault-root>/evil.md`.
+- **Notes:** P0.
 
-No manual steps in this stage.
+### 7.2 Create into symlinked directory denied
+
+- **Setup:** `cd <vault-root> && ln -s /tmp escape`.
+- **Steps:** `claude -p "Create a file escape/note.md with 'hi'"`.
+- **Expected:** `vault_create` returns "Path resolves outside the vault (symlink)."
+- **Cleanup:** `rm <vault-root>/escape`.
+- **Notes:** P0.
+
+### 7.3 Nested symlinks resolve fully
+
+- **Setup:** `mkdir <vault>/innocent && ln -s /tmp <vault>/innocent/inner`.
+- **Steps:** Attempt to read/write `innocent/inner/x.md`.
+- **Expected:** Denied. The realpath check resolves through multi-level symlinks.
+- **Cleanup:** Remove both.
+- **Notes:** P1.
+
+### 7.4 Symlink inside write directory but pointing into vault
+
+- **Setup:** `ln -s <vault>/notes <vault>/agent-workspace/safe-link`.
+- **Steps:** `claude -p "Read agent-workspace/safe-link/<some-file>.md"`.
+- **Expected:** Read succeeds — the realpath check resolves the symlink to a vault-relative target inside the read-allowed area. Outcome is deterministic across repeated runs and matches `docs/reference/settings.md`.
+- **Notes:** P2. Flag mismatches against documentation.
 
 ---
 
@@ -610,26 +667,44 @@ No manual steps in this stage.
 
 **Setup carried forward:** Stage 0–3.
 
-Automated firewall checks (egress allow/block, list-sources tagging, MCP path isolation) run via `container/test-scripts/security-checks.sh`. The two scenarios below require Obsidian to be running because they verify visual feedback in the plugin UI.
-
-```bash
-bash container/test-scripts/security-checks.sh /path/to/test-vault
-# Firewall-off egress probe (toggle firewall off in Obsidian first):
-bash container/test-scripts/security-checks.sh /path/to/test-vault --firewall-off
-```
-
 ### 8.1 Firewall on/off toggle live
 
 - **Steps:** Toggle firewall via command palette and via settings; observe status bar firewall icon (🛡️).
 - **Expected:** State updates within ~2 s. Status bar pill tooltip reflects on/off.
 - **Notes:** P1.
 
-### 8.2 Effective allowlist refresh button
+### 8.2 Plugin-setting domain reaches host
+
+- **Setup:** Settings → Additional firewall domains = `example.com`. Restart container. Enable firewall.
+- **Steps:** In a terminal: `curl -I https://example.com`. Then `curl -I https://example.org`.
+- **Expected:** `example.com` → 200. `example.org` → timeout or blocked by iptables.
+- **Notes:** P0.
+
+### 8.3 firewall-extras.txt works AND isn't readable by Claude
+
+- **Setup:** Add `internal.corp.example` to `container/firewall-extras.txt`. Restart container.
+- **Steps:** 1) `curl -I https://internal.corp.example` from terminal. 2) `claude -p "Read /etc/oas/firewall-extras.txt"`.
+- **Expected:** 1) Reaches host. 2) Fails — path outside `/workspace`, MCP read denies.
+- **Notes:** P0.
+
+### 8.4 --list-sources tagging
+
+- **Steps:** `docker compose exec sandbox /usr/local/bin/init-firewall.sh --list-sources` (or run as `claude` user — read-only path).
+- **Expected:** Lines tagged `[baseline]`, `[plugin]`, `[file]`. Matches Settings → Firewall → Effective allowlist (Refresh).
+- **Notes:** P1.
+
+### 8.5 Effective allowlist refresh button
 
 - **Setup:** Firewall on.
 - **Steps:** Settings → Advanced → Security section → Refresh (the "Click Refresh to fetch the effective firewall allowlist from the container" control).
 - **Expected:** UI updates to current allowlist including any extras added since last refresh.
 - **Notes:** P2.
+
+### 8.6 Firewall off restores full egress
+
+- **Steps:** Disable firewall. `curl -I https://example.org`.
+- **Expected:** Reaches host (no iptables block).
+- **Notes:** P1.
 
 ---
 
