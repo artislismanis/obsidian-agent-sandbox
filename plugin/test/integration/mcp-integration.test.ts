@@ -1,4 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { spawn } from "node:child_process";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
+import { resolve } from "node:path";
 import {
 	isDockerAvailable,
 	isImageBuilt,
@@ -537,4 +541,163 @@ describe.skipIf(SKIP)("MCP tool invocation (HTTP end-to-end)", () => {
 		const failed = res.error != null || res.result?.isError === true;
 		expect(failed).toBe(true);
 	});
+});
+
+// ── Proxy SSE keepalive regression tests ──────────────────────────────────────
+//
+// These tests spawn obsidian-mcp-proxy.js as a subprocess and point it at a
+// local fake HTTP server. No Docker or Obsidian required.
+//
+// They verify the core invariant: the proxy times out when an upstream server
+// stays completely silent, but succeeds when the server emits SSE keepalive
+// comments while working on a long response.
+
+const PROXY_SCRIPT = resolve(__dirname, "../../../workspace/.claude/scripts/obsidian-mcp-proxy.js");
+// Short timeout to keep tests fast. The keepalive test sends comments every 1 s
+// (well under this limit) then delivers the response at 5 s.
+const PROXY_TIMEOUT_MS = 3_000;
+
+const INIT_MSG = JSON.stringify({
+	jsonrpc: "2.0",
+	id: 1,
+	method: "initialize",
+	params: {
+		protocolVersion: "2025-03-26",
+		capabilities: {},
+		clientInfo: { name: "proxy-test", version: "1.0" },
+	},
+});
+
+/**
+ * Start a fake upstream MCP server, spawn the proxy subprocess pointing at it,
+ * send one JSON-RPC initialize message on stdin, and return the first JSON
+ * frame the proxy writes to stdout.
+ */
+function runProxyOnce(
+	serverBehavior: (req: IncomingMessage, res: ServerResponse) => void,
+): Promise<Record<string, unknown>> {
+	return new Promise((resolveP, rejectP) => {
+		let settled = false;
+		function settle(val?: Record<string, unknown>, err?: Error) {
+			if (settled) return;
+			settled = true;
+			try {
+				proc.kill();
+			} catch {
+				// kill() throws if the process already exited; ignore
+			}
+			server.close();
+			if (err) rejectP(err);
+			else resolveP(val!);
+		}
+
+		const server = createServer(serverBehavior);
+		server.on("error", (err) => settle(undefined, err));
+
+		server.listen(0, "127.0.0.1", () => {
+			const { port } = server.address() as AddressInfo;
+
+			const proc = spawn("node", [PROXY_SCRIPT], {
+				env: {
+					...process.env,
+					OAS_MCP_HOST: "127.0.0.1",
+					OAS_MCP_PORT: String(port),
+					OAS_MCP_TOKEN: "proxy-test-token",
+					OAS_MCP_TIMEOUT_MS: String(PROXY_TIMEOUT_MS),
+				},
+				stdio: ["pipe", "pipe", "pipe"],
+			});
+
+			proc.on("error", (err) => settle(undefined, err));
+			proc.stdin.write(INIT_MSG + "\n");
+
+			// Collect stdout, resolve on first complete JSON line.
+			let buf = "";
+			proc.stdout.on("data", (chunk: Buffer) => {
+				buf += chunk.toString();
+				const lines = buf.split("\n");
+				for (let i = 0; i < lines.length - 1; i++) {
+					const line = lines[i].trim();
+					if (!line) continue;
+					try {
+						settle(JSON.parse(line) as Record<string, unknown>);
+						return;
+					} catch {
+						// line is not valid JSON yet; keep buffering
+					}
+				}
+				buf = lines[lines.length - 1];
+			});
+
+			// Guard against the test hanging if the proxy never responds.
+			setTimeout(
+				() => settle(undefined, new Error("runProxyOnce: no response within budget")),
+				PROXY_TIMEOUT_MS + 8_000,
+			);
+		});
+	});
+}
+
+describe("proxy SSE keepalive — timeout regression", () => {
+	it(
+		"times out with an error frame when the upstream server sends no data",
+		async () => {
+			// The fake server accepts the TCP connection but writes nothing —
+			// simulating an Obsidian plugin that stalls before sending any response.
+			// The proxy's socket inactivity timer should fire after PROXY_TIMEOUT_MS
+			// and produce a JSON-RPC error on stdout.
+			const silentServer = (req: IncomingMessage, _res: ServerResponse) => {
+				req.resume(); // drain request body; don't send any response
+			};
+
+			const frame = await runProxyOnce(silentServer);
+
+			expect(frame.error).toBeDefined();
+			expect((frame.error as { code: number }).code).toBe(-32603);
+			expect((frame.error as { message: string }).message).toMatch(/did not respond within/i);
+		},
+		PROXY_TIMEOUT_MS + 10_000,
+	);
+
+	it("succeeds when the upstream server sends SSE keepalive comments while working", async () => {
+		// The fake server responds with text/event-stream and emits keepalive
+		// comments every 1 s (< PROXY_TIMEOUT_MS = 3 s) to keep the socket
+		// active, then delivers the real MCP response after 5 s. The proxy
+		// should wait for the response and return a result frame — not an error.
+		const KEEPALIVE_INTERVAL = 1_000;
+		const RESPONSE_DELAY = 5_000;
+
+		const keepaliveServer = (req: IncomingMessage, res: ServerResponse) => {
+			req.resume();
+			res.writeHead(200, { "Content-Type": "text/event-stream" });
+
+			const iv = setInterval(() => {
+				if (!res.destroyed) res.write(": keepalive\n\n");
+			}, KEEPALIVE_INTERVAL);
+
+			setTimeout(() => {
+				clearInterval(iv);
+				if (res.destroyed) return;
+				const mcpResponse = {
+					jsonrpc: "2.0",
+					id: 1,
+					result: {
+						protocolVersion: "2025-03-26",
+						capabilities: {},
+						serverInfo: { name: "fake-obsidian", version: "0.0.0" },
+					},
+				};
+				res.write(`data: ${JSON.stringify(mcpResponse)}\n\n`);
+				res.end();
+			}, RESPONSE_DELAY);
+		};
+
+		const frame = await runProxyOnce(keepaliveServer);
+
+		expect(frame.error).toBeUndefined();
+		expect(frame.result).toBeDefined();
+		expect((frame.result as { serverInfo: { name: string } }).serverInfo.name).toBe(
+			"fake-obsidian",
+		);
+	}, 15_000); // RESPONSE_DELAY (5 s) + proxy guard (8 s) + headroom
 });

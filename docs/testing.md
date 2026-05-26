@@ -153,9 +153,11 @@ Cache `plugin/.obsidian-cache/` by the key printed at the start of an e2e run (`
 
 ---
 
-## Security smoke
+## Security and stress smoke
 
-`container/test-scripts/security-checks.sh` is a host-runnable bash script that automates Stage 7 (symlink/path-traversal boundary) and the shell-verifiable Stage 8 scenarios (firewall egress, list-sources tagging, MCP path isolation). Requires: live container, firewall enabled, a test vault, and `jq` on the host.
+Two host-runnable bash scripts cover the shell-verifiable scenarios from `qa-test-plan.md`. Requires: live container, a test vault, and `jq` on the host.
+
+**`container/test-scripts/security-checks.sh`** — Stage 7 (symlink/path-traversal boundary), Stage 8 (firewall egress, list-sources tagging, MCP path isolation), and Stage 9 tool-bug regression probes (string→bool/number coercion, periodic-note default, canvas changes validation). Firewall must be enabled with `example.com` in Additional firewall domains.
 
 ```bash
 bash container/test-scripts/security-checks.sh /path/to/test-vault
@@ -163,13 +165,21 @@ bash container/test-scripts/security-checks.sh /path/to/test-vault
 bash container/test-scripts/security-checks.sh /path/to/test-vault --firewall-off
 ```
 
-Complements but does not replace the `mcp-capability-test.md` cell-A sweep. Stage 7 is now fully automated; Stage 8 is reduced to two UI-bound scenarios (8.1 firewall toggle icon, 8.2 refresh button) that still require human eyes.
+**`container/test-scripts/stress-checks.sh`** — Stage 12 stress scenarios: unicode vault path, large-file read (~5 MB), oas-test-* teardown debris check. The daemon-stop probe (`--with-daemon-stop`) is host-disruptive and optional for routine runs.
+
+```bash
+bash container/test-scripts/stress-checks.sh /path/to/test-vault
+# Daemon-stop probe (stops and restarts Docker):
+bash container/test-scripts/stress-checks.sh /path/to/test-vault --with-daemon-stop
+```
+
+Both scripts complement but do not replace the `mcp-capability-test.md` cell sweep. Stage 7 bodies are in `qa-test-plan.md` for reference; Stage 9 is reduced to one human-only scenario (9.3 Tasks recurring semantics); Stage 12 UI-bound scenarios (12.4–12.6, 12.7) remain in the QA plan.
 
 ## Manual test scenarios
 
 End-to-end manual scenarios — things that need human judgment, interactive LLM use, cross-process workflows, or specific hardware — live in [qa-test-plan.md](./qa-test-plan.md). That plan is organised by setup cost (Stage 0 prerequisites → Stage 12 stress/recovery) so you can run it top-to-bottom on a fresh machine, or jump to a single stage when verifying a focused change.
 
-For an exhaustive sweep of the MCP tool surface (every read/write/manage/extensions tool, gating behaviour, error shapes), hand [mcp-capability-test.md](./mcp-capability-test.md) to an in-container Claude Code session — it drives the run itself and emits a matrix-format report. Run it whenever the tool surface changes or as part of release validation; `qa-test-plan.md` Stage 3 cross-references it from the QA flow.
+For an exhaustive sweep of the MCP tool surface (every read/write/manage/extensions tool, gating behaviour, error shapes), hand [mcp-capability-test.md](./mcp-capability-test.md) to an in-container Claude Code session — it drives the run itself and emits a matrix-format report. Run it whenever the tool surface changes or as part of release validation; `qa-test-plan.md` Stage 3 cells matrix defines the six permission configurations to run it under.
 
 Run the automated suites here first; only fall through to the QA plan or the MCP capability plan for behaviour the harness genuinely can't reach (see "What's NOT covered" above for the canonical list of gaps).
 

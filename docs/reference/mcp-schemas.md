@@ -624,12 +624,12 @@ _No parameters._
 
 **Title:** Modify canvas
 
-Apply changes to a .canvas file. Supports adding or removing nodes and edges. The `changes` payload is a JSON object with optional `addNodes`, `removeNodeIds`, `addEdges`, `removeEdgeIds` arrays. Set `create: true` to materialise the canvas (with the requested nodes/edges) when it doesn't yet exist.
+Apply changes to a .canvas file. Supports adding or removing nodes and edges. The `changes` parameter must be a JSON-encoded STRING (not a plain object) — e.g. `{"addNodes":[{"id":"1","type":"text","x":0,"y":0}]}`. Set `create: true` to materialise the canvas (with the requested nodes/edges) when it doesn't yet exist.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | `path` | `string` | yes | Canvas file path from vault root |
-| `changes` | `string` | yes | JSON: { addNodes?: CanvasNode[]; removeNodeIds?: string[]; addEdges?: CanvasEdge[]; removeEdgeIds?: string[] } |
+| `changes` | `string` | yes | JSON-encoded string: { addNodes?: CanvasNode[]; removeNodeIds?: string[]; addEdges?: CanvasEdge[]; removeEdgeIds?: string[] }. Must be a string, not an object. |
 | `create` | `boolean` | no | Create the canvas if it doesn't exist, seeded with the requested changes (default false). |
 
 ### `vault_canvas_read`
@@ -660,7 +660,7 @@ Locate (and optionally create) a periodic note — daily/weekly/monthly/quarterl
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `periodicity` | `"daily" \| "weekly" \| "monthly" \| "quarterly" \| "yearly"` | yes | Which periodic note to resolve |
+| `periodicity` | `"daily" \| "weekly" \| "monthly" \| "quarterly" \| "yearly"` | no | Which periodic note to resolve (default: daily) |
 | `date` | `string` | no | ISO date (YYYY-MM-DD). Defaults to today. |
 | `create` | `boolean` | no | Create if missing (default false) |
 

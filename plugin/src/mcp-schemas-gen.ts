@@ -123,7 +123,7 @@ function paramsFromSchema(inputSchema: Record<string, z.ZodType> | undefined): P
  *  `_zod.def.type` marker rather than instanceof to survive bundling. */
 function isOptionalSchema(field: z.ZodType): boolean {
 	const def = (field as unknown as { _zod?: { def?: { type?: string } } })._zod?.def;
-	return def?.type === "optional";
+	return def?.type === "optional" || def?.type === "default";
 }
 
 /** Pull `.describe(...)` text out of a zod field. zod stores it at

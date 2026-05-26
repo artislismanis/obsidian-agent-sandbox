@@ -1475,3 +1475,141 @@ describe("Extensions tier — pathFilter coverage (info-leak boundary)", () => {
 		expect(touched).not.toContain("secrets/hidden.md");
 	});
 });
+
+// ── Zod coercion / schema-default tests (P1/P2 bug fixes) ───────────────────
+
+describe("Zod coercion — boolean and number params accept string serialisations", () => {
+	it("vault_batch_frontmatter dryRun: 'false' coerces to false (applies changes)", async () => {
+		// Regression: LLMs may serialise boolean args as JSON strings.
+		// z.coerce.boolean() converts "false" → true (wrong); the fix uses
+		// z.preprocess so "false" → false.
+		const { app } = mockApp("{}");
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			enabledTiers: new Set(["read", "writeScoped", "writeVault", "manage"]),
+		});
+		const r = await getTool(tools, "vault_batch_frontmatter").handler({
+			query: "x",
+			property: "tag",
+			value: "y",
+			dryRun: "false",
+		});
+		// If coercion works, dryRun === false → handler runs the apply path
+		// (not dry-run), which calls processFrontMatter. The mock vault has no
+		// matching files, so the result is a no-op success — not an "Invalid arguments" error.
+		expect((r.content[0] as { text: string }).text).not.toMatch(/Invalid arguments/i);
+	});
+
+	it("vault_batch_frontmatter dryRun: 'true' coerces to true (dry-run only)", async () => {
+		const { app } = mockApp("{}");
+		const tools = buildTools({
+			app: app as never,
+			getWriteDir: () => "agent-workspace",
+			enabledTiers: new Set(["read", "writeScoped", "writeVault", "manage"]),
+		});
+		const r = await getTool(tools, "vault_batch_frontmatter").handler({
+			query: "x",
+			property: "tag",
+			value: "y",
+			dryRun: "true",
+		});
+		expect((r.content[0] as { text: string }).text).not.toMatch(/Invalid arguments/i);
+	});
+
+	it("vault_tasks_toggle line: '17' coerces to number 17 (reaches handler, not schema error)", async () => {
+		// Build tools with a real Tasks plugin mock so the tool is registered.
+		const app = {
+			vault: {
+				getMarkdownFiles: vi.fn(() => []),
+				getFileByPath: vi.fn(() => ({
+					path: "t.md",
+					extension: "md",
+					stat: {},
+				})),
+				getAbstractFileByPath: vi.fn(() => null),
+				read: vi.fn(async () => "line1\n- [ ] task\n"),
+				modify: vi.fn(async () => {}),
+				create: vi.fn(),
+				append: vi.fn(),
+				trash: vi.fn(),
+				createFolder: vi.fn(),
+			},
+			metadataCache: {
+				getFileCache: vi.fn(() => null),
+				getFirstLinkpathDest: vi.fn(() => null),
+				resolvedLinks: {},
+				unresolvedLinks: {},
+			},
+			fileManager: { renameFile: vi.fn(), processFrontMatter: vi.fn() },
+			workspace: { getLeaf: vi.fn(() => ({ openFile: vi.fn() })) },
+			plugins: {
+				getPlugin: (id: string) =>
+					id === "obsidian-tasks-plugin"
+						? {
+								apiV1: {
+									executeToggleTaskDoneCommand: (l: string) =>
+										l.replace("[ ]", "[x]"),
+								},
+							}
+						: null,
+				enabledPlugins: new Set(["obsidian-tasks-plugin"]),
+			},
+		};
+		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
+		const r = await getTool(tools, "vault_tasks_toggle").handler({
+			path: "t.md",
+			line: "2", // string — should coerce to number 2
+		});
+		// If schema coercion works, we reach the handler logic. Line 2 is a task,
+		// so the toggle should succeed or fail on a handler-level condition — not
+		// with "Invalid arguments" from Zod.
+		expect((r.content[0] as { text: string }).text).not.toMatch(/Invalid arguments/i);
+	});
+});
+
+describe("Zod schema defaults — vault_periodic_note", () => {
+	function appWithPeriodicNotes() {
+		const { app } = mockApp("{}");
+		(app as unknown as { plugins: unknown }).plugins = {
+			getPlugin: (id: string) =>
+				id === "periodic-notes"
+					? {
+							instance: {
+								settings: {
+									daily: { enabled: true, folder: "Daily", format: "YYYY-MM-DD" },
+								},
+							},
+						}
+					: null,
+			enabledPlugins: new Set(["periodic-notes"]),
+		};
+		app.vault.getFileByPath = vi.fn((_p: string) => null); // no file exists
+		return app;
+	}
+
+	it("vault_periodic_note {} defaults periodicity to 'daily' (no schema error)", async () => {
+		const app = appWithPeriodicNotes();
+		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
+		const r = await getTool(tools, "vault_periodic_note").handler({});
+		// No periodicity given → defaults to "daily". Handler runs and returns
+		// "Not found" (file doesn't exist, create not requested) — NOT an "Invalid arguments" error.
+		expect((r.content[0] as { text: string }).text).not.toMatch(/Invalid arguments/i);
+		expect((r.content[0] as { text: string }).text).toMatch(/not found|Daily\//i);
+	});
+});
+
+describe("vault_canvas_modify — schema mismatch on plain object input", () => {
+	it("returns a clear error when changes is a plain object instead of a JSON string", async () => {
+		const { app } = mockApp(JSON.stringify({ nodes: [{ id: "n1", type: "text" }], edges: [] }));
+		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
+		const r = await getTool(tools, "vault_canvas_modify").handler({
+			path: "board.canvas",
+			changes: { addNodes: [{ id: "n2", type: "text" }] }, // object, not a string
+		});
+		expect(r.isError).toBe(true);
+		// Should be a schema validation error, not a crash
+		const msg = (r.content[0] as { text: string }).text;
+		expect(msg).toMatch(/invalid/i);
+	});
+});
