@@ -153,6 +153,18 @@ Cache `plugin/.obsidian-cache/` by the key printed at the start of an e2e run (`
 
 ---
 
+## Security smoke
+
+`container/test-scripts/security-checks.sh` is a host-runnable bash script that automates Stage 7 (symlink/path-traversal boundary) and the shell-verifiable Stage 8 scenarios (firewall egress, list-sources tagging, MCP path isolation). Requires: live container, firewall enabled, a test vault, and `jq` on the host.
+
+```bash
+bash container/test-scripts/security-checks.sh /path/to/test-vault
+# Firewall-off egress probe (toggle firewall off in Obsidian first):
+bash container/test-scripts/security-checks.sh /path/to/test-vault --firewall-off
+```
+
+Complements but does not replace the `mcp-capability-test.md` cell-A sweep. Stage 7 is now fully automated; Stage 8 is reduced to two UI-bound scenarios (8.1 firewall toggle icon, 8.2 refresh button) that still require human eyes.
+
 ## Manual test scenarios
 
 End-to-end manual scenarios — things that need human judgment, interactive LLM use, cross-process workflows, or specific hardware — live in [qa-test-plan.md](./qa-test-plan.md). That plan is organised by setup cost (Stage 0 prerequisites → Stage 12 stress/recovery) so you can run it top-to-bottom on a fresh machine, or jump to a single stage when verifying a focused change.

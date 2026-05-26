@@ -46,6 +46,14 @@ npm run test:integration   # needs Docker + oas-sandbox:latest
 npm run test:e2e:headless  # needs xvfb or local display
 ```
 
+Security boundary smoke (required before shipping — covers P0 scenarios from Stage 7/8):
+
+```bash
+# Needs: live container, firewall enabled, example.com in Additional firewall domains,
+#        internal.corp.example in container/firewall-extras.txt, jq on host PATH
+bash container/test-scripts/security-checks.sh /path/to/test-vault
+```
+
 ### 2. Update the changelog (optional)
 
 We don't ship a separate `CHANGELOG.md` — GitHub Release auto-generates notes from commit messages (`generate_release_notes: true` in `release.yml`). If you want curated notes, draft them in the Release UI after the workflow creates the Release.

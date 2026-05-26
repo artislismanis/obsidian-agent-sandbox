@@ -596,36 +596,13 @@ Unit tests verify the gate fires; humans verify the modal renders right.
 
 Unit tests cover `isRealPathWithinBase` with mocked realpath. These verify the OS round-trip.
 
-### 7.1 Read of escaping symlink is denied
+Scenarios 7.1–7.4 are automated in `container/test-scripts/security-checks.sh`. Run it from repo root (setup requirements are printed by the script). For the LLM-client-side view of a symlink denial as seen by a real MCP client, see `mcp-capability-test.md` S9.7.
 
-- **Setup:** From host shell: `cd <vault-root> && ln -s /etc/hosts evil.md`.
-- **Steps:** `claude -p "Read the file evil.md"`.
-- **Expected:** `vault_read` returns "File not found." Real `/etc/hosts` never returned.
-- **Cleanup:** `rm <vault-root>/evil.md`.
-- **Notes:** P0.
+```bash
+bash container/test-scripts/security-checks.sh /path/to/test-vault
+```
 
-### 7.2 Create into symlinked directory denied
-
-- **Setup:** `cd <vault-root> && ln -s /tmp escape`.
-- **Steps:** `claude -p "Create a file escape/note.md with 'hi'"`.
-- **Expected:** `vault_create` returns "Path resolves outside the vault (symlink)."
-- **Cleanup:** `rm <vault-root>/escape`.
-- **Notes:** P0.
-
-### 7.3 Nested symlinks resolve fully
-
-- **Setup:** `mkdir <vault>/innocent && ln -s /tmp <vault>/innocent/inner`.
-- **Steps:** Attempt to read/write `innocent/inner/x.md`.
-- **Expected:** Denied. The realpath check resolves through multi-level symlinks.
-- **Cleanup:** Remove both.
-- **Notes:** P1.
-
-### 7.4 Symlink inside write directory but pointing into vault
-
-- **Setup:** `ln -s <vault>/notes <vault>/agent-workspace/safe-link`.
-- **Steps:** `claude -p "Read agent-workspace/safe-link/<some-file>.md"`.
-- **Expected:** Read succeeds — the realpath check resolves the symlink to a vault-relative target inside the read-allowed area. Outcome is deterministic across repeated runs and matches `docs/reference/settings.md`.
-- **Notes:** P2. Flag mismatches against documentation.
+No manual steps in this stage.
 
 ---
 
@@ -633,44 +610,26 @@ Unit tests cover `isRealPathWithinBase` with mocked realpath. These verify the O
 
 **Setup carried forward:** Stage 0–3.
 
+Automated firewall checks (egress allow/block, list-sources tagging, MCP path isolation) run via `container/test-scripts/security-checks.sh`. The two scenarios below require Obsidian to be running because they verify visual feedback in the plugin UI.
+
+```bash
+bash container/test-scripts/security-checks.sh /path/to/test-vault
+# Firewall-off egress probe (toggle firewall off in Obsidian first):
+bash container/test-scripts/security-checks.sh /path/to/test-vault --firewall-off
+```
+
 ### 8.1 Firewall on/off toggle live
 
 - **Steps:** Toggle firewall via command palette and via settings; observe status bar firewall icon (🛡️).
 - **Expected:** State updates within ~2 s. Status bar pill tooltip reflects on/off.
 - **Notes:** P1.
 
-### 8.2 Plugin-setting domain reaches host
-
-- **Setup:** Settings → Additional firewall domains = `example.com`. Restart container. Enable firewall.
-- **Steps:** In a terminal: `curl -I https://example.com`. Then `curl -I https://example.org`.
-- **Expected:** `example.com` → 200. `example.org` → timeout or blocked by iptables.
-- **Notes:** P0.
-
-### 8.3 firewall-extras.txt works AND isn't readable by Claude
-
-- **Setup:** Add `internal.corp.example` to `container/firewall-extras.txt`. Restart container.
-- **Steps:** 1) `curl -I https://internal.corp.example` from terminal. 2) `claude -p "Read /etc/oas/firewall-extras.txt"`.
-- **Expected:** 1) Reaches host. 2) Fails — path outside `/workspace`, MCP read denies.
-- **Notes:** P0.
-
-### 8.4 --list-sources tagging
-
-- **Steps:** `docker compose exec sandbox /usr/local/bin/init-firewall.sh --list-sources` (or run as `claude` user — read-only path).
-- **Expected:** Lines tagged `[baseline]`, `[plugin]`, `[file]`. Matches Settings → Firewall → Effective allowlist (Refresh).
-- **Notes:** P1.
-
-### 8.5 Effective allowlist refresh button
+### 8.2 Effective allowlist refresh button
 
 - **Setup:** Firewall on.
 - **Steps:** Settings → Advanced → Security section → Refresh (the "Click Refresh to fetch the effective firewall allowlist from the container" control).
 - **Expected:** UI updates to current allowlist including any extras added since last refresh.
 - **Notes:** P2.
-
-### 8.6 Firewall off restores full egress
-
-- **Steps:** Disable firewall. `curl -I https://example.org`.
-- **Expected:** Reaches host (no iptables block).
-- **Notes:** P1.
 
 ---
 

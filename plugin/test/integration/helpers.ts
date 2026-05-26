@@ -282,6 +282,10 @@ export function httpPost(
 				port: parsed.port,
 				path: parsed.pathname,
 				method: "POST",
+				// Disable keep-alive so the global agent never pools sockets.
+				// Tests that stop and restart servers on the same port would
+				// otherwise reuse a dead socket and receive "socket hang up".
+				agent: false,
 				headers: {
 					"Content-Type": "application/json",
 					Accept: "application/json, text/event-stream",
@@ -315,6 +319,8 @@ export function httpPostFull(
 				port: parsed.port,
 				path: parsed.pathname,
 				method: "POST",
+				// Disable keep-alive — see httpPost comment.
+				agent: false,
 				headers: {
 					"Content-Type": "application/json",
 					Accept: "application/json, text/event-stream",
