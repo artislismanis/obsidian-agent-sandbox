@@ -283,6 +283,7 @@ function makeMockApp() {
 			getFiles: () => [],
 			getMarkdownFiles: () => [],
 			getFileByPath: () => null,
+			getAbstractFileByPath: () => null,
 			read: async () => "",
 			cachedRead: async () => "",
 			// vault_create's apply reads `created.path` to detect Templater
