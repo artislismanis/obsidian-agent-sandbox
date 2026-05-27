@@ -8,6 +8,7 @@ node_modules/
 .idea
 .vscode
 plugin/.claude/
+container/.claude/
 
 # OS
 .DS_Store
