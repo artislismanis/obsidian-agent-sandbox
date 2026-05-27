@@ -27,216 +27,6 @@ These aren't test scenarios; they're the baseline. Verify each before touching S
 
 ---
 
-
-
-- 1.1 First-enable settings tab render: PASS
-	- Does MCP Auth token regeration require container restart (passed in as env variable?)
-- 1.2 Restart-required modal on settings close: PASS
-- 1.3 MCP token regenerate: PASS
-- 1.4 Bind address security warning toggle: PASS
-- 1.5 Start with Docker daemon stopped
-	- Maybe a mention on how to restart docker engine, i.e., the same command as stop but swap for start
-- 1.6 Write directory validation in settings: PASS
-	- Update test case description - when invalid path added directly into config bypassing UI validation there is a notification telling about invalid settings and container fails to start until fixed. 
-	- In terms of UX, when settings open the invalid value shows as read from data.json but does not immediately lit up as having an error
-		- maybe a future enhancement - just needs to trigger validation on setting tab load not just typing in the field 
-- 1.7a — ttyd port pre-flight (container start): KNOWN GAP
-    - WSL NAT networking mode - no visibility WSL2 environment
-- 1.7b — MCP port reactive failure (server start): PASS
-- 1.8 URI handler without container: PASS
-- 1.9 Command palette entries present: PASS
-	- Order palette entries in the same order as they appear in Obsidian (right now they are not and difficult to reconcile)
-	- What is `sandbox-cleanup-sessions` for? Explain as part of the follow up. See comments against 5.12
-- 2.1 Auto-start on Obsidian launch: PASS
-- 2.2 Auto-stop on Obsidian close: PASS
-- 2.3 Auto-stop off: survives close: PASS
-    - On Obsidian open a notification fired:  Agent output; 87 created - a bit random, what's driving this? 
-    - We want notifications of agent created content, but not a total count flashed every time Obsidian loads
-- 2.4 Config change triggers recreate: PASS
-- 2.5 Plugin disable stops the container: PASS
-- 2.5a Plugin disable/enable cycle leaves no debris: PASS
-- 2.6 Settings persist across full Obsidian restart: PASS
-- 2.7 Terminal opens, attaches, renders: PASS
-- 2.7a Custom font family: PASS
-- 2.7b Status bar icon glyphs: PASS
-- 2.8 Terminal themes: PASS
-- 2.9 Terminal resize reflow: PASS
-- 2.10 Auto-copy on selection opt-out: PASS
-- 2.11 Connection retry / exponential backoff: PASS
-    - Update test documentation - the backoff is not capped at 5s as stated, align test case with code
-- 2.11a Start-up progress indicator detail: FAIL
-    - Multiple items logged to console under debug, but no messages stated in the test case
-    - Review test case against the actual code to check if the actual logging has been implemented
-- 2.12 Out-of-band recreate detection: PASS
-- 2.13 Status bar tooltip content: PASS
-- 2.14 `Sandbox: Container Status` command: PASS
-- 2.15 `Sandbox: Open Browser` (pop-out terminal): PASS
-- 2.16 `Sandbox: Copy terminal connection log`: PASS
-    - What logs does this copy? All terminals, some? Explain as part of the follow up. 
-- 2.17 Image rebuild triggers recreate: PASS
-- 2.18 Workspace persistence: PASS
--  2.19 Custom sudo password: PASS
-    - Claude can read settings folder and therefore has access to sudo password
-    - What are approaches for hiding this from Claude?
-- Stage 3 — Claude authenticated, MCP enabled
-    - Enabling MCP requires a container restart to pass in the key env variables like port, token, etc. 
-    - None of this is reflected in config, no labels or proactive messages asking to restart the container the same as for some other settings. 
-    - MCP test will have some comments regarding not all capabilities being published, that's on me as didn't cycle the MCP consistently after each permissions change - should this be triggered automatically after each critical MCP setting change? 
-- 3.1 Permission cells matrix: - review the test result files
-- 3.2 Cell setup walkthrough: - review the test result files
-- 3.4 Always-on tiers have no toggle: PASS
-- 3.5 Navigate tier — active tab changes (UI assertion): PASS
-- 3.6 MCP token rotation kicks live connections: PASS - see comments:
-    - Auth token setting has a restart required label buried in prose, needs standardising as per all others - fix 
-    - Changing the setting triggers restart container dialogue - test case needs to be updated to reflect this
-- 3.7 MCP turn-off mid-session: FAIL
-    - Switching off MCP mid-session didn't fail the connectivity, just stopped returning result, see below.
-        - Open @vault/0-Atlas/0-Atlas.md in editor
-        -  ⎿  Read vault/0-Atlas/0-Atlas.md (60 lines)
-        - obsidian - vault_open (MCP)(path: "0-Atlas/0-Atlas.md", newTab: true)
-        - Opened 0-Atlas/0-Atlas.md in a new tab. (No new tab open in GUI)
-        - Open @vault/1-Efforts/1-Efforts.md in editor
-        - ⎿  Read vault/1-Efforts/1-Efforts.md (19 lines)
-        - obsidian - vault_open (MCP)(path: "1-Efforts/1-Efforts.md", newTab: true)
-        - Opened 1-Efforts/1-Efforts.md in a new tab. (No new tab open in GUI)
-        - Can you verify that Obsidian MCP works?
-        - obsidian - mcp_capabilities (MCP) 
-        - The capabilities call returned no output. Let me do a quick read test to confirm it's functional.
-        - obsidian - vault_list (MCP)(folder: "0-Atlas")
-        - Let me try a read to get a more definitive response.
-        - obsidian - vault_read (MCP)(path: "0-Atlas/0-Atlas.md")
-        - The MCP connection is active — tools complete without errors, and vault_open demonstrably worked earlier (files opened in your editor) (This wasn't true). However, the read/list tools are returning empty responses, which suggests a permission tier may not be fully enabled. A few observations: 
-            - Connected: No connection errors; the plugin is responding (This is the failure mode)
-            - UI tools work: vault_open successfully opened files (This didn't happen)
-            - Read/list tools: Returning empty — likely a tier permissions issue 
-- 3.8 MCP cache invalidates on live edits: PASS  - Review test case:
-    - Not really realistic to re-check within 2 seconds unless we automate this somehow
-    - Also Obsidian saves continuously rather on 'Save'
-- 3.9 Concurrent MCP tool calls: PASS - see comments:
-    - The console logs are not very verbose and don't provide much insight into the actual calls made - only the fact that MCP was called and vault_read returned OK. No timestamps, no call detaills, etc. Probably our logging needs enhancing with some sort of progressive disclosure, e.g., DEBUG shows lots of detail in the log, INFO a bit less, WARN less, etc. But without losing essence and troubleshooting details. 
-- 3.10 File ownership after Claude writes (Linux): PASS
-- 3.11 Awaiting-input badge: PARTIAL PASS - see comments:
-    - Only `awaiting_input` triggers the icon, `working` and `idle` don't
-    - The current icon is very similar to container failure / issues icon - needs updating to an alternative 
-    - Can the icon be shown int he terminal tab name rather than notification are? I've seen Claude Code do this in Windows Terminal (show working vs work complete?)
-- 4.1 Content diff modal: PASS
-- 4.2 Frontmatter JSON diff: FAIL - see notes:
-    - The review dialog is displayed as expected - PASS
-    - Tags are added as an array in single quotes - this breaks Obsidian (tags: `["a", "b"]`), the single quotes need removing - FAIL
-    - There was an existing tag in my test file and this got removed and replaced even though my ask was to add tags not replace them. 
-- 4.3 Rename/move affected-links list: PASS
-- 4.4 Batch review checkboxes: PASS
-- 4.5 Reject persists in conversation: PASS
-- 4.6 Approve on big diff stays responsive: PASS
-- 5.1 Tab title + badge on Claude state: FAIL
-    - The session tab does not update with any badges
-    - Reviewed write does pop up a review window, but the notification bar not updated
-    - The only way I can trigger notification bar seems to be by asking Claude directly to do it via MCP as per 3.11 test. 
-    - It seems that when a session passes in its name into the set status call it triggers not only the notification triangle but also the icon on the tab. This works with other status on the tab as well. 
-- 5.2 Multi-session independence: FAIL
-    - The tab and notification area is fundamentally not working as expected
-    - Terminal within sessions does not offer scroll, just the current screen unlike working in terminal without any sessions.
-- 5.4 Toggle MCP off clears awaiting-input state: PASS
-- 5.5 Hook script no-ops when MCP off: FAIL
-    - The command does not seem to do anything whether the script is run with MCP on or off
-    - Needs to fully align with passing optional details (these might be dropped/not available)
-        - mcp__obsidian__agent_status_set
-            - status: "working"
-            - sessionName: "work"        # optional — must be explicit here, no tmux auto-detect
-            - detail: "doing research"   # optional
-- 5.6 Agent output Notice — debounced bursts: PASS
-    - The file count can be subtly wrong - items left in the queue from previous modifications? 
-- 5.7 Agent output Notice — rate-limit doesn't drop: PASS
-    - The file count subtly wrong - created 2 files, notice says 3. 
-- 5.8 `new_or_modified` mode includes modifies: PASS
-    - Asked to modify 5 files, reported 4 created and 5 modified
-    - Notification now also fires on human editing files within the vault not just agent making changes. Not sure how we would differentiate? Needs a review. 
-- 5.9 `off` mode silent: PASS
-- 5.10 Session switcher: PASS
-- 5.11 Session switcher handles closed tabs mid-modal: FAIL - see comments:
-    - Not sure how to exactly run this test case switcher window is on top of all the tabs and as soon as you go to close a tab it disappears. Test case needs a review.
-- 5.12 Clean up empty sessions: PASS  - see comments:
-    - We probably need to rename this functionality as `empty sessions` is confusing - they might not be empty and doing some heavy work in the background away from Obsidian. Let's discuss.
-    -  They are detached sessions so maybe that's how we call them. 
-- 5.13 Failed kill is logged, not swallowed: FAILED - see notes:
-    - The steps to set up the test case not clear at all - revise and provide specific commands to run to test
-- 6.1 obsidian:// open-terminal: PASS
-- 6.2 obsidian:// analyze: FAIL - see notes:
-    - Need to provide instructions on how to set up prompt templates, while they are in specified folder I don't think Obsidian can access these outside the scope of its vault? 
-    - The link returns Vault Not Found error for: obsidian://agent-sandbox/analyze?path=@Inbox/agent-workspace/a.md&template=summarize
-    - The `analyze` is American English, can we standardise on British? 
-- 6.3 Context menu → Analyse in Sandbox: FAIL - see notes:
-    - Should come before 6.2
-    - No instructions to set up (files exist in the folder but nothing happens, not surfaced in Obsidian)
-    - Only Custom Prompt option available
-- 6.4 Templates render on first right-click after reload: FAIL - see 6.3 and 6.2
-- 6.5 Empty prompts dir collapses submenu: FAIL -  see 6.3 and 6.2
-- 6.6 Custom prompt modal edge inputs: PASS
--  7.1 Read of escaping symlink is denied: FAILED - see notes:
-    - Symlink creation not allowed in vault root as mounted read only - test case needs to reflect this. 
-    - Could create under agent workspace and it is readable directly. 
-    - Claude can read all world readable files in the container anyway, so not sure if this is a real attacke vector - normal Linux permissions apply and sudo is quite locked down. 
-- 7.2 Create into symlinked directory denied: FAILED - see notes under 7.1
-    - Not sure if this is a real test or obsolete due to our underlying volumes setup in the container
-    - Also, trying to write to the folder errored out: 
-        - Denied. The folder exists in the container filesystem but the Windows host has permissions locked down on it — EACCES against C:\Users\artis\@PKM\Personal\@Inbox\agent-workspace\escape\. Was that intentional? It looks like escape was set up with restricted permissions on the host side.
-- 7.3 Nested symlinks resolve fully: FAILED - see notes under 7.1
-    - Review this class of tests - might not be needed. 
-- 7.4 Symlink inside write directory but pointing into vault: PASS
-    - The symlink is readable but not writeable as expected
-    - The read/write triggers direct not necessarily using Obsidian MCP - we might not be fully exercising MCP unless we provide more specific instructions to Claude. 
-    - Here is output from asking to check via MCP:
-        - Result: Obsidian MCP does not follow the symlink.
-            - vault_list on @Inbox/agent-workspace/safe-link → returns (no files)
-            - vault_list on the canonical @Inbox/ → returns all the expected files
-            - So the symlink is invisible to the MCP layer entirely — it isn't enumerated as a folder, nor are its targets reachable through that path. Combined with the earlier filesystem test (writes through the symlink hit "Read-only file system"), the write-scoping boundary holds at both layers: filesystem and MCP.
-- 8.1 Firewall on/off toggle live: PASS
-- 8.2 Plugin-setting domain reaches host: PASS
--  8.3 firewall-extras.txt works AND isn't readable by Claude: FAIL - see comments:
-    - Update test case to use a domain that actually works instead of a fake domain that doesn't resolve, e.g., use google.com. 
-    - The TXT file is readable by Claude - claude can access all world readable locations within the container, it is not bound to just workspace. 
-    - This is not necessarily and issue and perhaps useful for Claude to know what it has been limited to, as long as the file is locked down for edits and can't be used to escape to other domains.
-- 8.4 --list-sources tagging: FAIL - see comments:
-    - Plugin shows details as expected after refresh
-    - The command line does not show detailed list, just a summary: 
-        - ➜  container git:(main) ✗ docker compose exec sandbox /usr/local/bin/init-firewall.sh --list-source
-        - Resolving domains...
-        - WARNING: failed to resolve internal.corp.example (optional)
-        - WARNING: 1 optional domain(s) failed to resolve — firewall applied without them
-        - Firewall active. 44 IP entries allowlisted.
-        - To disable: /usr/local/bin/init-firewall.sh --disable
-- 8.5 Effective allowlist refresh button: PASS
-- 8.6 Firewall off restores full egress: PASS
-- 9.3 Tasks toggle with recurring: PASS - see notes:
-    - Requires full write permission, did not work on Reviewed changes
-    -  When changing write mode had to restart MCP + alse re-register in claud via /mcp reconnect
-    - Once full write available completed task as expected
-- 10.1 Windows + WSL2: vault path conversion: FAILED - see notes:
-    - Can we check the variable name? Currently returns empty inside container, but all works and maps fine.
-- 10.2 Rancher Desktop: path with spaces: SKIPPED
-- 10.3 macOS Docker Desktop happy path: SKIPPED 
--  10.4 Linux native Docker happy path: SKIPPED
-- 11.1 `plugin check` workflow on PRs: SKIPPED
-- 11.2 Release workflow produces signed assets: SKIPPED
-- 11.3 BRAT install from Release: SKIPPED
-- 11.4 Upgrade-in-place via BRAT: SKIPPED
-- 11.5 `manifest.json` ↔ `versions.json` consistency: SKIPPED
-- 12.1 Docker daemon stops mid-session: PASS
-    - Terminal disconnect picked up pretty much straight away
-    - The notification are switched to stopped state in a little while (health probe timing?)
-- 12.2 Vault path with unicode: FAILED - not clear what needs to be tested, no clear steps specified - review test case and update. 
-- 12.3 Very large note read: FAILED -  - not clear what needs to be tested, no clear steps specified - review test case and update, how is stress test script run? when? by who?. 
-- 12.4 Many concurrent terminals: PASS
-- 12.5 Plugin disable while modal is open: FAILED - this test misunderstand Obsidian modal lifecycle (similar to a few others previously) - I can't get to another modal without current being dismissed. Review test case, alternative approaches? What are we testing? 
-- 12.6 Obsidian close while Claude is mid-tool-call: PASS
-    - Everything runs in ephermal container, rebooting it clears the state and starts clean - what exactly are we testing?
-- 12.7a Teardown leaves no `oas-*` debris: FAIL - see comments under 12.3. 
-- 12.7 No remaining DevTools console errors after a full session: PASS - a short representative session did not produce any major errors, only a violation warning:
-    - plugin:obsidian-agent-sandbox:1 [Agent Sandbox] [Terminal] Connecting (gen 1)
-    - plugin:obsidian-agent-sandbox:1 [Agent Sandbox] [Terminal] WebSocket connecting to ws://127.0.0.1:7681/ws (gen 1, instance 1)
-    - plugin:obsidian-agent-sandbox:1 [Agent Sandbox] [Terminal] WebSocket open (gen 1, instance 1, connect 23ms)
-    - plugin:obsidian-agent-sandbox:164 [Violation] 'requestAnimationFrame' handler took 100ms
-- General Observation: Claude Code Ctrl+V does not work for pasting - no image found in clipboard.  Doesn't do anything in plain terminal either, Ctrl+Shift+V (paste as text) inserts the text 2x in both. 
 ## Stage 1 — Plugin enabled, container not yet started
 
 **Setup carried forward:** Stage 0.
@@ -281,14 +71,14 @@ This stage exercises the settings UI, error/fallback paths before any container 
 - **Setup:** Stop Docker on the host. On Linux with systemd: `sudo systemctl stop docker.socket docker.service`. On macOS/Windows: quit Docker Desktop or Rancher Desktop.
 - **Steps:** Command palette → **Sandbox: Start Container**.
 - **Expected:** Clear Notice within ~5 s naming the failure ("Docker not available", "Cannot connect to Docker daemon", etc.). No infinite spinner. Status bar settles to a stopped/errored state with a useful tooltip.
-- **Notes:** P0. Restart Docker before continuing.
+- **Notes:** P0. After the test, restart Docker before continuing. On Linux with systemd: `sudo systemctl start docker.socket docker.service`. On macOS/Windows: relaunch Docker Desktop or Rancher Desktop.
 
 ### 1.6 Write directory validation in settings
 
 - **Setup:** Plugin enabled. Settings → General open.
-- **Steps:** 1) Attempt to type a path outside the vault (e.g. `/root/forbidden` or `../../escape`) into **Vault write directory**. 2) Manually edit the vault's `data.json` (`.obsidian/plugins/obsidian-agent-sandbox/data.json`) to set `vaultWriteDir` to a path that escapes the vault, then reload the plugin.
-- **Expected:** 1) Settings UI rejects or sanitises the input — the field does not accept paths outside the vault root. 2) On load the plugin normalises the stored value back to a vault-relative path; no container crash or half-up state results. No clear failure Notice for the invalid-path case is expected because the invalid state cannot be reached at startup.
-- **Notes:** P1. The protection is in the settings layer, not the startup path. The original "startup failure" scenario is not reachable because the UI and settings-load sanitisation prevent it.
+- **Steps:** 1) Attempt to type a path outside the vault (e.g. `/root/forbidden` or `../../escape`) into **Vault write directory**. 2) Manually edit the vault's `data.json` (`.obsidian/plugins/obsidian-agent-sandbox/data.json`) to set `vaultWriteDir` to a path that escapes the vault, then reload the plugin (toggle off/on in Community Plugins).
+- **Expected:** 1) Settings UI rejects the input — the field blocks paths containing `..` or a leading `/`. 2) On load the settings tab immediately shows the field in error state (red border / `sandbox-input-error` class). The stored value is **not** auto-corrected; attempting to start the container while the invalid value is stored emits a Notice and fails to start.
+- **Notes:** P1. Validation runs on both keystroke and settings-tab load. An invalid stored value prevents container start rather than causing a mid-start failure.
 
 ### 1.7 Port conflict detection
 
@@ -348,9 +138,9 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 ### 1.9 Command palette entries present
 
 - **Setup:** Plugin enabled.
-- **Steps:** Open command palette and search "Sandbox". Confirm all 12 commands are listed (see `plugin/src/main.ts` for the canonical list — `open-claude-terminal`, `sandbox-start-container`, `sandbox-stop-container`, `sandbox-container-status`, `sandbox-restart-container`, `sandbox-toggle-firewall`, `open-session`, `open-browser`, `sandbox-toggle-mcp`, `sandbox-copy-terminal-connection-log`, `sandbox-cleanup-sessions`, `sandbox-switch-session`).
-- **Expected:** All visible, each runs without throwing when invoked in this state (most should no-op with a Notice).
-- **Notes:** P2. Quick smoke check.
+- **Steps:** Open command palette and search "Sandbox". Confirm all 12 commands are listed by their display names: **Open Sandbox Terminal**, **Sandbox: Start Container**, **Sandbox: Stop Container**, **Sandbox: Container Status**, **Sandbox: Restart Container**, **Sandbox: Toggle Firewall**, **Sandbox: Open Session**, **Sandbox: Open Browser**, **Sandbox: Toggle MCP Server**, **Sandbox: Copy terminal connection log**, **Sandbox: Clean up detached sessions**, **Sandbox: Switch to Sandbox session…** (command IDs: `open-claude-terminal`, `sandbox-start-container`, `sandbox-stop-container`, `sandbox-container-status`, `sandbox-restart-container`, `sandbox-toggle-firewall`, `open-session`, `open-browser`, `sandbox-toggle-mcp`, `sandbox-copy-terminal-connection-log`, `sandbox-cleanup-sessions`, `sandbox-switch-session`).
+- **Expected:** All 12 visible. Each runs without throwing when invoked in this state (most should no-op with a Notice).
+- **Notes:** P2. Quick smoke check. Use `plugin/src/main.ts` as the canonical source if the count changes.
 
 ---
 
@@ -470,9 +260,9 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 ### 2.11a Startup progress indicator detail
 
 - **Setup:** Obsidian closed, container stopped, auto-start on.
-- **Steps:** Open Obsidian. Open DevTools (Ctrl+Shift+I) → Console tab. Filter by "Sandbox:".
-- **Expected:** All four phase strings appear in the console in order: "Starting: checking Docker availability…" → "Starting: probing WSL (5s fast-fail)…" → "Starting: probing container status…" → "Starting: docker compose up -d (auto-start)…". Visual hover of the status bar tooltip is best-effort — on warm systems the transitions can be sub-second and hard to observe.
-- **Notes:** P2. On non-WSL platforms the WSL probe should still appear and resolve to "not WSL".
+- **Steps:** Open Obsidian. During startup, hover the status bar pill repeatedly. Also open DevTools (Ctrl+Shift+I) → Console tab and filter by "Agent Sandbox" to catch debug-level log entries.
+- **Expected:** Status bar pill tooltip cycles through all four phase strings in order: "Starting: checking Docker availability…" → "Starting: probing WSL (5s fast-fail)…" → "Starting: probing container status…" → "Starting: docker compose up -d (auto-start)…". On warm systems the transitions are sub-second, so you may catch only one or two phases via hover — the DevTools console is more reliable for confirming all four fired. Phase 4 fires only when `autoStartContainer` is on and the container is not already running.
+- **Notes:** P2. On non-WSL platforms the WSL probe fires and resolves to "not WSL"; the phase still appears.
 
 ### 2.12 Out-of-band recreate detection
 
@@ -506,9 +296,8 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 - **Setup:** Open and close one terminal tab.
 - **Steps:** Run the copy log command.
-- **Expected:** Clipboard contains a multi-line log of the connection lifecycle (attempts, URLs sans token, timestamps). Paste into a scratchpad to verify.
-- **Notes:** P2. Useful for support; verify it doesn't leak the MCP token.
-2
+- **Expected:** Clipboard contains a multi-line log of the connection lifecycle for **all** terminal sessions in this Obsidian instance — connect/disconnect/error/reconnect events, timestamps, session byte counts, and connection durations. The ttyd WebSocket URL (`ws://host:port/ws`) carries no auth token. Paste into a scratchpad to verify format and content.
+- **Notes:** P2. Covers all terminals in this session, not just the most recent. The log is in-memory — it is lost when Obsidian closes.
 ### 2.17 Image rebuild triggers recreate
 
 - **Setup:** Container running on `oas-sandbox:latest`.
@@ -528,8 +317,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 - **Setup:** Container not running.
 - **Steps:** Set Sudo password in Advanced. Restart container. In a terminal: `sudo -k && sudo apt-get update` (enter new password when prompted).
 - **Expected:** Accepts new password; `apt-get update` runs. Setting password to empty then restarting disables sudo entirely (`sudo apt-get update` should refuse without the error mentioning `no-new-privileges`).
-- **Notes:** P1. Reset to default afterwards. Sudoers is restricted to `apt-get`/`apt` only — other `sudo` commands will be rejected regardless of password.
-- **Note:** Toggling the sudo password between empty and non-empty changes the container's `security_opt` set, so the next start/restart recreates the container (compose detects the config drift). New container ID expected.
+- **Notes:** P1. Reset to default afterwards. Sudoers is restricted to `apt-get`/`apt` only — other `sudo` commands will be rejected regardless of password. The password is stored on the host at `~/.config/obsidian-agent-sandbox/secrets.json` (mode 0600, directory mode 0700); this path is **not** mounted inside the container, so the agent cannot read it. Toggling the sudo password between empty and non-empty changes the container's `security_opt` set, so the next start/restart recreates the container (compose detects the config drift). New container ID expected.
 
 ---
 
@@ -607,15 +395,15 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 ### 3.7 MCP turn-off mid-session
 
 - **Setup:** Active Claude session that recently used a vault tool.
-- **Steps:** Toggle MCP off via command palette. Submit another tool-using prompt.
-- **Expected:** Tools fail cleanly (404 / connection refused). Re-enabling MCP lets a new Claude invocation pick them back up.
-- **Notes:** P1.
+- **Steps:** Toggle MCP off via command palette. In the same terminal, submit another tool-using prompt.
+- **Expected:** The toggle force-closes all active HTTP connections (including SSE keepalives). The running `claude` process receives a connection error and cannot continue using vault tools. Re-enabling MCP alone is not enough — the user must run `/mcp` in the terminal to reconnect the Claude CLI session to the newly restarted server.
+- **Notes:** P1. The force-close is intentional (prevents EADDRINUSE on next start). The `/mcp` reconnect step is the only user-visible consequence. See also the code comment at `mcp-server.ts:223`.
 
 ### 3.8 MCP cache invalidates on live edits
 
 - **Setup:** `notes/cache.md` with first line `version A`. Vault open in Obsidian.
-- **Steps:** 1) `claude -p "Read notes/cache.md and quote the first line"`. 2) Edit in Obsidian so first line becomes `version B`; save. 3) Within ~2 s: re-read via Claude.
-- **Expected:** Second read returns `version B`. Document observed window if >5 s.
+- **Steps:** 1) `claude -p "Read notes/cache.md and quote the first line"`. 2) In Obsidian, edit the note's first line to `version B` (Obsidian saves continuously — no explicit save needed). 3) Shortly after editing, re-read via Claude.
+- **Expected:** Second read returns `version B`. The cache invalidates on Obsidian's `metadataCache.resolved` event, typically within a second or two of the file changing. If the second read still returns `version A`, wait 5 s and retry once; document any lag >5 s.
 - **Notes:** P1. Stale reads after user edits are silent and confusing.
 
 ### 3.9 Concurrent MCP tool calls
@@ -771,18 +559,24 @@ Unit tests verify the gate fires; humans verify the modal renders right.
 - **Expected:** Notice "That session has closed." Modal closes cleanly. No crash.
 - **Notes:** P1.
 
-### 5.12 Clean up empty sessions
+### 5.12 Clean up detached sessions
 
 - **Setup:** Two tmux sessions created, one attached in Obsidian, one detached.
-- **Steps:** Command palette → **Sandbox: Clean up empty sessions**. Modal appears.
+- **Steps:** Command palette → **Sandbox: Clean up detached sessions**. Modal appears.
 - **Expected:** Only the detached one listed. Uncheck to keep / check to kill. Kill selected → Notice "1/1 killed".
 - **Notes:** P1.
 
 ### 5.13 Failed kill is logged, not swallowed
 
-- **Setup:** Two empty tmux sessions, one with a name tmux will choke on (manually inject via `tmux rename-session`).
-- **Steps:** Clean up empty sessions → check both → Kill.
-- **Expected:** Valid one killed. Failure for the other logged to DevTools console (`[Agent Sandbox] failed to kill tmux session …`). Aggregate Notice reports `1/2 session(s) killed`.
+- **Setup:** Create two detached tmux sessions inside a container terminal — one with a valid name and one with an invalid name (space character, which `assertSafeSessionName` in `docker.ts` rejects against `[\w.-]+`):
+  ```bash
+  tmux new-session -d -s validname
+  tmux new-session -d -s tempname
+  tmux rename-session -t tempname "bad name"
+  ```
+- **Steps:** Command palette → **Sandbox: Clean up detached sessions**. Check both sessions in the modal → Kill selected.
+- **Expected:** `validname` is killed. `bad name` fails name-validation; the failure is logged to DevTools console as `[Agent Sandbox] [sessions] failed to kill tmux session 'bad name': …`. Aggregate Notice reports `1/2 session(s) killed`.
+- **Cleanup:** `tmux kill-session -t "bad name"` inside the container if it survived the failed kill.
 - **Notes:** P2.
 
 ---
@@ -799,29 +593,29 @@ Unit tests verify the gate fires; humans verify the modal renders right.
 
 ### 6.2 obsidian:// analyse
 
-- **Setup:** Vault note `notes/foo.md` exists. `workspace/.claude/prompts/summarize.md` exists.
+- **Setup:** Vault note `notes/foo.md` exists. A `summarize.md` prompt template is in `<vault>/.oas/prompts/summarize.md` (copy from `workspace/.claude/prompts/summarize.md` if needed — that folder holds examples to copy from, not the live location).
 - **Steps:** `obsidian://agent-sandbox/analyse?vault=<your-vault-name>&path=notes/foo.md&template=summarize`.
 - **Expected:** New terminal opens; first command typed is the summarize template with `@notes/foo.md` substituted.
-- **Notes:** P1. Omitting `vault=` when multiple vaults are open causes Obsidian to show "Vault Not Found".
+- **Notes:** P1. The `vault=` parameter is required when multiple vaults are open; omitting it causes Obsidian to show "Vault Not Found". Templates are loaded from `<vault>/.oas/prompts/*.md` — not from `workspace/.claude/prompts/`.
 
 ### 6.3 Context menu → Analyse in Sandbox
 
-- **Setup:** `workspace/.claude/prompts/` populated with the four shipped templates.
+- **Setup:** `<vault>/.oas/prompts/` populated with the four shipped templates (copy from `workspace/.claude/prompts/` if needed).
 - **Steps:** Right-click a vault note → **Analyse in Sandbox**.
 - **Expected:** Submenu shows Summarize, Critique, Explain, Extract TODOs, plus "Custom prompt…". Picking one opens a new terminal and seeds the prompt.
-- **Notes:** P1.
+- **Notes:** P1. Templates are loaded from `<vault>/.oas/prompts/` at plugin load; changes there require an Obsidian reload to take effect.
 
 ### 6.4 Templates render on first right-click after reload
 
-- **Setup:** Templates as above. Fully reload Obsidian.
+- **Setup:** `<vault>/.oas/prompts/` populated with the four shipped templates. Fully reload Obsidian.
 - **Steps:** **Immediately** after Obsidian finishes loading, right-click a vault note → **Analyse in Sandbox**.
 - **Expected:** Submenu already populated, not collapsed to "Custom prompt…" only.
 - **Notes:** P1.
 
 ### 6.5 Empty prompts dir collapses submenu
 
-- **Setup:** Move `workspace/.claude/prompts/*` aside.
-- **Steps:** Right-click a note → Analyse in Sandbox.
+- **Setup:** Move `<vault>/.oas/prompts/*` aside (or delete the folder).
+- **Steps:** Reload Obsidian. Right-click a note → Analyse in Sandbox.
 - **Expected:** Submenu shows only "Custom prompt…", which opens a modal. Typing text and clicking Run → new terminal with the one-off prompt.
 - **Notes:** P2. Restore prompts after.
 
@@ -842,26 +636,36 @@ Unit tests cover `isRealPathWithinBase` with mocked realpath. These verify the O
 
 ### 7.1 Read of escaping symlink is denied
 
-- **Setup:** From host shell: `cd <vault-root> && ln -s /etc/hosts evil.md`.
-- **Steps:** `claude -p "Read the file evil.md"`.
-- **Expected:** `vault_read` returns "File not found." Real `/etc/hosts` never returned.
-- **Cleanup:** `rm <vault-root>/evil.md`.
-- **Notes:** P0.
+- **Setup:** From inside a container terminal, create a symlink in the write directory (which is rw) pointing outside the vault:
+  ```bash
+  ln -s /etc/hosts /workspace/vault/$OAS_VAULT_WRITE_DIR/evil.md
+  ```
+- **Steps:** `claude -p "Use vault_read to read agent-workspace/evil.md"` — explicitly instruct Claude to use MCP, not direct filesystem read.
+- **Expected:** `vault_read` returns "File not found" or "Path resolves outside the vault." Real `/etc/hosts` is never returned.
+- **Cleanup:** `rm /workspace/vault/$OAS_VAULT_WRITE_DIR/evil.md`.
+- **Notes:** P0. The vault root is mounted `:ro` inside the container — create symlinks in `$OAS_VAULT_WRITE_DIR` (`:rw`) instead. Direct filesystem access by Claude is not under test here; the instruction must explicitly trigger an MCP `vault_read` call so `isRealPathWithinBase` is exercised.
 
 ### 7.2 Create into symlinked directory denied
 
-- **Setup:** `cd <vault-root> && ln -s /tmp escape`.
-- **Steps:** `claude -p "Create a file escape/note.md with 'hi'"`.
-- **Expected:** `vault_create` returns "Path resolves outside the vault (symlink)."
-- **Cleanup:** `rm <vault-root>/escape`.
+- **Setup:** From inside a container terminal:
+  ```bash
+  ln -s /tmp /workspace/vault/$OAS_VAULT_WRITE_DIR/escape
+  ```
+- **Steps:** `claude -p "Use vault_create to create agent-workspace/escape/note.md with content 'hi'"`.
+- **Expected:** `vault_create` returns "Path resolves outside the vault (symlink)." No file is created under `/tmp`.
+- **Cleanup:** `rm /workspace/vault/$OAS_VAULT_WRITE_DIR/escape`.
 - **Notes:** P0.
 
 ### 7.3 Nested symlinks resolve fully
 
-- **Setup:** `mkdir <vault>/innocent && ln -s /tmp <vault>/innocent/inner`.
-- **Steps:** Attempt to read/write `innocent/inner/x.md`.
-- **Expected:** Denied. The realpath check resolves through multi-level symlinks.
-- **Cleanup:** Remove both.
+- **Setup:** From inside a container terminal:
+  ```bash
+  mkdir /workspace/vault/$OAS_VAULT_WRITE_DIR/innocent
+  ln -s /tmp /workspace/vault/$OAS_VAULT_WRITE_DIR/innocent/inner
+  ```
+- **Steps:** `claude -p "Use vault_read to read agent-workspace/innocent/inner/x.md"`.
+- **Expected:** Denied — "Path resolves outside the vault (symlink)" or similar. The realpath check resolves through multi-level symlinks.
+- **Cleanup:** `rm -r /workspace/vault/$OAS_VAULT_WRITE_DIR/innocent`.
 - **Notes:** P1.
 
 ### 7.4 Symlink inside write directory but pointing into vault
@@ -890,12 +694,12 @@ Unit tests cover `isRealPathWithinBase` with mocked realpath. These verify the O
 - **Expected:** `example.com` → 200. `example.org` → timeout or blocked by iptables.
 - **Notes:** P0.
 
-### 8.3 firewall-extras.txt works AND isn't readable by Claude
+### 8.3 firewall-extras.txt works AND isn't writable by Claude
 
-- **Setup:** Add `internal.corp.example` to `container/firewall-extras.txt`. Restart container.
-- **Steps:** 1) `curl -I https://internal.corp.example` from terminal. 2) `claude -p "Read /etc/oas/firewall-extras.txt"`.
-- **Expected:** 1) Reaches host. 2) Fails — path outside `/workspace`, MCP read denies.
-- **Notes:** P0.
+- **Setup:** Add `example.com` (a real resolvable domain) to `container/firewall-extras.txt`. Restart container.
+- **Steps:** 1) In a terminal: `curl -I https://example.com` — confirm the domain is reachable. 2) `ls -la /etc/oas/firewall-extras.txt` — note the permissions. 3) `echo "evil.com" >> /etc/oas/firewall-extras.txt` — expect permission denied.
+- **Expected:** 1) `example.com` is reachable via curl. 2) The file is world-readable (Claude can read its contents — this is intentional: knowing the allowlist doesn't help Claude escape, and iptables rules are what actually enforce the firewall). 3) Write attempt is denied — the file is mounted read-only at `/etc/oas/`, so Claude cannot modify the allowlist.
+- **Notes:** P0. The security property is **write protection**, not read restriction.
 
 ### 8.4 --list-sources tagging
 
@@ -944,8 +748,8 @@ These require specific host hardware/OS. Run on each supported platform before r
 ### 10.1 Windows + WSL2: vault path conversion
 
 - **Setup:** Windows host, WSL2 Docker mode, vault at `C:\vault`.
-- **Steps:** Start container. Inside: `echo $OAS_VAULT_HOST_PATH`.
-- **Expected:** Resolves to `/mnt/c/vault`. No `wsl.exe` console flashes during start/stop.
+- **Steps:** Start container. Inside a terminal: 1) `echo $OAS_VAULT_WRITE_DIR` — should print the configured write directory (e.g. `agent-workspace`). 2) `ls /workspace/vault` — should list vault contents. Note: `OAS_VAULT_HOST_PATH` is a compose-time variable used only for volume mount expansion; it is **not** passed into the container environment and will print empty if echoed.
+- **Expected:** Vault is accessible at `/workspace/vault/`. `$OAS_VAULT_WRITE_DIR` is set correctly. No `wsl.exe` console flashes during start/stop.
 - **Notes:** P0 on Windows.
 
 ### 10.2 Rancher Desktop: path with spaces
@@ -1051,17 +855,17 @@ Automated in `stress-checks.sh T12.3` (creates a ~5 MB note and calls `vault_rea
 
 ### 12.5 Plugin disable while modal is open
 
-- **Setup:** Trigger a review modal but don't approve/reject.
-- **Steps:** Disable the plugin from Community Plugins.
-- **Expected:** Modal closes cleanly. Pending tool call resolves as rejected/error to Claude. No console errors.
+- **Setup:** Trigger a reviewed-write that opens a diff modal (e.g. `claude -p "Create reviewed-write: <vault>/.oas/prompts/test-reviewed.md with content 'x'"` under `writeReviewed` mode) and do NOT approve or reject it.
+- **Steps:** With the modal open, close Obsidian entirely (Cmd+Q on macOS, Alt+F4 on Windows). Opening Community Plugins while a modal is visible is not possible — app-close is the realistic trigger for plugin teardown with an open modal.
+- **Expected:** Obsidian closes cleanly. The pending tool call times out or resolves as rejected. On next Obsidian open, no zombie modal, no red console errors.
 - **Notes:** P1.
 
 ### 12.6 Obsidian close while Claude is mid-tool-call
 
 - **Setup:** Active Claude session in the middle of a long vault_search.
 - **Steps:** Close Obsidian.
-- **Expected:** Pending MCP requests are cancelled. With auto-stop on, container stops. No orphan processes.
-- **Notes:** P1.
+- **Expected:** Pending MCP requests are cancelled. With auto-stop on, container stops. No orphan processes (`docker ps` empty after close).
+- **Notes:** P1. What's under test: whether in-flight MCP requests terminate cleanly (no deadlock) and whether the container stops without orphan processes. The ephemeral nature of the container means there's no persistent state to recover.
 
 ### 12.7a Teardown leaves no `oas-*` debris
 
