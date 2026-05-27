@@ -29,9 +29,8 @@ export class AnalyzeManager {
 	constructor(private host: AnalyzeHost) {}
 
 	/**
-	 * Load prompt templates from `.claude/prompts/*.md` (vault root) or the
-	 * repo sibling `workspace/.claude/prompts/`. First non-empty line before
-	 * `---` is the label; body can contain `{{file}}` placeholders.
+	 * Load prompt templates from `<vault>/.oas/prompts/*.md`. First non-empty
+	 * line before `---` is the label; body can contain `{{file}}` placeholders.
 	 * Result cached after first call — call {@link refreshTemplates} to
 	 * invalidate.
 	 */
@@ -55,40 +54,31 @@ export class AnalyzeManager {
 	private async readTemplatesFromDisk(): Promise<PromptTemplate[]> {
 		const base = getVaultBasePath(this.host.app);
 		if (!base) return [];
-		const candidates = [
-			pathJoin(base, ".claude", "prompts"),
-			pathJoin(base, "..", "workspace", ".claude", "prompts"),
-		];
+		const dir = pathJoin(base, ".oas", "prompts");
 		// Import via `fs.promises` (not the `fs/promises` subpath) — Obsidian's
-		// renderer cannot resolve the bare subpath specifier and the plugin
-		// fails to load templates with "Failed to resolve module specifier
-		// 'fs/promises'". Try each candidate; first successful readdir wins —
-		// readdir's ENOENT path subsumes a prior existsSync gate.
-		for (const dir of candidates) {
-			let entries: string[];
-			try {
-				entries = await fs.readdir(dir);
-			} catch {
-				continue;
-			}
-			// Per-file try/catch returns null so one unreadable template
-			// doesn't poison the batch.
-			const mdEntries = entries.filter((e) => e.endsWith(".md"));
-			const settled = await Promise.all(
-				mdEntries.map(async (entry): Promise<PromptTemplate | null> => {
-					try {
-						const content = await fs.readFile(pathJoin(dir, entry), "utf-8");
-						const [label, body] = parsePromptTemplate(content, entry);
-						return { name: entry.replace(/\.md$/, ""), label, body };
-					} catch {
-						return null;
-					}
-				}),
-			);
-			const out = settled.filter((t): t is PromptTemplate => t !== null);
-			return out.sort((a, b) => a.label.localeCompare(b.label));
+		// renderer cannot resolve the bare subpath specifier.
+		let entries: string[];
+		try {
+			entries = await fs.readdir(dir);
+		} catch {
+			return [];
 		}
-		return [];
+		// Per-file try/catch returns null so one unreadable template
+		// doesn't poison the batch.
+		const mdEntries = entries.filter((e) => e.endsWith(".md"));
+		const settled = await Promise.all(
+			mdEntries.map(async (entry): Promise<PromptTemplate | null> => {
+				try {
+					const content = await fs.readFile(pathJoin(dir, entry), "utf-8");
+					const [label, body] = parsePromptTemplate(content, entry);
+					return { name: entry.replace(/\.md$/, ""), label, body };
+				} catch {
+					return null;
+				}
+			}),
+		);
+		const out = settled.filter((t): t is PromptTemplate => t !== null);
+		return out.sort((a, b) => a.label.localeCompare(b.label));
 	}
 
 	/** Open a terminal + start Claude with a templated (or default) prompt. */

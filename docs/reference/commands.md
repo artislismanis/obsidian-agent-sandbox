@@ -26,8 +26,20 @@ The plugin registers a single ribbon icon (terminal glyph, left sidebar) labelle
 | URI | What it does |
 |---|---|
 | `obsidian://agent-sandbox/open-terminal` | Activate or open a terminal tab. |
-| `obsidian://agent-sandbox/analyze?path=<path>&template=<name>` | Open a terminal, start Claude Code, inject a templated prompt. `template` name matches a file in `workspace/.claude/prompts/`. |
+| `obsidian://agent-sandbox/analyze?path=<path>&template=<name>` | Open a terminal, start Claude Code, inject a templated prompt. `template` name matches a `.md` filename (without extension) in `<vault>/.oas/prompts/`. |
 
 ## Context-menu action
 
-Right-click any vault file → **Analyze in Sandbox** → submenu listing prompt templates from `workspace/.claude/prompts/`. Picks load the template, substitute `{{file}}` with the clicked note's path, open a terminal, and type `claude '<prompt>'`. When the templates directory is empty, a single **Custom prompt…** modal fallback appears.
+Right-click any vault file → **Analyze in Sandbox** → submenu listing prompt templates from `<vault>/.oas/prompts/`. Picks load the template, substitute `{{file}}` with the clicked note's path, open a terminal, and type `claude '<prompt>'`. When the templates directory is empty or absent, a single **Custom prompt…** modal fallback appears.
+
+### Adding prompt templates
+
+Create `.md` files in `<vault>/.oas/prompts/`. Each file must start with a label line followed by `---`, then the prompt body:
+
+```
+Summarize
+---
+Summarize @{{file}} in 3 concise bullet points.
+```
+
+The `{{file}}` placeholder is replaced with the vault-relative path of the right-clicked note. Template files ship as examples under `workspace/.claude/prompts/` — copy any you want into `<vault>/.oas/prompts/` to activate them.
