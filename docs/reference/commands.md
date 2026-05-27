@@ -4,9 +4,9 @@ Every command registered by the plugin. Access via Obsidian's command palette (`
 
 | Command | ID | What it does |
 |---|---|---|
-| Open Sandbox Terminal | `open-claude-terminal` | Opens a new terminal tab, or activates an existing one. Prompts to start the container if it's stopped. |
-| Open Sandbox Session… | `open-session` | Prompts for a tmux session name, then opens a terminal attached to that session (creates it if new). |
-| Open Sandbox in Browser | `open-browser` | Opens the ttyd URL in the system default browser. |
+| Sandbox: Open Terminal | `open-claude-terminal` | Opens a new terminal tab, or activates an existing one. Prompts to start the container if it's stopped. |
+| Sandbox: Open Session… | `open-session` | Prompts for a tmux session name, then opens a terminal attached to that session (creates it if new). |
+| Sandbox: Open in Browser | `open-browser` | Opens the ttyd URL in the system default browser. |
 | Sandbox: Start Container | `sandbox-start-container` | `docker compose up -d`. Runs port-conflict pre-flight first. |
 | Sandbox: Stop Container | `sandbox-stop-container` | `docker compose down`. |
 | Sandbox: Restart Container | `sandbox-restart-container` | Explicit clean `down` + `up -d`. |

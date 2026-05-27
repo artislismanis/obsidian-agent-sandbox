@@ -44,6 +44,7 @@ main.ts (Plugin entry, commands, lifecycle, context menu, firewall toggle)
 ├── obsidian-internals.ts — Centralised casts for unstable Obsidian internals
 ├── view-types.ts        — VIEW_TYPE_TERMINAL constant (shared between activity.ts and terminal-view.ts to avoid a cycle)
 ├── validation.ts        — Shared input validators (used by settings.ts, docker.ts, mcp-*.ts)
+├── format.ts            — formatUptime: container "Up: 1h 30m" rendering for status notices
 └── logger.ts            — Levelled logger + errMsg() helper
 ```
 

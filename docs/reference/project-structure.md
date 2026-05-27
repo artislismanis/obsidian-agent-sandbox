@@ -45,7 +45,7 @@ obsidian-agent-sandbox/
 │   │   ├── settings.json        Claude Code project settings (permission mode, hooks)
 │   │   ├── skills/              Project skills (6 shipped)
 │   │   ├── hooks/               Lifecycle hook scripts (notify-status.sh)
-│   │   ├── prompts/             "Analyze in Sandbox" template library
+│   │   ├── prompts/             "Analyse in Sandbox" template library
 │   │   └── scripts/             Statusline, helpers
 │   └── vault/                   (not in git; mounted from user's vault path)
 │

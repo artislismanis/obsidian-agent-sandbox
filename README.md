@@ -61,6 +61,7 @@ Organized per [Diátaxis](https://diataxis.fr/): four quadrants by purpose.
 - [Settings](docs/reference/settings.md)
 - [Keyboard shortcuts](docs/reference/keyboard-shortcuts.md)
 - [Docker resources](docs/reference/docker-resources.md)
+- [MCP tool schemas](docs/reference/mcp-schemas.md) — generated from `buildTools()`
 - [Project structure](docs/reference/project-structure.md)
 
 ### Explanation (learning, theoretical)
