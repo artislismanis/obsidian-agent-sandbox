@@ -245,7 +245,7 @@ export function validateNewVaultPath(
 		return error("Path is blocked by allow/block list.");
 	if (!isVaultPathSafe(app, path)) return error("Path resolves outside the vault (symlink).");
 	const basename = path.split("/").pop() ?? path;
-	if (/^\.[^/]+$/.test(basename))
+	if (basename.startsWith("."))
 		return error("Path may not create a dotfile (basename starting with '.').");
 	return null;
 }
@@ -617,7 +617,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			tier: "read",
 			title: "Fuzzy search vault",
 			description:
-				"Fuzzy full-text search across all markdown files — tolerates typos and approximate matches. Results are score-sorted.",
+				"Fuzzy full-text search across all markdown files — matches note content, not file names. Tolerates typos and approximate matches. Results are score-sorted.",
 			inputSchema: {
 				query: z.string().describe("Search query text (fuzzy matched)"),
 				limit: z.coerce.number().optional().describe("Max results (default 20)"),
@@ -1385,7 +1385,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				name: `vault_create${suffix}`,
 				tier,
 				title: `Create file${scopeLabel}`,
-				description: `Create a new file${scopeLabel}.${note}`,
+				description: `Create a new file${scopeLabel}. Intermediate parent folders are created automatically. Paths whose final component starts with '.' (dotfiles) are rejected.${note}`,
 				inputSchema: {
 					path: z.string().describe("Path from vault root"),
 					content: z.string().optional().describe("Initial content (default empty)"),
@@ -1541,7 +1541,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				name: `vault_frontmatter_set${suffix}`,
 				tier,
 				title: `Set frontmatter${scopeLabel}`,
-				description: `Set a YAML frontmatter property on a file${scopeLabel}. Pass \`append: true\` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first.${note}`,
+				description: `Set a YAML frontmatter property on a file${scopeLabel}. Pass \`append: true\` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading \`#\` is stripped from tag values automatically — pass \`"tag"\` or \`"#tag"\` interchangeably. JSON-encoded string arrays (e.g. \`'["a","b"]'\`) are coerced to real arrays.${note}`,
 				inputSchema: {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),

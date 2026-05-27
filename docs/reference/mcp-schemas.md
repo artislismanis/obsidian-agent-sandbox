@@ -186,7 +186,7 @@ Search for text across all markdown files in the vault. Returns matching file pa
 
 **Title:** Fuzzy search vault
 
-Fuzzy full-text search across all markdown files — tolerates typos and approximate matches. Results are score-sorted.
+Fuzzy full-text search across all markdown files — matches note content, not file names. Tolerates typos and approximate matches. Results are score-sorted.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -242,7 +242,7 @@ Append content to the end of a file (within write directory). Restricted to the 
 
 **Title:** Create file (within write directory)
 
-Create a new file (within write directory). Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Create a new file (within write directory). Intermediate parent folders are created automatically. Paths whose final component starts with '.' (dotfiles) are rejected. Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -265,7 +265,7 @@ Remove a YAML frontmatter property from a file (within write directory). Restric
 
 **Title:** Set frontmatter (within write directory)
 
-Set a YAML frontmatter property on a file (within write directory). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Set a YAML frontmatter property on a file (within write directory). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading `#` is stripped from tag values automatically — pass `"tag"` or `"#tag"` interchangeably. JSON-encoded string arrays (e.g. `'["a","b"]'`) are coerced to real arrays. Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -347,7 +347,7 @@ Append content to the end of a file (reviewed). Each write prompts the user for 
 
 **Title:** Create file (reviewed)
 
-Create a new file (reviewed). Each write prompts the user for approval via a diff modal before applying. Call mcp_capabilities to see the current write directory and enabled tiers.
+Create a new file (reviewed). Intermediate parent folders are created automatically. Paths whose final component starts with '.' (dotfiles) are rejected. Each write prompts the user for approval via a diff modal before applying. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -370,7 +370,7 @@ Remove a YAML frontmatter property from a file (reviewed). Each write prompts th
 
 **Title:** Set frontmatter (reviewed)
 
-Set a YAML frontmatter property on a file (reviewed). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Each write prompts the user for approval via a diff modal before applying. Call mcp_capabilities to see the current write directory and enabled tiers.
+Set a YAML frontmatter property on a file (reviewed). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading `#` is stripped from tag values automatically — pass `"tag"` or `"#tag"` interchangeably. JSON-encoded string arrays (e.g. `'["a","b"]'`) are coerced to real arrays. Each write prompts the user for approval via a diff modal before applying. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -452,7 +452,7 @@ Append content to the end of a file (vault-wide). Unrestricted — writes anywhe
 
 **Title:** Create file (vault-wide)
 
-Create a new file (vault-wide). Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Create a new file (vault-wide). Intermediate parent folders are created automatically. Paths whose final component starts with '.' (dotfiles) are rejected. Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -475,7 +475,7 @@ Remove a YAML frontmatter property from a file (vault-wide). Unrestricted — wr
 
 **Title:** Set frontmatter (vault-wide)
 
-Set a YAML frontmatter property on a file (vault-wide). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Set a YAML frontmatter property on a file (vault-wide). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading `#` is stripped from tag values automatically — pass `"tag"` or `"#tag"` interchangeably. JSON-encoded string arrays (e.g. `'["a","b"]'`) are coerced to real arrays. Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|

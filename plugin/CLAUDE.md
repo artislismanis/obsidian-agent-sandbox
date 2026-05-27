@@ -25,7 +25,7 @@ main.ts (Plugin entry, commands, lifecycle, context menu, firewall toggle)
 ├── status-bar.ts        — StatusBarManager + FirewallStatusBar: state + composed tooltip
 ├── terminal-view.ts     — TerminalView: xterm.js + WebSocket to ttyd
 ├── ttyd-client.ts       — Pure functions: polling, auth token, URL building
-├── analyze.ts           — AnalyzeManager: prompt-template runner for "Analyze in Sandbox"
+├── analyse.ts           — AnalyseManager: prompt-template runner for "Analyse in Sandbox"
 ├── session-ui.ts        — Session picker / cleanup modals
 ├── modals.ts            — confirmModal / inputModal helpers (reused across modules)
 ├── activity.ts          — ActivityUi (per-session prefix routing) + AgentOutputNotifier
@@ -39,7 +39,7 @@ main.ts (Plugin entry, commands, lifecycle, context menu, firewall toggle)
 ├── mcp-extensions.ts    — Extensions tier: Dataview / Templater / Tasks / Canvas / Periodic Notes
 ├── mcp-cache.ts         — VaultCache: graph + tag/property counts, invalidated on metadata `resolved`
 ├── permission-tiers.ts  — Tier metadata + reviewsRequired() / vaultWriteTiers() derivations
-├── prompt-template.ts   — Tiny template-string interpolator used by analyze.ts
+├── prompt-template.ts   — Tiny template-string interpolator used by analyse.ts
 ├── templater-adapter.ts — Templater plugin probe + folder-template resolution
 ├── obsidian-internals.ts — Centralised casts for unstable Obsidian internals
 ├── view-types.ts        — VIEW_TYPE_TERMINAL constant (shared between activity.ts and terminal-view.ts to avoid a cycle)

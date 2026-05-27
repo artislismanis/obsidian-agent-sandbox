@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -53,8 +53,6 @@ function makeHost(vaultBase: string) {
 describe("AnalyseManager template loading", () => {
 	let tmpBase: string;
 
-	beforeEach(() => {});
-
 	it("returns an empty list when .oas/prompts is missing", async () => {
 		tmpBase = mkdtempSync(join(tmpdir(), "oas-empty-"));
 		const host = makeHost(tmpBase);
@@ -89,25 +87,6 @@ describe("AnalyseManager template loading", () => {
 		await mgr.prewarm();
 		const cached = await mgr.loadTemplates();
 		expect(cached.map((t) => t.name)).toEqual(["explain"]);
-		rmSync(tmpBase, { recursive: true, force: true });
-	});
-
-	it("refreshTemplates() invalidates the cache", async () => {
-		tmpBase = tmpOasPromptsDir({
-			"a.md": "A\n---\nbody A",
-		});
-		const host = makeHost(tmpBase);
-		const mgr = new AnalyseManager(host);
-		await mgr.prewarm();
-		expect(await mgr.loadTemplates()).toHaveLength(1);
-
-		// Add a new template on disk — cache hides it until refresh.
-		writeFileSync(join(tmpBase, ".oas", "prompts", "b.md"), "B\n---\nbody B", "utf-8");
-		expect(await mgr.loadTemplates()).toHaveLength(1);
-
-		mgr.refreshTemplates();
-		const fresh = await mgr.loadTemplates();
-		expect(fresh).toHaveLength(2);
 		rmSync(tmpBase, { recursive: true, force: true });
 	});
 

@@ -295,7 +295,7 @@ export default class AgentSandboxPlugin extends Plugin {
 				void showSessionCleanup(
 					this.app,
 					{
-						listEmptySessions: () => this.docker.listEmptySessions(),
+						listDetachedSessions: () => this.docker.listDetachedSessions(),
 						killSession: (name) => this.docker.killSession(name),
 					},
 					() => this.isContainerRunning(),

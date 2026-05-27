@@ -41,11 +41,6 @@ export class AnalyseManager {
 		return loaded;
 	}
 
-	/** Invalidate the template cache — picked up on next loadTemplates call. */
-	refreshTemplates(): void {
-		this.cachedTemplates = null;
-	}
-
 	/** Preload and cache templates — call at plugin init to remove the menu race. */
 	async prewarm(): Promise<void> {
 		this.cachedTemplates = await this.readTemplatesFromDisk();

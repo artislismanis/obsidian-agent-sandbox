@@ -87,7 +87,7 @@ Pick `${SANDBOX}` under the active `writeDir` (default `<writeDir>/mcp-test/`). 
 - Tool: `vault_create_folder`
 - Inputs: `{ path: "${SANDBOX}" }`
 
-If `manage` is disabled, **do not call** `vault_create_folder`. Instead, create the sandbox implicitly by running `vault_create { path: "${SANDBOX}/.placeholder.md", content: "sandbox marker\n" }` — Obsidian's `vault.create` materialises intermediate folders. Mark S5.3, S5.4, S5.6 (folder-mutation scenarios) `SKIPPED (manage tier disabled)`.
+If `manage` is disabled, **do not call** `vault_create_folder`. Instead, create the sandbox implicitly by running `vault_create { path: "${SANDBOX}/.placeholder.md", content: "sandbox marker\n" }` — the `vault_create` handler makes explicit `createFolder` calls for any missing intermediate directories, so the sandbox folder will materialise after the call. Mark S5.3, S5.4, S5.6 (folder-mutation scenarios) `SKIPPED (manage tier disabled)`.
 
 If both paths fail, mark all write scenarios `BLOCKED`.
 
@@ -107,7 +107,7 @@ Pick `${PROBE}` per S0.2. Record the **exact tool-name string** the server retur
 | S1.4 | `vault_list` | `{ path: "${SANDBOX}" }` |
 | S1.5 | `vault_search` | `{ query: "the" }` (or any common token) |
 | S1.6 | `vault_search` | `{ query: "qwertyzxcv-no-match-token" }` |
-| S1.7 | `vault_search_fuzzy` | `{ query: "${PROBE_BASENAME_TYPO}" }` |
+| S1.7 | `vault_search_fuzzy` | `{ query: "${PROBE_BASENAME_TYPO}" }` — **full-text content search**, not filename search; the fuzzy match is against file body text |
 | S1.8 | `vault_file_info` | `{ path: "${PROBE}" }` |
 | S1.9 | `vault_tags` | `{}` |
 | S1.10 | `vault_frontmatter` | `{ path: "${PROBE}" }` |
@@ -142,7 +142,7 @@ Default `writeScoped` tools — gated to `writeDir`. All inputs are scoped under
 | S2.4 | `vault_append` | `{ path: "${SANDBOX}/alpha.md", content: "\n\nAppended line.\n" }` |
 | S2.5 | `vault_prepend` | `{ path: "${SANDBOX}/alpha.md", content: "Prepended line.\n\n" }` |
 | S2.6 | `vault_search_replace` | `{ path: "${SANDBOX}/alpha.md", search: "Rewritten", replace: "Replaced" }` — argument is `search`, not `find`. |
-| S2.7 | `vault_patch` | `{ path: "${SANDBOX}/alpha.md", heading: "Alpha", position: "after", content: "Patched paragraph.\n" }` — targets the `Alpha` H1 from S2.1. |
+| S2.7 | `vault_patch` | `{ path: "${SANDBOX}/alpha.md", heading: "Alpha", position: "after", content: "Patched paragraph.\n" }` — targets the `Alpha` H1 from S2.1. Full `position` enum: `before` (before heading line), `start_of_block` (after heading line), `end_of_block` / `after` (end of section, aliases), `replace` (replaces block content). `start_of_block` / `end_of_block` are invalid for line-targeted patches. |
 | S2.8 | `vault_frontmatter_set` | `{ path: "${SANDBOX}/alpha.md", property: "status", value: "draft" }` — the key is `property`, not `key`. |
 | S2.9 | `vault_frontmatter_set` | `{ path: "${SANDBOX}/alpha.md", property: "tags", value: ["x", "y"] }` |
 | S2.10 | `vault_frontmatter_delete` | `{ path: "${SANDBOX}/alpha.md", property: "status" }` |
@@ -257,7 +257,7 @@ Inputs: `{}`. Record which extensions report `enabled`. Skip sub-scenarios for a
 | S8.5 | `vault_templater_create` | inspect schema; create `${SANDBOX}/from-template.md` from any available template. If no templates configured, mark `SKIPPED (no templates)` and paste the schema. | `extensions +TemplaterPlugin` |
 | S8.6 | `vault_canvas_modify` | create a minimal `${SANDBOX}/board.canvas` with one text node (consult the schema) | `extensions` |
 | S8.7 | `vault_canvas_read` | `{ path: "${SANDBOX}/board.canvas" }` | `extensions` |
-| S8.8 | `vault_periodic_note` | `{ }` — defaults to today's daily note. Inspect schema first; capture how it behaves when the note already exists. | `extensions +PeriodicNotesPlugin` |
+| S8.8 | `vault_periodic_note` | `{ }` — defaults to today's daily note. Inspect schema first; capture how it behaves when the note already exists. The default date is derived from the **Obsidian host's clock** (`moment()` in the plugin process), not the container's clock. Pass `{ date: "YYYY-MM-DD" }` to target a specific date. | `extensions +PeriodicNotesPlugin` |
 
 > **Flush + `/compact` before S9.**
 
@@ -275,14 +275,44 @@ Pick `rateLimits.defaultReadsPerMin` from S0.1. Issue `defaultReadsPerMin + 5` c
 
 > **Context budget note:** Each `vault_list` response can be large. To avoid exhausting context, issue the burst via Bash rather than MCP tool calls. Capture only the response that first returns a rate-limit error verbatim; summarise the rest as "200 OK".
 >
+> **Implementation notes from Cell A run (2026-05-26):**
+>
+> 1. **Accept header required.** The plugin's HTTP server requires `Accept: application/json, text/event-stream` on every request, not just `Content-Type`. Without it the server returns `406 Not Acceptable`. Add `-H "Accept: application/json, text/event-stream"` to every curl call.
+>
+> 2. **Session ID required.** The server uses `Mcp-Session-Id` for routing. Send an `initialize` call first to obtain a session ID from the response header, then pass it via `-H "Mcp-Session-Id: $SID"` on every subsequent call. Raw tool calls without a session ID are silently misrouted.
+>
+> 3. **Rate limit is HTTP 200 + `isError:true`, not HTTP 429.** Do not check the HTTP status to detect rate limiting. The error arrives in the result body as `{"result":{"content":[{"type":"text","text":"Rate limit exceeded for vault_list. Try again shortly."}],"isError":true},...}`. Use a precise grep such as `grep -q '"isError":true'` and confirm the text contains "Rate limit exceeded", not just any `isError` response.
+>
+> 4. **Grepping for "rate" false-positives.** A naive `grep -qi "rate"` will match "strategies" in vault file-path content inside the response body. Use `grep -qi '"code":-32029\|rate.limit\|Too Many Requests'` or check `isError:true` alongside the message text.
+>
+> 5. **Prior MCP calls count against the window.** The burst limit is per-minute across the whole session, not just the Bash loop. Calls made earlier in the test (e.g., all of S1) consume budget. The rate limit may therefore trigger before call `defaultReadsPerMin + 5` if the window isn't fresh. Record the actual call index, not just whether the limit was hit.
+>
+> 6. **Host from inside the container is `host.docker.internal`, not `127.0.0.1`.** Use `$OAS_MCP_HOST` (defaults to `host.docker.internal`) and `$OAS_MCP_PORT` (defaults to 28080). The token is in `$OAS_MCP_TOKEN`.
+>
+> Updated example:
+>
 > ```bash
-> # Example burst — replace TOKEN and PORT with values from S0.2 / plugin settings:
+> # 1. Initialize session
+> INIT=$(curl -sS -i \
+>   -H "Authorization: Bearer $OAS_MCP_TOKEN" \
+>   -H "Content-Type: application/json" \
+>   -H "Accept: application/json, text/event-stream" \
+>   -X POST "http://${OAS_MCP_HOST:-host.docker.internal}:${OAS_MCP_PORT:-28080}/mcp" \
+>   -d '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}')
+> SID=$(echo "$INIT" | grep -i "mcp-session-id:" | awk '{print $2}' | tr -d '\r')
+>
+> # 2. Burst
 > for i in $(seq 1 $N); do
->   curl -sS -o /dev/null -w "%{http_code}\n" \
->     -H "Authorization: Bearer $TOKEN" \
+>   RESP=$(curl -sS \
+>     -H "Authorization: Bearer $OAS_MCP_TOKEN" \
 >     -H "Content-Type: application/json" \
->     -X POST "http://127.0.0.1:$PORT/mcp" \
->     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"vault_list","arguments":{}}}'
+>     -H "Accept: application/json, text/event-stream" \
+>     -H "Mcp-Session-Id: $SID" \
+>     -X POST "http://${OAS_MCP_HOST:-host.docker.internal}:${OAS_MCP_PORT:-28080}/mcp" \
+>     -d '{"jsonrpc":"2.0","id":'"$i"',"method":"tools/call","params":{"name":"vault_list","arguments":{}}}')
+>   if echo "$RESP" | grep -q '"isError":true' && echo "$RESP" | grep -qi "rate.limit\|Rate limit exceeded"; then
+>     echo "Rate limit at call $i:"; echo "$RESP"; break
+>   fi
 > done
 > ```
 
@@ -384,6 +414,18 @@ Mark `SKIPPED (no delete-capable tier)` if no available tool can reach the clean
 - Tools that appear in S0.1's `toolsByTier` but weren't exercised — and why.
 - Schemas inspected during the run (S2.7, S5.5, S7.1, S8.3, S8.5, S8.8) — paste verbatim.
 ```
+
+---
+
+## Known design choices
+
+Intentional behaviors that differ from naive expectations. Anomalies matching these are not bugs — record them as PASS with a note.
+
+- **`vault_search_fuzzy` searches content, not filenames.** The fuzzy match is against file body text. Using `${PROBE_BASENAME_TYPO}` as the query will match only if that string appears as text in note content, not by filename similarity.
+- **`vault_patch` position `after` is an alias for `end_of_block`.** Both insert content at the end of the heading's section block. Full enum: `before` (before heading line), `start_of_block` (after heading line), `end_of_block` / `after` (end of section), `replace` (replace block content). `start_of_block` and `end_of_block` are invalid for line-targeted patches.
+- **`vault_periodic_note` uses the Obsidian host clock.** The default date is `moment()` from the plugin process (host machine), not the container's clock. Pass `{ date: "YYYY-MM-DD" }` to target a specific date explicitly.
+- **MCP server force-closes connections on toggle-off.** `closeAllConnections()` terminates all active SSE sessions when MCP is toggled off. Claude CLI sessions see a connection error and must run `/mcp` to reconnect after MCP is re-enabled. Intentional — prevents EADDRINUSE on next start.
+- **Sandbox folder materialises via explicit `createFolder` calls.** The `vault_create` handler creates any missing intermediate directories before writing, so creating a file at `${SANDBOX}/x.md` produces the `${SANDBOX}` folder even without an explicit `vault_create_folder` call.
 
 ---
 

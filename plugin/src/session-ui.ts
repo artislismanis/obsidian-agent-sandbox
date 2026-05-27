@@ -1,6 +1,6 @@
 /**
  * Session-related modal UIs — the Quick-Switcher-style picker over open
- * terminal tabs and the manual "Clean up empty sessions" modal. Extracted
+ * terminal tabs and the manual "Clean up detached sessions" modal. Extracted
  * from main.ts to keep the plugin entry focused on wiring.
  */
 
@@ -55,7 +55,7 @@ export function showSessionPicker(app: App): void {
 }
 
 export interface SessionCleanupApi {
-	listEmptySessions: () => Promise<string[]>;
+	listDetachedSessions: () => Promise<string[]>;
 	killSession: (name: string) => Promise<void>;
 }
 
@@ -74,9 +74,9 @@ export async function showSessionCleanup(
 	}
 	let candidates: string[];
 	try {
-		candidates = await api.listEmptySessions();
+		candidates = await api.listDetachedSessions();
 	} catch (err) {
-		// listEmptySessions throws on docker/tmux probe failure (vs a silent
+		// listDetachedSessions throws on docker/tmux probe failure (vs a silent
 		// `catch → []` that would make a daemon outage look like "all clean").
 		// Surface the cause so the cleanup modal doesn't vanish unexplained.
 		new Notice(`Could not list sessions: ${errMsg(err)}`);

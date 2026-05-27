@@ -226,10 +226,7 @@ export class ObsidianMcpServer {
 			// `this.httpServer = null` runs while the OS socket is still
 			// bound, and the next start() hits EADDRINUSE — auto-disabling
 			// `mcpEnabled` with "MCP turned itself off" and no actionable
-			// error. closeAllConnections is Node ≥ 18.2. User-visible
-			// side-effect: Claude CLI sessions see the force-close as a
-			// connection error; after re-enabling MCP, run `/mcp` in the
-			// terminal to reconnect.
+			// error. closeAllConnections is Node ≥ 18.2.
 			server.closeAllConnections?.();
 			let closeTimer: ReturnType<typeof setTimeout> | undefined;
 			await Promise.race([

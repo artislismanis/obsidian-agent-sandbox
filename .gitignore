@@ -65,3 +65,4 @@ tmux-*.log
 
 # test artifacts
 plugin/test/fixtures/vault/.oas/memory.json
+container/example-vault/.oas/memory.json

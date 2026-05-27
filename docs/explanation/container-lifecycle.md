@@ -78,4 +78,4 @@ On plugin disable (`onunload`):
 
 ## Multiple terminals
 
-Each "Open Sandbox Terminal" creates an independent tab with its own WebSocket connection and unique `instanceId`. Sessions with a `sessionName` attach to a tmux session; without, they get a bare bash shell. Stale unattached sessions can be cleaned up via `Sandbox: Clean up empty sessions` (manual — no auto-GC).
+Each "Open Sandbox Terminal" creates an independent tab with its own WebSocket connection and unique `instanceId`. Sessions with a `sessionName` attach to a tmux session; without, they get a bare bash shell. Stale unattached sessions can be cleaned up via `Sandbox: Clean up detached sessions` (manual — no auto-GC).
