@@ -28,9 +28,9 @@ Explain what Claude should do and which tools to chain.
 
 Restart Claude (or the whole container) to pick up new skills.
 
-## `.claude/prompts/` — Analyze-in-Sandbox templates
+## `.claude/prompts/` — Analyse-in-Sandbox templates
 
-Populated via `Right-click a note → Analyze in Sandbox → <template-name>`. Each template is:
+Populated via `Right-click a note → Analyse in Sandbox → <template-name>`. Each template is:
 
 ```
 Template Title

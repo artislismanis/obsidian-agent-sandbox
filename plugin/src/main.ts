@@ -2,7 +2,7 @@ import type { TFile, WorkspaceLeaf } from "obsidian";
 import { Menu, Notice, Plugin, debounce } from "obsidian";
 import { getVaultBasePath } from "./obsidian-internals";
 import { confirmModal, inputModal } from "./modals";
-import { AnalyzeManager } from "./analyze";
+import { AnalyseManager } from "./analyse";
 import { type AgentSandboxSettings, DEFAULT_SETTINGS, AgentSandboxSettingTab } from "./settings";
 import { DockerManager } from "./docker";
 import type { ContainerState } from "./status-bar";
@@ -48,7 +48,7 @@ export default class AgentSandboxPlugin extends Plugin {
 	private lastKnownContainerId: string = "";
 	private activityUi!: ActivityUi;
 	private agentOutput!: AgentOutputNotifier;
-	private analyze!: AnalyzeManager;
+	private analyse!: AnalyseManager;
 
 	private debouncedSaveSettings = debounce(
 		async () => {
@@ -123,13 +123,13 @@ export default class AgentSandboxPlugin extends Plugin {
 			() => this.settings.agentOutputNotify,
 			() => this.settings.vaultWriteDir,
 		);
-		this.analyze = new AnalyzeManager({
+		this.analyse = new AnalyseManager({
 			app: this.app,
 			isContainerRunning: () => this.isContainerRunning(),
 			activateTerminalView: (sessionName, initialPrompt) =>
 				this.activateTerminalView(sessionName, initialPrompt),
 		});
-		void this.analyze
+		void this.analyse
 			.prewarm()
 			.catch((err) => logger.warn("Plugin", `Template prewarm failed: ${errMsg(err)}`));
 
@@ -311,29 +311,29 @@ export default class AgentSandboxPlugin extends Plugin {
 			}
 		});
 
-		// obsidian://agent-sandbox/analyze?path=<vault/path>&template=<name>
-		this.registerObsidianProtocolHandler("agent-sandbox/analyze", async (params) => {
+		// obsidian://agent-sandbox/analyse?vault=<name>&path=<vault/path>&template=<name>
+		this.registerObsidianProtocolHandler("agent-sandbox/analyse", async (params) => {
 			try {
 				const path = params.path;
 				if (!path) {
-					new Notice("Analyze: missing 'path' parameter.");
+					new Notice("Analyse: missing 'path' parameter.");
 					return;
 				}
-				await this.analyze.runAnalyze(path, params.template);
+				await this.analyse.runAnalyse(path, params.template);
 			} catch (e) {
 				// Obsidian's protocol-handler dispatcher swallows unhandled
 				// rejections silently — external tooling triggering this URI
 				// would see no visible failure (e.g. template load throws).
-				logger.error("Plugin", "agent-sandbox/analyze handler failed", e);
-				new Notice(`Analyze failed: ${errMsg(e)}`);
+				logger.error("Plugin", "agent-sandbox/analyse handler failed", e);
+				new Notice(`Analyse failed: ${errMsg(e)}`);
 			}
 		});
 
-		// File context menu → "Analyze in Sandbox" submenu
+		// File context menu → "Analyse in Sandbox" submenu
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu, file) => {
 				if (!("extension" in file)) return;
-				this.analyze.attachFileMenu(menu, file as TFile);
+				this.analyse.attachFileMenu(menu, file as TFile);
 			}),
 		);
 

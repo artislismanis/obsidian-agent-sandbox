@@ -642,7 +642,7 @@ export class TerminalView extends ItemView {
 				);
 			}
 
-			// Inject an initial Claude prompt (from "Analyze in Sandbox" / URI
+			// Inject an initial Claude prompt (from "Analyse in Sandbox" / URI
 			// handler). Runs after any session-attach command so it lands
 			// inside the tmux session.
 			//

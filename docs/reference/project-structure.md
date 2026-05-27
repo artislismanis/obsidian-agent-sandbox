@@ -16,7 +16,7 @@ obsidian-agent-sandbox/
 │   │   ├── mcp-extensions.ts    Plugin-integration tools (Canvas, Dataview, Tasks, Templater, Periodic Notes)
 │   │   ├── mcp-cache.ts         VaultCache — metadata-invalidated graph cache
 │   │   ├── permission-tiers.ts  Tier metadata + reviewsRequired() / vaultWriteTiers()
-│   │   ├── analyze.ts           AnalyzeManager (file-menu "Analyze in Sandbox")
+│   │   ├── analyse.ts           AnalyseManager (file-menu "Analyse in Sandbox")
 │   │   ├── activity.ts          ActivityUi + AgentOutputNotifier
 │   │   ├── session-ui.ts        Session picker / cleanup modals
 │   │   ├── modals.ts            confirmModal / inputModal helpers

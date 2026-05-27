@@ -1,4 +1,4 @@
-/** "Analyze in Sandbox": URI handlers, file-menu submenu, prompt-template loader. */
+/** "Analyse in Sandbox": URI handlers, file-menu submenu, prompt-template loader. */
 
 import type { App, Menu, TFile } from "obsidian";
 import { Notice } from "obsidian";
@@ -15,18 +15,18 @@ export interface PromptTemplate {
 	body: string;
 }
 
-/** What the plugin needs to give us to drive the Analyze flow. */
-export interface AnalyzeHost {
+/** What the plugin needs to give us to drive the Analyse flow. */
+export interface AnalyseHost {
 	app: App;
 	isContainerRunning: () => boolean;
 	activateTerminalView: (sessionName?: string, initialPrompt?: string) => Promise<unknown>;
 }
 
-export class AnalyzeManager {
+export class AnalyseManager {
 	private cachedTemplates: PromptTemplate[] | null = null;
 	private lastRefreshAttemptAt = 0;
 
-	constructor(private host: AnalyzeHost) {}
+	constructor(private host: AnalyseHost) {}
 
 	/**
 	 * Load prompt templates from `<vault>/.oas/prompts/*.md`. First non-empty
@@ -82,7 +82,7 @@ export class AnalyzeManager {
 	}
 
 	/** Open a terminal + start Claude with a templated (or default) prompt. */
-	async runAnalyze(vaultPath: string, templateName?: string): Promise<void> {
+	async runAnalyse(vaultPath: string, templateName?: string): Promise<void> {
 		if (!this.host.isContainerRunning()) {
 			new Notice("Sandbox container is not running.");
 			return;
@@ -93,15 +93,15 @@ export class AnalyzeManager {
 	}
 
 	/** Modal-input fallback for when no templates are configured. */
-	async runAnalyzeCustom(vaultPath: string): Promise<void> {
+	async runAnalyseCustom(vaultPath: string): Promise<void> {
 		if (!this.host.isContainerRunning()) {
 			new Notice("Sandbox container is not running.");
 			return;
 		}
 		const body = await inputModal(this.host.app, {
-			title: "Analyze in Sandbox",
+			title: "Analyse in Sandbox",
 			message: `Prompt for ${vaultPath} — @${vaultPath} will be appended automatically.`,
-			placeholder: "e.g. Summarize this note in 3 bullet points",
+			placeholder: "e.g. Summarise this note in 3 bullet points",
 			ctaLabel: "Run",
 		});
 		if (!body) return;
@@ -110,7 +110,7 @@ export class AnalyzeManager {
 	}
 
 	/**
-	 * Append an "Analyze in Sandbox" submenu to an Obsidian file menu.
+	 * Append an "Analyse in Sandbox" submenu to an Obsidian file menu.
 	 * Uses the cached template list (pre-populated by {@link prewarm}) to
 	 * build submenu items synchronously — no async race against menu render.
 	 * Kicks off a refresh in the background so subsequent menu opens reflect
@@ -132,26 +132,26 @@ export class AnalyzeManager {
 					// right-click retries instead of being pinned to the
 					// rate-limit window for 30 seconds.
 					this.lastRefreshAttemptAt = 0;
-					logger.warn("Analyze", "Template refresh failed", err);
+					logger.warn("Analyse", "Template refresh failed", err);
 				});
 		}
 
-		// Wrap menu callbacks so a rejected runAnalyze/runAnalyzeCustom promise
+		// Wrap menu callbacks so a rejected runAnalyse/runAnalyseCustom promise
 		// becomes a Notice + log entry instead of an unhandled rejection.
 		const runCustomSafe = (path: string): void => {
-			void this.runAnalyzeCustom(path).catch((err) => {
-				logger.error("Analyze", "runAnalyzeCustom failed", err);
-				new Notice(`Analyze failed: ${errMsg(err)}`);
+			void this.runAnalyseCustom(path).catch((err) => {
+				logger.error("Analyse", "runAnalyseCustom failed", err);
+				new Notice(`Analyse failed: ${errMsg(err)}`);
 			});
 		};
 		const runTemplateSafe = (path: string, name: string): void => {
-			void this.runAnalyze(path, name).catch((err) => {
-				logger.error("Analyze", `runAnalyze '${name}' failed`, err);
-				new Notice(`Analyze failed: ${errMsg(err)}`);
+			void this.runAnalyse(path, name).catch((err) => {
+				logger.error("Analyse", `runAnalyse '${name}' failed`, err);
+				new Notice(`Analyse failed: ${errMsg(err)}`);
 			});
 		};
 		menu.addItem((item) => {
-			item.setTitle("Analyze in Sandbox").setIcon("bot");
+			item.setTitle("Analyse in Sandbox").setIcon("bot");
 			const submenu = tryOpenSubmenu(item);
 			const container: Pick<Menu, "addItem"> = submenu ?? menu;
 			if (templates.length === 0) {
@@ -173,7 +173,7 @@ export class AnalyzeManager {
 
 	private async buildPrompt(vaultPath: string, templateName?: string): Promise<string | null> {
 		if (!templateName) {
-			return `Please analyze @${vaultPath}.`;
+			return `Please analyse @${vaultPath}.`;
 		}
 		const templates = await this.loadTemplates();
 		const tmpl = templates.find((t) => t.name === templateName);
