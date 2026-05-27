@@ -33,16 +33,6 @@
 					}
 				]
 			}
-		],
-		"Notification": [
-			{
-				"hooks": [
-					{
-						"type": "command",
-						"command": "bash .claude/hooks/notify-status.sh awaiting_input"
-					}
-				]
-			}
 		]
 	}
 }
