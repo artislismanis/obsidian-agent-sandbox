@@ -46,7 +46,6 @@ export interface AgentSandboxSettings {
 	containerMemory: string;
 	containerCpus: string;
 	autoEnableFirewall: boolean;
-	sudoPassword: string;
 	mcpEnabled: boolean;
 	mcpPort: number;
 	mcpBindAddress: string;
@@ -119,10 +118,6 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	containerMemory: "4G",
 	containerCpus: "2",
 	autoEnableFirewall: true,
-	// Empty default — sudo is disabled until the user explicitly sets a password.
-	// Matches container/.env.example, which also ships no default to avoid
-	// encouraging a known weak credential to leak into committed .env files.
-	sudoPassword: "",
 	mcpEnabled: true,
 	mcpPort: 28080,
 	// Default 127.0.0.1 — host-only. The container reaches the host MCP server
@@ -846,15 +841,22 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			}
 		});
 
-		this.addValidatedTextSetting(el, {
-			name: "Sudo password",
-			desc:
+		new Setting(el)
+			.setName("Sudo password")
+			.setDesc(
 				"Password for the narrow apt-get/apt sudo inside the container. " +
-				"Used by humans during interactive sessions to test-install tools. " +
-				"Matches the default in container/.env.example.",
-			key: "sudoPassword",
-			placeholder: "(use container/.env value)",
-			requiresRestart: true,
-		});
+					"Used by humans during interactive sessions to test-install tools. " +
+					"Stored outside the vault so the container cannot read it from disk." +
+					RESTART_CONTAINER_SUFFIX,
+			)
+			.addText((text) => {
+				text.setPlaceholder("(use container/.env value)")
+					.setValue(this.plugin.sudoPassword)
+					.onChange((value) => {
+						this.plugin.sudoPassword = value;
+						this.plugin.saveSudoPassword();
+						this.markRestart();
+					});
+			});
 	}
 }
