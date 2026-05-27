@@ -609,6 +609,54 @@ describe("MCP tool handlers", () => {
 			expect(r.text.startsWith("Invalid arguments")).toBe(true);
 			expect(r.text).toContain("value");
 		});
+
+		it("coerces JSON-string array to native array", async () => {
+			await getTool(tools, "vault_frontmatter_set").handler({
+				path: "agent-workspace/draft.md",
+				property: "tags",
+				value: '["x","y"]',
+			});
+			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+			const fm: Record<string, unknown> = {};
+			callback(fm);
+			expect(fm.tags).toEqual(["x", "y"]);
+		});
+
+		it("coerces JSON-string object to native object", async () => {
+			await getTool(tools, "vault_frontmatter_set").handler({
+				path: "agent-workspace/draft.md",
+				property: "meta",
+				value: '{"key":"val"}',
+			});
+			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+			const fm: Record<string, unknown> = {};
+			callback(fm);
+			expect(fm.meta).toEqual({ key: "val" });
+		});
+
+		it("leaves non-JSON strings unchanged", async () => {
+			await getTool(tools, "vault_frontmatter_set").handler({
+				path: "agent-workspace/draft.md",
+				property: "status",
+				value: "active",
+			});
+			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+			const fm: Record<string, unknown> = {};
+			callback(fm);
+			expect(fm.status).toBe("active");
+		});
+
+		it("leaves invalid JSON array-shaped strings unchanged", async () => {
+			await getTool(tools, "vault_frontmatter_set").handler({
+				path: "agent-workspace/draft.md",
+				property: "tags",
+				value: "[not valid",
+			});
+			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+			const fm: Record<string, unknown> = {};
+			callback(fm);
+			expect(fm.tags).toBe("[not valid");
+		});
 	});
 
 	describe("vault_rename", () => {
@@ -953,6 +1001,19 @@ describe("MCP tool handlers", () => {
 			// they should all be listed. agent-workspace/draft.md must not.
 			expect(r.text).toContain("notes/hello.md");
 			expect(r.text).not.toContain("agent-workspace/draft.md");
+		});
+
+		it("coerces JSON-string array to native array when applying", async () => {
+			await getTool(tools, "vault_batch_frontmatter").handler({
+				folder: "agent-workspace",
+				property: "tags",
+				value: '["a","b"]',
+				dryRun: false,
+			});
+			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+			const fm: Record<string, unknown> = {};
+			callback(fm);
+			expect(fm.tags).toEqual(["a", "b"]);
 		});
 	});
 

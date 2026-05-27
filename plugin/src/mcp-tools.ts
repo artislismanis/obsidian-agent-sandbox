@@ -253,6 +253,21 @@ function isSafeFrontmatterProperty(name: string): boolean {
 	return !FORBIDDEN_FM_PROPS.has(name);
 }
 
+// LLMs sometimes pass arrays/objects as JSON-encoded strings (e.g. '["a","b"]').
+// Unwrap those so Obsidian's tag parser sees a real array, not a quoted string.
+function coerceJsonValue(value: unknown): unknown {
+	if (typeof value !== "string") return value;
+	const s = value.trim();
+	if ((s.startsWith("[") && s.endsWith("]")) || (s.startsWith("{") && s.endsWith("}"))) {
+		try {
+			return JSON.parse(s);
+		} catch {
+			// not valid JSON — leave as-is
+		}
+	}
+	return value;
+}
+
 /** Parallel-chunked iteration over markdown files; handler returning true stops the walk.
  *
  * Returns the read-failure count so callers can surface a "scan skipped N
@@ -1483,7 +1498,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				name: `vault_frontmatter_set${suffix}`,
 				tier,
 				title: `Set frontmatter${scopeLabel}`,
-				description: `Set a YAML frontmatter property on a file${scopeLabel}.${note}`,
+				description: `Set a YAML frontmatter property on a file${scopeLabel}. Replaces any existing value; there is no append-style variant.${note}`,
 				inputSchema: {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),
@@ -1498,6 +1513,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						return error(
 							`Property name '${property}' is not allowed (reserved or invalid).`,
 						);
+					const coercedValue = coerceJsonValue(value);
 					const result = resolveForWrite({ file, path });
 					if (!result.ok) return result.error;
 					const f = result.file;
@@ -1513,12 +1529,12 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						operation: "frontmatter_set",
 						filePath: f.path,
 						oldContent: JSON.stringify(oldFm, null, 2),
-						newContent: JSON.stringify({ ...oldFm, [property]: value }, null, 2),
+						newContent: JSON.stringify({ ...oldFm, [property]: coercedValue }, null, 2),
 						description: `Set frontmatter '${property}' on ${f.path}`,
 						review,
 						apply: () =>
 							app.fileManager.processFrontMatter(f, (fm) => {
-								fm[property] = value;
+								fm[property] = coercedValue;
 							}),
 						successMsg: `Set ${property} on ${f.path}`,
 						// Recheck full content so external edits during a long
@@ -2213,6 +2229,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// `hasValue` distinguishes set vs delete; the value itself can
 				// legitimately be `null` or `false`.
 				const hasValue = value !== undefined;
+				const coercedValue = hasValue ? coerceJsonValue(value) : undefined;
 				if (!isSafeFrontmatterProperty(property))
 					return error(
 						`Property name '${property}' is not allowed (reserved or invalid).`,
@@ -2278,7 +2295,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						const oldFm = preReviewFm.get(file.path) ?? {};
 						let newFm: Record<string, unknown>;
 						if (hasValue) {
-							newFm = { ...oldFm, [property]: value };
+							newFm = { ...oldFm, [property]: coercedValue };
 						} else {
 							const { [property]: _dropped, ...rest } = oldFm;
 							newFm = rest;
@@ -2337,7 +2354,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 							}
 							await app.fileManager.processFrontMatter(file, (fm) => {
 								if (hasValue) {
-									fm[property] = value;
+									fm[property] = coercedValue;
 								} else {
 									delete fm[property];
 								}

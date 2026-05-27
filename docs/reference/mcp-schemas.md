@@ -264,7 +264,7 @@ Remove a YAML frontmatter property from a file (within write directory). Restric
 
 **Title:** Set frontmatter (within write directory)
 
-Set a YAML frontmatter property on a file (within write directory). Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Set a YAML frontmatter property on a file (within write directory). Replaces any existing value; there is no append-style variant. Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -368,7 +368,7 @@ Remove a YAML frontmatter property from a file (reviewed). Each write prompts th
 
 **Title:** Set frontmatter (reviewed)
 
-Set a YAML frontmatter property on a file (reviewed). Each write prompts the user for approval via a diff modal before applying. Call mcp_capabilities to see the current write directory and enabled tiers.
+Set a YAML frontmatter property on a file (reviewed). Replaces any existing value; there is no append-style variant. Each write prompts the user for approval via a diff modal before applying. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -472,7 +472,7 @@ Remove a YAML frontmatter property from a file (vault-wide). Unrestricted — wr
 
 **Title:** Set frontmatter (vault-wide)
 
-Set a YAML frontmatter property on a file (vault-wide). Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Set a YAML frontmatter property on a file (vault-wide). Replaces any existing value; there is no append-style variant. Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
