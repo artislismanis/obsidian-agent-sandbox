@@ -92,7 +92,7 @@ export class StatusBarManager {
 
 	private render(): void {
 		const base = STATE_DISPLAY[this.state];
-		const badge = this.attentionCount > 0 ? " \u26A0" : "";
+		const badge = this.attentionCount > 0 ? " \uD83D\uDD14" : "";
 		this.el.setText(base + badge);
 	}
 }

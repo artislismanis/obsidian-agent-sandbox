@@ -13,12 +13,16 @@
 # the plugin at docker compose up). Session name is picked up from tmux
 # when available.
 #
+# Wired hooks: UserPromptSubmit → working, Stop → idle.
+# PreToolUse fires per tool use (too noisy for a clean once-per-turn signal).
+# Notification under bypassPermissions fires after Stop, leaving status stuck
+# at awaiting_input when no prompt is pending — so it is not wired.
+#
 # Implementation note: pipes JSON-RPC through the stdio→HTTP proxy at
 # .claude/scripts/obsidian-mcp-proxy.js, which performs the MCP
-# `initialize` handshake, manages the session id, and forwards the
-# `tools/call`. Talking directly to the HTTP endpoint bypasses the
-# handshake and the SDK rejects the request, so the previous direct-curl
-# implementation silently no-op'd.
+# `initialize` handshake, manages the session id, and forwards tool calls.
+# Talking directly to the HTTP endpoint skips the MCP handshake and the SDK
+# rejects the request, so tool calls go through the proxy instead.
 
 # `set -u` only — `set -e` would defeat the "silent failures by design"
 # contract by aborting on jq/tmux/node errors before the trailing `|| true`.

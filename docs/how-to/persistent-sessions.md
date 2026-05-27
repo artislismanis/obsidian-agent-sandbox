@@ -17,7 +17,7 @@ Click the status-bar sandbox pill to open its menu. Live tmux sessions are liste
 
 ## Cleanup
 
-Unattached sessions pile up. **Sandbox: Clean up empty sessions** lists candidates with per-row checkboxes — kill exactly the ones you don't want.
+Unattached sessions pile up. **Sandbox: Clean up detached sessions** lists candidates with per-row checkboxes — kill exactly the ones you don't want.
 
 ## Configuration
 

@@ -24,6 +24,8 @@ See `how-to/configure-firewall.md` for adding entries and `--list-sources` for a
 
 ## Layer 3 — MCP permission tiers
 
+**Reconnect after toggle.** When MCP is toggled off, the server calls `closeAllConnections()` to ensure the OS port is fully released before the next start. As a side effect, any Claude CLI session using the server sees a connection error and must run `/mcp` to reconnect after MCP is re-enabled.
+
 The MCP server's tools are split into two kinds of tier:
 
 **Always-on (capabilities)** — enabled whenever MCP is on:
@@ -66,6 +68,8 @@ Neither layer prevents malicious use — they make it visible after the fact.
 **Trusted**:
 - You (the user) running Obsidian on your machine.
 - Claude as an agent, under the observation of a human in the loop.
+
+**Sudo password isolation.** The optional sudo password (used to gate `apt-get` inside the container) is stored on the host at `~/.config/obsidian-agent-sandbox/secrets.json` (mode 0600, directory mode 0700). This path is not mounted inside the container, so the agent cannot read or modify the password.
 
 **Not trusted**:
 - Arbitrary code the agent might execute or download.

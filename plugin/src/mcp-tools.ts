@@ -1,6 +1,7 @@
 import type { App, TFile, CachedMetadata } from "obsidian";
 import { prepareSimpleSearch, prepareFuzzySearch } from "obsidian";
 import { z } from "zod/v4";
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { isPathWithinDir, isPathAllowed, pathHasParentSegment } from "./validation";
 import type { WriteOperation } from "./diff-review-modal";
 import { registerExtensionTools } from "./mcp-extensions";
@@ -113,7 +114,11 @@ export function defineTool<S extends Record<string, z.ZodType>>(def: {
 			const data = parsed.data as z.infer<z.ZodObject<S>>;
 			if (def.refine) {
 				const refineErr = def.refine(data);
-				if (refineErr) return error(`Invalid arguments: ${refineErr}`);
+				if (refineErr)
+					throw new McpError(
+						ErrorCode.InvalidParams,
+						`Input validation error: ${refineErr}`,
+					);
 			}
 			return def.handler(data);
 		},
@@ -239,6 +244,9 @@ export function validateNewVaultPath(
 	if (!isPathAllowedByFilter(path, pathFilter))
 		return error("Path is blocked by allow/block list.");
 	if (!isVaultPathSafe(app, path)) return error("Path resolves outside the vault (symlink).");
+	const basename = path.split("/").pop() ?? path;
+	if (basename.startsWith("."))
+		return error("Path may not create a dotfile (basename starting with '.').");
 	return null;
 }
 
@@ -251,6 +259,37 @@ const FORBIDDEN_FM_PROPS = new Set(["__proto__", "constructor", "prototype"]);
 function isSafeFrontmatterProperty(name: string): boolean {
 	if (typeof name !== "string" || name.length === 0) return false;
 	return !FORBIDDEN_FM_PROPS.has(name);
+}
+
+// LLMs sometimes pass arrays/objects as JSON-encoded strings (e.g. '["a","b"]').
+// Unwrap those so Obsidian's tag parser sees a real array, not a quoted string.
+function coerceJsonValue(value: unknown): unknown {
+	if (typeof value !== "string") return value;
+	const s = value.trim();
+	if ((s.startsWith("[") && s.endsWith("]")) || (s.startsWith("{") && s.endsWith("}"))) {
+		try {
+			return JSON.parse(s);
+		} catch {
+			// not valid JSON — leave as-is
+		}
+	}
+	return value;
+}
+
+function stripTagHash(tag: string): string {
+	return tag.startsWith("#") ? tag.slice(1) : tag;
+}
+
+// Coerce JSON-string inputs then apply property-specific normalisation.
+// Tags: strip leading # to match Obsidian's native YAML frontmatter convention.
+function normalizeFrontmatterValue(property: string, value: unknown): unknown {
+	const coerced = coerceJsonValue(value);
+	if (property === "tags") {
+		if (Array.isArray(coerced))
+			return coerced.map((v) => (typeof v === "string" ? stripTagHash(v) : v));
+		if (typeof coerced === "string") return stripTagHash(coerced);
+	}
+	return coerced;
 }
 
 /** Parallel-chunked iteration over markdown files; handler returning true stops the walk.
@@ -401,7 +440,18 @@ export interface BuildToolsOptions {
 	reviewBatch?: ReviewBatchFn;
 	cache?: { get<T>(key: string, compute: () => T): T };
 	onActivity?: OnActivity;
+	onMcpWrite?: (path: string) => void;
 	enabledTiers?: ReadonlySet<PermissionTier>;
+}
+
+// vault.createFolder throws if any ancestor is absent — walk the tree so
+// agents can write into brand-new nested paths in one shot.
+async function ensureParentFolder(app: App, filePath: string): Promise<void> {
+	const parentPath = filePath.split("/").slice(0, -1).join("/");
+	if (!parentPath) return;
+	if (app.vault.getAbstractFileByPath(parentPath)) return;
+	await ensureParentFolder(app, parentPath);
+	await app.vault.createFolder(parentPath);
 }
 
 export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
@@ -413,6 +463,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		reviewBatch: reviewBatchFn,
 		cache,
 		onActivity,
+		onMcpWrite,
 		enabledTiers = ALL_TIERS,
 	} = opts;
 	const tools: McpToolDef[] = [];
@@ -493,12 +544,20 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			title: "List files",
 			description: "List files in the vault. Optionally filter by folder or extension.",
 			inputSchema: {
-				folder: z.string().optional().describe("Filter by folder path"),
+				folder: z.string().optional().describe("Filter by folder path (alias: path)"),
+				path: z.string().optional().describe("Alias for folder"),
 				extension: z.string().optional().describe("Filter by extension (e.g. md, json)"),
 			},
-			handler: async ({ folder, extension }) => {
+			handler: async ({ folder, path: pathArg, extension }) => {
+				const folderFilter = folder ?? pathArg;
+				if (folderFilter) {
+					const abstract = app.vault.getAbstractFileByPath(folderFilter);
+					if (!abstract) return error(`Folder not found: ${folderFilter}`);
+					if (!("children" in abstract)) return error(`Not a folder: ${folderFilter}`);
+				}
 				let files = app.vault.getFiles();
-				if (folder) files = files.filter((f) => isPathWithinDir(f.path, folder));
+				if (folderFilter)
+					files = files.filter((f) => isPathWithinDir(f.path, folderFilter));
 				if (extension) files = files.filter((f) => f.extension === extension);
 				// Apply pathFilter so blocklisted regions don't leak file
 				// paths — otherwise `vault_list({folder: "secrets"})`
@@ -558,7 +617,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			tier: "read",
 			title: "Fuzzy search vault",
 			description:
-				"Fuzzy full-text search across all markdown files — tolerates typos and approximate matches. Results are score-sorted.",
+				"Fuzzy full-text search across all markdown files — matches note content, not file names. Tolerates typos and approximate matches. Results are score-sorted.",
 			inputSchema: {
 				query: z.string().describe("Search query text (fuzzy matched)"),
 				limit: z.coerce.number().optional().describe("Max results (default 20)"),
@@ -1287,6 +1346,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		// server runtime also wraps throws, but mirroring gateVaultWrite's
 		// structure keeps both paths returning well-formed McpToolResult.
 		try {
+			onMcpWrite?.(op.filePath);
 			const applyResult = await op.apply();
 			const msg = op.successMsg.replace("{result}", applyResult ?? "");
 			return text(msg);
@@ -1325,7 +1385,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				name: `vault_create${suffix}`,
 				tier,
 				title: `Create file${scopeLabel}`,
-				description: `Create a new file${scopeLabel}.${note}`,
+				description: `Create a new file${scopeLabel}. Intermediate parent folders are created automatically. Paths whose final component starts with '.' (dotfiles) are rejected.${note}`,
 				inputSchema: {
 					path: z.string().describe("Path from vault root"),
 					content: z.string().optional().describe("Initial content (default empty)"),
@@ -1369,6 +1429,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						review,
 						apply: () =>
 							withTemplaterHookSuppressed(app, async () => {
+								await ensureParentFolder(app, path);
 								const created = await app.vault.create(path, content);
 								// Capture the path before Templater runs — when a
 								// template calls `tp.file.move(...)`, Obsidian mutates
@@ -1480,7 +1541,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				name: `vault_frontmatter_set${suffix}`,
 				tier,
 				title: `Set frontmatter${scopeLabel}`,
-				description: `Set a YAML frontmatter property on a file${scopeLabel}.${note}`,
+				description: `Set a YAML frontmatter property on a file${scopeLabel}. Pass \`append: true\` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading \`#\` is stripped from tag values automatically — pass \`"tag"\` or \`"#tag"\` interchangeably. JSON-encoded string arrays (e.g. \`'["a","b"]'\`) are coerced to real arrays.${note}`,
 				inputSchema: {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),
@@ -1488,13 +1549,29 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					value: z
 						.unknown()
 						.describe("Property value — string, number, boolean, array, or object"),
+					append: coercedBoolean()
+						.optional()
+						.describe(
+							"Add to existing array instead of replacing it (default false). When the current value is not an array it is wrapped in one first.",
+						),
 				},
 				refine: requireFileOrPath,
-				handler: async ({ file, path, property, value }) => {
+				handler: async ({ file, path, property, value, append = false }) => {
 					if (!isSafeFrontmatterProperty(property))
 						return error(
 							`Property name '${property}' is not allowed (reserved or invalid).`,
 						);
+					const normalizedValue = normalizeFrontmatterValue(property, value);
+					// Merges `normalizedValue` into `existing` when append mode is on.
+					// null/undefined existing → just set; scalar existing → wrap in array first.
+					const mergeAppend = (existing: unknown): unknown => {
+						if (!append || existing == null) return normalizedValue;
+						const base = Array.isArray(existing) ? existing : [existing];
+						const additions = Array.isArray(normalizedValue)
+							? normalizedValue
+							: [normalizedValue];
+						return [...base, ...additions.filter((v) => !base.includes(v))];
+					};
 					const result = resolveForWrite({ file, path });
 					if (!result.ok) return result.error;
 					const f = result.file;
@@ -1510,12 +1587,16 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						operation: "frontmatter_set",
 						filePath: f.path,
 						oldContent: JSON.stringify(oldFm, null, 2),
-						newContent: JSON.stringify({ ...oldFm, [property]: value }, null, 2),
+						newContent: JSON.stringify(
+							{ ...oldFm, [property]: mergeAppend(oldFm[property]) },
+							null,
+							2,
+						),
 						description: `Set frontmatter '${property}' on ${f.path}`,
 						review,
 						apply: () =>
 							app.fileManager.processFrontMatter(f, (fm) => {
-								fm[property] = value;
+								fm[property] = mergeAppend(fm[property]);
 							}),
 						successMsg: `Set ${property} on ${f.path}`,
 						// Recheck full content so external edits during a long
@@ -1779,9 +1860,17 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						.describe("Target heading text (e.g. '## Details')"),
 					line: z.coerce.number().optional().describe("Target line number (1-based)"),
 					position: z
-						.enum(["before", "after", "replace"])
+						.enum(["before", "after", "replace", "start_of_block", "end_of_block"])
 						.optional()
-						.describe("Where to insert relative to target (default 'after')"),
+						.describe(
+							"Where to insert relative to target (default 'after').\n" +
+								"With a heading target: 'before' inserts before the heading line; " +
+								"'start_of_block' inserts immediately after the heading line (before the section body); " +
+								"'end_of_block' inserts at the end of the section; " +
+								"'after' is an alias for 'end_of_block'.\n" +
+								"With a line target: 'before', 'after', 'replace' are supported; " +
+								"'start_of_block' and 'end_of_block' are not valid for line targets.",
+						),
 				},
 				refine: requireFileOrPath,
 				handler: async ({
@@ -1800,44 +1889,61 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 
 					if (!headingArg && lineArg === undefined)
 						return error("Provide either 'heading' or 'line' target.");
-					if (headingArg && position !== "after")
+					if (headingArg && position === "replace")
 						return error(
-							"Heading targets only support position='after'. Use a line target for before/replace.",
+							"position='replace' is not valid for heading targets. Use a line target for replace.",
 						);
 
 					if (headingArg) {
-						// Heading mode only supports position='after' (guarded
-						// above). Compute endLine directly from heading bounds.
 						const cache = app.metadataCache.getFileCache(f);
 						const headings = cache?.headings ?? [];
 						const match = headings.find(
 							(h) => h.heading === headingArg.replace(/^#+\s*/, ""),
 						);
 						if (!match) return error(`Heading '${headingArg}' not found.`);
+						const headingLine = match.position.start.line;
 						const matchLevel = match.level;
-						let endLine = lines.length;
 						const matchIdx = headings.indexOf(match);
 						const next = headings
 							.slice(matchIdx + 1)
 							.find((h) => h.level <= matchLevel);
-						if (next) endLine = next.position.start.line;
+						const endLine = next ? next.position.start.line : lines.length;
+
+						let insertAt: number;
+						let posLabel: string;
+						if (position === "before") {
+							insertAt = headingLine;
+							posLabel = "before";
+						} else if (position === "start_of_block") {
+							insertAt = headingLine + 1;
+							posLabel = "start of block after";
+						} else {
+							// 'after' | 'end_of_block' | default
+							insertAt = endLine;
+							posLabel = "end of block after";
+						}
 						const updated = [
-							...lines.slice(0, endLine),
+							...lines.slice(0, insertAt),
 							insertContent,
-							...lines.slice(endLine),
+							...lines.slice(insertAt),
 						].join("\n");
 						return runWrite({
 							operation: "patch",
 							filePath: f.path,
 							oldContent: existing,
 							newContent: updated,
-							description: `Patch ${f.path} after heading '${headingArg}'`,
+							description: `Patch ${f.path} at ${posLabel} heading '${headingArg}'`,
 							review,
 							apply: () => app.vault.modify(f, updated),
-							successMsg: `Patched ${f.path} after heading '${headingArg}'`,
+							successMsg: `Patched ${f.path} at ${posLabel} heading '${headingArg}'`,
 							recheckFile: f,
 						});
 					}
+
+					if (position === "start_of_block" || position === "end_of_block")
+						return error(
+							`position='${position}' is only valid with a heading target. Use a line target with 'before', 'after', or 'replace'.`,
+						);
 
 					const targetLine = lineArg! - 1;
 					// `replace` requires the line to actually exist; before/after
@@ -2210,6 +2316,9 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// `hasValue` distinguishes set vs delete; the value itself can
 				// legitimately be `null` or `false`.
 				const hasValue = value !== undefined;
+				const coercedValue = hasValue
+					? normalizeFrontmatterValue(property, value)
+					: undefined;
 				if (!isSafeFrontmatterProperty(property))
 					return error(
 						`Property name '${property}' is not allowed (reserved or invalid).`,
@@ -2275,7 +2384,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						const oldFm = preReviewFm.get(file.path) ?? {};
 						let newFm: Record<string, unknown>;
 						if (hasValue) {
-							newFm = { ...oldFm, [property]: value };
+							newFm = { ...oldFm, [property]: coercedValue };
 						} else {
 							const { [property]: _dropped, ...rest } = oldFm;
 							newFm = rest;
@@ -2334,7 +2443,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 							}
 							await app.fileManager.processFrontMatter(file, (fm) => {
 								if (hasValue) {
-									fm[property] = value;
+									fm[property] = coercedValue;
 								} else {
 									delete fm[property];
 								}

@@ -43,6 +43,7 @@ describe("AgentOutputNotifier", () => {
 
 	it("fires a single notice for one create after debounce elapses", () => {
 		const n = notifier();
+		n.markMcpWrite("agent-workspace/a.md");
 		n.onCreate("agent-workspace/a.md");
 		expect((Notice as NoticeMock).lastMessage).toBe("");
 		vi.advanceTimersByTime(1999);
@@ -53,6 +54,9 @@ describe("AgentOutputNotifier", () => {
 
 	it("aggregates burst of creates into one notice", () => {
 		const n = notifier();
+		n.markMcpWrite("agent-workspace/a.md");
+		n.markMcpWrite("agent-workspace/b.md");
+		n.markMcpWrite("agent-workspace/c.md");
 		n.onCreate("agent-workspace/a.md");
 		n.onCreate("agent-workspace/b.md");
 		n.onCreate("agent-workspace/c.md");
@@ -62,11 +66,13 @@ describe("AgentOutputNotifier", () => {
 
 	it("ignores modify events unless mode is new_or_modified", () => {
 		const n = notifier();
+		n.markMcpWrite("agent-workspace/a.md");
 		n.onModify("agent-workspace/a.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("");
 
 		mode = "new_or_modified";
+		n.markMcpWrite("agent-workspace/b.md");
 		n.onModify("agent-workspace/b.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("Agent modified agent-workspace/b.md");
@@ -74,6 +80,7 @@ describe("AgentOutputNotifier", () => {
 
 	it("ignores paths outside the write directory", () => {
 		const n = notifier();
+		n.markMcpWrite("other/path.md");
 		n.onCreate("other/path.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("");
@@ -82,19 +89,30 @@ describe("AgentOutputNotifier", () => {
 	it("off mode suppresses everything", () => {
 		mode = "off";
 		const n = notifier();
+		n.markMcpWrite("agent-workspace/a.md");
 		n.onCreate("agent-workspace/a.md");
+		vi.advanceTimersByTime(2000);
+		expect((Notice as NoticeMock).lastMessage).toBe("");
+	});
+
+	it("silently ignores creates not preceded by markMcpWrite (human edits)", () => {
+		const n = notifier();
+		n.onCreate("agent-workspace/a.md"); // no markMcpWrite — human edit
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("");
 	});
 
 	it("requeues buffered events under rate-limit instead of dropping them", () => {
 		const n = notifier();
+		n.markMcpWrite("agent-workspace/a.md");
 		n.onCreate("agent-workspace/a.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("Agent created agent-workspace/a.md");
 
 		// Second burst arrives during the 5s rate-limit window.
 		(Notice as NoticeMock).lastMessage = "";
+		n.markMcpWrite("agent-workspace/b.md");
+		n.markMcpWrite("agent-workspace/c.md");
 		n.onCreate("agent-workspace/b.md");
 		n.onCreate("agent-workspace/c.md");
 		// Debounce fires inside the rate-limit window — should NOT emit yet.
@@ -105,8 +123,33 @@ describe("AgentOutputNotifier", () => {
 		expect((Notice as NoticeMock).lastMessage).toBe("Agent output: 2 created");
 	});
 
+	it("second burst after rate-limit window starts fresh (no cross-burst leakage)", () => {
+		const n = notifier();
+		// First burst — 3 files
+		n.markMcpWrite("agent-workspace/a.md");
+		n.markMcpWrite("agent-workspace/b.md");
+		n.markMcpWrite("agent-workspace/c.md");
+		n.onCreate("agent-workspace/a.md");
+		n.onCreate("agent-workspace/b.md");
+		n.onCreate("agent-workspace/c.md");
+		vi.advanceTimersByTime(2000);
+		expect((Notice as NoticeMock).lastMessage).toBe("Agent output: 3 created");
+
+		// During rate-limit hold: 2 new events arrive.
+		(Notice as NoticeMock).lastMessage = "";
+		n.markMcpWrite("agent-workspace/d.md");
+		n.markMcpWrite("agent-workspace/e.md");
+		n.onCreate("agent-workspace/d.md");
+		n.onCreate("agent-workspace/e.md");
+		vi.advanceTimersByTime(2000); // debounce fires inside hold → held
+		expect((Notice as NoticeMock).lastMessage).toBe("");
+		vi.advanceTimersByTime(3000); // rate-limit expires → emit exactly 2
+		expect((Notice as NoticeMock).lastMessage).toBe("Agent output: 2 created");
+	});
+
 	it("dispose() clears pending timer and buffer", () => {
 		const n = notifier();
+		n.markMcpWrite("agent-workspace/a.md");
 		n.onCreate("agent-workspace/a.md");
 		n.dispose();
 		vi.advanceTimersByTime(10000);

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { TFile } from "obsidian";
+import { ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 
 vi.mock("obsidian", () => ({
 	prepareSimpleSearch: vi.fn(() => () => ({ score: 1, matches: [[0, 5]] })),
@@ -43,7 +44,10 @@ describe("MCP tool handlers", () => {
 	let tools: McpToolDef[];
 
 	beforeEach(() => {
-		app = createMockApp(testFiles, { caches });
+		app = createMockApp(testFiles, {
+			caches,
+			folders: [makeTFolder("notes"), makeTFolder("agent-workspace")],
+		});
 		app.metadataCache.resolvedLinks = {
 			"notes/hello.md": { "notes/world.md": 2 },
 			"notes/world.md": {},
@@ -137,10 +141,11 @@ describe("MCP tool handlers", () => {
 			expect(r.text.startsWith("Invalid arguments")).toBe(true);
 		});
 
-		it("rejects missing file/path with Invalid arguments", async () => {
-			const r = getResult(await getTool(tools, "vault_read").handler({}));
-			expect(r.isError).toBe(true);
-			expect(r.text).toBe("Invalid arguments: Provide either 'file' or 'path'.");
+		it("rejects missing file/path as McpError -32602", async () => {
+			await expect(getTool(tools, "vault_read").handler({})).rejects.toMatchObject({
+				code: ErrorCode.InvalidParams,
+				message: expect.stringContaining("Input validation error"),
+			});
 		});
 	});
 
@@ -155,6 +160,28 @@ describe("MCP tool handlers", () => {
 			const r = getResult(await getTool(tools, "vault_list").handler({ folder: "notes" }));
 			expect(r.text).toContain("notes/hello.md");
 			expect(r.text).not.toContain("config.json");
+		});
+
+		it("accepts path as alias for folder", async () => {
+			const r = getResult(await getTool(tools, "vault_list").handler({ path: "notes" }));
+			expect(r.text).toContain("notes/hello.md");
+			expect(r.text).not.toContain("config.json");
+		});
+
+		it("errors when folder does not exist", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_list").handler({ folder: "nonexistent" }),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("Folder not found");
+		});
+
+		it("errors when path points to a file not a folder", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_list").handler({ folder: "notes/hello.md" }),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("Not a folder");
 		});
 
 		it("filters by extension", async () => {
@@ -332,6 +359,40 @@ describe("MCP tool handlers", () => {
 			);
 			expect(r.isError).toBe(true);
 			expect(r.text).toContain("already exists");
+		});
+
+		it("rejects dotfile basename", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_create").handler({
+					path: "agent-workspace/.hidden.md",
+				}),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("dotfile");
+			expect(app.vault.create).not.toHaveBeenCalled();
+		});
+
+		it("creates missing parent folders", async () => {
+			const localApp = createMockApp(testFiles, {
+				caches,
+				folders: [makeTFolder("agent-workspace")],
+			});
+			const localTools = buildTools({
+				app: localApp as never,
+				getWriteDir: () => "agent-workspace",
+				review: async () => ({ approved: true }),
+			});
+			const r = getResult(
+				await getTool(localTools, "vault_create").handler({
+					path: "agent-workspace/newdir/file.md",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			expect(localApp.vault.createFolder).toHaveBeenCalledWith("agent-workspace/newdir");
+			expect(localApp.vault.create).toHaveBeenCalledWith(
+				"agent-workspace/newdir/file.md",
+				"",
+			);
 		});
 	});
 
@@ -568,13 +629,13 @@ describe("MCP tool handlers", () => {
 		it("accepts native arrays", async () => {
 			await getTool(tools, "vault_frontmatter_set").handler({
 				path: "agent-workspace/draft.md",
-				property: "tags",
+				property: "categories",
 				value: ["a", "b"],
 			});
 			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
 			const fm: Record<string, unknown> = {};
 			callback(fm);
-			expect(fm.tags).toEqual(["a", "b"]);
+			expect(fm.categories).toEqual(["a", "b"]);
 		});
 
 		it("accepts native numbers, booleans, and objects", async () => {
@@ -608,6 +669,164 @@ describe("MCP tool handlers", () => {
 			expect(r.isError).toBe(true);
 			expect(r.text.startsWith("Invalid arguments")).toBe(true);
 			expect(r.text).toContain("value");
+		});
+
+		it("coerces JSON-string array to native array", async () => {
+			await getTool(tools, "vault_frontmatter_set").handler({
+				path: "agent-workspace/draft.md",
+				property: "tags",
+				value: '["x","y"]',
+			});
+			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+			const fm: Record<string, unknown> = {};
+			callback(fm);
+			// JSON-string coercion + tag # stripping applied together
+			expect(fm.tags).toEqual(["x", "y"]);
+		});
+
+		it("coerces JSON-string object to native object", async () => {
+			await getTool(tools, "vault_frontmatter_set").handler({
+				path: "agent-workspace/draft.md",
+				property: "meta",
+				value: '{"key":"val"}',
+			});
+			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+			const fm: Record<string, unknown> = {};
+			callback(fm);
+			expect(fm.meta).toEqual({ key: "val" });
+		});
+
+		it("leaves non-JSON strings unchanged", async () => {
+			await getTool(tools, "vault_frontmatter_set").handler({
+				path: "agent-workspace/draft.md",
+				property: "status",
+				value: "active",
+			});
+			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+			const fm: Record<string, unknown> = {};
+			callback(fm);
+			expect(fm.status).toBe("active");
+		});
+
+		it("leaves invalid JSON array-shaped strings unchanged", async () => {
+			await getTool(tools, "vault_frontmatter_set").handler({
+				path: "agent-workspace/draft.md",
+				property: "status",
+				value: "[not valid",
+			});
+			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+			const fm: Record<string, unknown> = {};
+			callback(fm);
+			expect(fm.status).toBe("[not valid");
+		});
+
+		describe("tag normalisation", () => {
+			const callFm = async (value: unknown) => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "tags",
+					value,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = {};
+				callback(fm);
+				return fm.tags;
+			};
+
+			it("strips # from tag strings", async () => {
+				expect(await callFm("#work")).toBe("work");
+			});
+
+			it("leaves already-bare tags unchanged", async () => {
+				expect(await callFm("work")).toBe("work");
+			});
+
+			it("normalises all elements in an array", async () => {
+				expect(await callFm(["project", "#active", "todo"])).toEqual([
+					"project",
+					"active",
+					"todo",
+				]);
+			});
+
+			it("does not normalise non-tag properties", async () => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "category",
+					value: ["a", "b"],
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = {};
+				callback(fm);
+				expect(fm.category).toEqual(["a", "b"]);
+			});
+		});
+
+		describe("append mode", () => {
+			it("appends to an existing array", async () => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "categories",
+					value: ["c"],
+					append: true,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = { categories: ["a", "b"] };
+				callback(fm);
+				expect(fm.categories).toEqual(["a", "b", "c"]);
+			});
+
+			it("deduplicates when appending", async () => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "categories",
+					value: ["b", "c"],
+					append: true,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = { categories: ["a", "b"] };
+				callback(fm);
+				expect(fm.categories).toEqual(["a", "b", "c"]);
+			});
+
+			it("wraps a scalar existing value in an array then appends", async () => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "categories",
+					value: ["b"],
+					append: true,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = { categories: "a" };
+				callback(fm);
+				expect(fm.categories).toEqual(["a", "b"]);
+			});
+
+			it("sets value directly when no existing value", async () => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "categories",
+					value: ["x"],
+					append: true,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = {};
+				callback(fm);
+				expect(fm.categories).toEqual(["x"]);
+			});
+
+			it("appends and normalises tags simultaneously", async () => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "tags",
+					value: ["#new"],
+					append: true,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = { tags: ["existing"] };
+				callback(fm);
+				expect(fm.tags).toEqual(["existing", "new"]);
+			});
 		});
 	});
 
@@ -786,6 +1005,15 @@ describe("MCP tool handlers", () => {
 			expect(r.text).toBe("Path notes/clash exists as a file; refusing to create folder.");
 			expect(localApp.vault.createFolder).not.toHaveBeenCalled();
 		});
+
+		it("rejects dotfile basename", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_create_folder").handler({ path: ".hidden" }),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("dotfile");
+			expect(app.vault.createFolder).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("vault_recent", () => {
@@ -929,14 +1157,15 @@ describe("MCP tool handlers", () => {
 		});
 
 		it("requires at least one of folder or query", async () => {
-			const r = getResult(
-				await getTool(tools, "vault_batch_frontmatter").handler({
+			await expect(
+				getTool(tools, "vault_batch_frontmatter").handler({
 					property: "reviewed",
 					value: "true",
 				}),
-			);
-			expect(r.isError).toBe(true);
-			expect(r.text).toBe("Invalid arguments: Provide at least one of 'query' or 'folder'.");
+			).rejects.toMatchObject({
+				code: ErrorCode.InvalidParams,
+				message: expect.stringContaining("Input validation error"),
+			});
 		});
 
 		it("intersects folder + query", async () => {
@@ -953,6 +1182,19 @@ describe("MCP tool handlers", () => {
 			// they should all be listed. agent-workspace/draft.md must not.
 			expect(r.text).toContain("notes/hello.md");
 			expect(r.text).not.toContain("agent-workspace/draft.md");
+		});
+
+		it("coerces JSON-string array to native array when applying (with tag normalisation)", async () => {
+			await getTool(tools, "vault_batch_frontmatter").handler({
+				folder: "agent-workspace",
+				property: "tags",
+				value: '["#a","#b"]',
+				dryRun: false,
+			});
+			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+			const fm: Record<string, unknown> = {};
+			callback(fm);
+			expect(fm.tags).toEqual(["a", "b"]);
 		});
 	});
 
@@ -1292,6 +1534,149 @@ describe("MCP tool handlers", () => {
 			);
 			expect(r.isError).toBe(true);
 			expect(r.text).toContain("not found");
+		});
+
+		// Helper: build heading metadata for a multi-section file
+		// "# Title\nIntro\n## Details\nBody\n## Next\nTail"
+		// Line 0: # Title, Line 2: ## Details, Line 4: ## Next
+		const multiSectionFile = "# Title\nIntro\n## Details\nBody\n## Next\nTail";
+		const multiSectionHeadings = [
+			{ heading: "Title", level: 1, position: { start: { line: 0 } } },
+			{ heading: "Details", level: 2, position: { start: { line: 2 } } },
+			{ heading: "Next", level: 2, position: { start: { line: 4 } } },
+		];
+
+		it("end_of_block with heading inserts at end of section (same as after)", async () => {
+			app.vault.read.mockResolvedValueOnce(multiSectionFile);
+			app.metadataCache.getFileCache.mockReturnValueOnce({ headings: multiSectionHeadings });
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "ADDED",
+					heading: "## Details",
+					position: "end_of_block",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
+			expect(modified).toBe("# Title\nIntro\n## Details\nBody\nADDED\n## Next\nTail");
+		});
+
+		it("start_of_block with heading inserts immediately after heading line", async () => {
+			app.vault.read.mockResolvedValueOnce(multiSectionFile);
+			app.metadataCache.getFileCache.mockReturnValueOnce({ headings: multiSectionHeadings });
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "PREPENDED",
+					heading: "## Details",
+					position: "start_of_block",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
+			expect(modified).toBe("# Title\nIntro\n## Details\nPREPENDED\nBody\n## Next\nTail");
+		});
+
+		it("before with heading inserts before the heading line", async () => {
+			app.vault.read.mockResolvedValueOnce(multiSectionFile);
+			app.metadataCache.getFileCache.mockReturnValueOnce({ headings: multiSectionHeadings });
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "BEFORE",
+					heading: "## Details",
+					position: "before",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
+			expect(modified).toBe("# Title\nIntro\nBEFORE\n## Details\nBody\n## Next\nTail");
+		});
+
+		it("end_of_block on a single-section file (last heading) inserts at document end", async () => {
+			// Single section: heading is the last one — endLine falls back to lines.length
+			app.vault.read.mockResolvedValueOnce("## Only\nContent");
+			app.metadataCache.getFileCache.mockReturnValueOnce({
+				headings: [{ heading: "Only", level: 2, position: { start: { line: 0 } } }],
+			});
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "APPENDED",
+					heading: "## Only",
+					position: "end_of_block",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
+			expect(modified).toBe("## Only\nContent\nAPPENDED");
+		});
+
+		it("start_of_block on a heading with no body inserts between heading and next heading", async () => {
+			app.vault.read.mockResolvedValueOnce("## Empty\n## Next");
+			app.metadataCache.getFileCache.mockReturnValueOnce({
+				headings: [
+					{ heading: "Empty", level: 2, position: { start: { line: 0 } } },
+					{ heading: "Next", level: 2, position: { start: { line: 1 } } },
+				],
+			});
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "BODY",
+					heading: "## Empty",
+					position: "start_of_block",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
+			expect(modified).toBe("## Empty\nBODY\n## Next");
+		});
+
+		it("replace is rejected for heading targets", async () => {
+			app.vault.read.mockResolvedValueOnce("## H\nBody");
+			app.metadataCache.getFileCache.mockReturnValueOnce({
+				headings: [{ heading: "H", level: 2, position: { start: { line: 0 } } }],
+			});
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "x",
+					heading: "## H",
+					position: "replace",
+				}),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("replace");
+		});
+
+		it("start_of_block is rejected for line targets", async () => {
+			app.vault.read.mockResolvedValueOnce("line1\nline2");
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "x",
+					line: 1,
+					position: "start_of_block",
+				}),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("start_of_block");
+		});
+
+		it("end_of_block is rejected for line targets", async () => {
+			app.vault.read.mockResolvedValueOnce("line1\nline2");
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "x",
+					line: 1,
+					position: "end_of_block",
+				}),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("end_of_block");
 		});
 	});
 

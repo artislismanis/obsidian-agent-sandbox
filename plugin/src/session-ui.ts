@@ -1,6 +1,6 @@
 /**
  * Session-related modal UIs — the Quick-Switcher-style picker over open
- * terminal tabs and the manual "Clean up empty sessions" modal. Extracted
+ * terminal tabs and the manual "Clean up detached sessions" modal. Extracted
  * from main.ts to keep the plugin entry focused on wiring.
  */
 
@@ -55,12 +55,12 @@ export function showSessionPicker(app: App): void {
 }
 
 export interface SessionCleanupApi {
-	listEmptySessions: () => Promise<string[]>;
+	listDetachedSessions: () => Promise<string[]>;
 	killSession: (name: string) => Promise<void>;
 }
 
 /**
- * Opens the "Clean up empty sessions" modal if the container is running
+ * Opens the "Clean up detached sessions" modal if the container is running
  * and there are candidates. Kills only the user-checked names.
  */
 export async function showSessionCleanup(
@@ -74,20 +74,20 @@ export async function showSessionCleanup(
 	}
 	let candidates: string[];
 	try {
-		candidates = await api.listEmptySessions();
+		candidates = await api.listDetachedSessions();
 	} catch (err) {
-		// listEmptySessions throws on docker/tmux probe failure (vs a silent
+		// listDetachedSessions throws on docker/tmux probe failure (vs a silent
 		// `catch → []` that would make a daemon outage look like "all clean").
 		// Surface the cause so the cleanup modal doesn't vanish unexplained.
 		new Notice(`Could not list sessions: ${errMsg(err)}`);
 		return;
 	}
 	if (candidates.length === 0) {
-		new Notice("No empty tmux sessions to clean up.");
+		new Notice("No detached tmux sessions to clean up.");
 		return;
 	}
 	const modal = new Modal(app);
-	modal.titleEl.setText("Clean up empty sessions");
+	modal.titleEl.setText("Clean up detached sessions");
 	modal.contentEl.createEl("p", {
 		text: `${candidates.length} session(s) have no attached clients. Kill the selected ones?`,
 	});

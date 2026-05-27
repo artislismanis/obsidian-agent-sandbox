@@ -67,9 +67,9 @@ Claude calls `vault_modify_reviewed(path="notes/raft.md", content=...)`. A modal
 
 The review modal is the human-in-the-loop gate. Every reviewed-tier write — `create`, `modify`, `append`, `prepend`, `patch`, `search_replace`, `frontmatter_set`, `frontmatter_delete`, `rename`, `move`, `delete`, plus `create_folder` and the batch path (`vault_batch_frontmatter`, which uses its own per-item modal) — flows through it.
 
-## Task 4: analyze from context menu
+## Task 4: analyse from context menu
 
-Right-click `notes/raft.md` in Obsidian's file explorer → **Analyze in Sandbox** → **Summarize**.
+Right-click `notes/raft.md` in Obsidian's file explorer → **Analyse in Sandbox** → **Summarize**.
 
 A new terminal tab opens, Claude starts with the templated prompt injected:
 

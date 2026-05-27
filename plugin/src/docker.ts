@@ -938,7 +938,7 @@ export class DockerManager {
 	}
 
 	/** List sessions with no attached clients — candidates for cleanup. */
-	async listEmptySessions(): Promise<string[]> {
+	async listDetachedSessions(): Promise<string[]> {
 		try {
 			const output = await this.tmuxExec(
 				`list-sessions -F "#{session_name}:#{session_attached}"`,
@@ -963,7 +963,7 @@ export class DockerManager {
 				haystack.includes("no server running") ||
 				haystack.includes("error connecting to");
 			if (tmuxLegitEmpty) return [];
-			logger.warn("Docker", `listEmptySessions failed: ${errMsg(err)}`);
+			logger.warn("Docker", `listDetachedSessions failed: ${errMsg(err)}`);
 			throw err;
 		}
 	}

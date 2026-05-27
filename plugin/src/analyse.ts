@@ -1,4 +1,4 @@
-/** "Analyze in Sandbox": URI handlers, file-menu submenu, prompt-template loader. */
+/** "Analyse in Sandbox": URI handlers, file-menu submenu, prompt-template loader. */
 
 import type { App, Menu, TFile } from "obsidian";
 import { Notice } from "obsidian";
@@ -15,23 +15,22 @@ export interface PromptTemplate {
 	body: string;
 }
 
-/** What the plugin needs to give us to drive the Analyze flow. */
-export interface AnalyzeHost {
+/** What the plugin needs to give us to drive the Analyse flow. */
+export interface AnalyseHost {
 	app: App;
 	isContainerRunning: () => boolean;
 	activateTerminalView: (sessionName?: string, initialPrompt?: string) => Promise<unknown>;
 }
 
-export class AnalyzeManager {
+export class AnalyseManager {
 	private cachedTemplates: PromptTemplate[] | null = null;
 	private lastRefreshAttemptAt = 0;
 
-	constructor(private host: AnalyzeHost) {}
+	constructor(private host: AnalyseHost) {}
 
 	/**
-	 * Load prompt templates from `.claude/prompts/*.md` (vault root) or the
-	 * repo sibling `workspace/.claude/prompts/`. First non-empty line before
-	 * `---` is the label; body can contain `{{file}}` placeholders.
+	 * Load prompt templates from `<vault>/.oas/prompts/*.md`. First non-empty
+	 * line before `---` is the label; body can contain `{{file}}` placeholders.
 	 * Result cached after first call — call {@link refreshTemplates} to
 	 * invalidate.
 	 */
@@ -42,11 +41,6 @@ export class AnalyzeManager {
 		return loaded;
 	}
 
-	/** Invalidate the template cache — picked up on next loadTemplates call. */
-	refreshTemplates(): void {
-		this.cachedTemplates = null;
-	}
-
 	/** Preload and cache templates — call at plugin init to remove the menu race. */
 	async prewarm(): Promise<void> {
 		this.cachedTemplates = await this.readTemplatesFromDisk();
@@ -55,44 +49,35 @@ export class AnalyzeManager {
 	private async readTemplatesFromDisk(): Promise<PromptTemplate[]> {
 		const base = getVaultBasePath(this.host.app);
 		if (!base) return [];
-		const candidates = [
-			pathJoin(base, ".claude", "prompts"),
-			pathJoin(base, "..", "workspace", ".claude", "prompts"),
-		];
+		const dir = pathJoin(base, ".oas", "prompts");
 		// Import via `fs.promises` (not the `fs/promises` subpath) — Obsidian's
-		// renderer cannot resolve the bare subpath specifier and the plugin
-		// fails to load templates with "Failed to resolve module specifier
-		// 'fs/promises'". Try each candidate; first successful readdir wins —
-		// readdir's ENOENT path subsumes a prior existsSync gate.
-		for (const dir of candidates) {
-			let entries: string[];
-			try {
-				entries = await fs.readdir(dir);
-			} catch {
-				continue;
-			}
-			// Per-file try/catch returns null so one unreadable template
-			// doesn't poison the batch.
-			const mdEntries = entries.filter((e) => e.endsWith(".md"));
-			const settled = await Promise.all(
-				mdEntries.map(async (entry): Promise<PromptTemplate | null> => {
-					try {
-						const content = await fs.readFile(pathJoin(dir, entry), "utf-8");
-						const [label, body] = parsePromptTemplate(content, entry);
-						return { name: entry.replace(/\.md$/, ""), label, body };
-					} catch {
-						return null;
-					}
-				}),
-			);
-			const out = settled.filter((t): t is PromptTemplate => t !== null);
-			return out.sort((a, b) => a.label.localeCompare(b.label));
+		// renderer cannot resolve the bare subpath specifier.
+		let entries: string[];
+		try {
+			entries = await fs.readdir(dir);
+		} catch {
+			return [];
 		}
-		return [];
+		// Per-file try/catch returns null so one unreadable template
+		// doesn't poison the batch.
+		const mdEntries = entries.filter((e) => e.endsWith(".md"));
+		const settled = await Promise.all(
+			mdEntries.map(async (entry): Promise<PromptTemplate | null> => {
+				try {
+					const content = await fs.readFile(pathJoin(dir, entry), "utf-8");
+					const [label, body] = parsePromptTemplate(content, entry);
+					return { name: entry.replace(/\.md$/, ""), label, body };
+				} catch {
+					return null;
+				}
+			}),
+		);
+		const out = settled.filter((t): t is PromptTemplate => t !== null);
+		return out.sort((a, b) => a.label.localeCompare(b.label));
 	}
 
 	/** Open a terminal + start Claude with a templated (or default) prompt. */
-	async runAnalyze(vaultPath: string, templateName?: string): Promise<void> {
+	async runAnalyse(vaultPath: string, templateName?: string): Promise<void> {
 		if (!this.host.isContainerRunning()) {
 			new Notice("Sandbox container is not running.");
 			return;
@@ -103,15 +88,15 @@ export class AnalyzeManager {
 	}
 
 	/** Modal-input fallback for when no templates are configured. */
-	async runAnalyzeCustom(vaultPath: string): Promise<void> {
+	async runAnalyseCustom(vaultPath: string): Promise<void> {
 		if (!this.host.isContainerRunning()) {
 			new Notice("Sandbox container is not running.");
 			return;
 		}
 		const body = await inputModal(this.host.app, {
-			title: "Analyze in Sandbox",
+			title: "Analyse in Sandbox",
 			message: `Prompt for ${vaultPath} — @${vaultPath} will be appended automatically.`,
-			placeholder: "e.g. Summarize this note in 3 bullet points",
+			placeholder: "e.g. Summarise this note in 3 bullet points",
 			ctaLabel: "Run",
 		});
 		if (!body) return;
@@ -120,7 +105,7 @@ export class AnalyzeManager {
 	}
 
 	/**
-	 * Append an "Analyze in Sandbox" submenu to an Obsidian file menu.
+	 * Append an "Analyse in Sandbox" submenu to an Obsidian file menu.
 	 * Uses the cached template list (pre-populated by {@link prewarm}) to
 	 * build submenu items synchronously — no async race against menu render.
 	 * Kicks off a refresh in the background so subsequent menu opens reflect
@@ -142,26 +127,26 @@ export class AnalyzeManager {
 					// right-click retries instead of being pinned to the
 					// rate-limit window for 30 seconds.
 					this.lastRefreshAttemptAt = 0;
-					logger.warn("Analyze", "Template refresh failed", err);
+					logger.warn("Analyse", "Template refresh failed", err);
 				});
 		}
 
-		// Wrap menu callbacks so a rejected runAnalyze/runAnalyzeCustom promise
+		// Wrap menu callbacks so a rejected runAnalyse/runAnalyseCustom promise
 		// becomes a Notice + log entry instead of an unhandled rejection.
 		const runCustomSafe = (path: string): void => {
-			void this.runAnalyzeCustom(path).catch((err) => {
-				logger.error("Analyze", "runAnalyzeCustom failed", err);
-				new Notice(`Analyze failed: ${errMsg(err)}`);
+			void this.runAnalyseCustom(path).catch((err) => {
+				logger.error("Analyse", "runAnalyseCustom failed", err);
+				new Notice(`Analyse failed: ${errMsg(err)}`);
 			});
 		};
 		const runTemplateSafe = (path: string, name: string): void => {
-			void this.runAnalyze(path, name).catch((err) => {
-				logger.error("Analyze", `runAnalyze '${name}' failed`, err);
-				new Notice(`Analyze failed: ${errMsg(err)}`);
+			void this.runAnalyse(path, name).catch((err) => {
+				logger.error("Analyse", `runAnalyse '${name}' failed`, err);
+				new Notice(`Analyse failed: ${errMsg(err)}`);
 			});
 		};
 		menu.addItem((item) => {
-			item.setTitle("Analyze in Sandbox").setIcon("bot");
+			item.setTitle("Analyse in Sandbox").setIcon("bot");
 			const submenu = tryOpenSubmenu(item);
 			const container: Pick<Menu, "addItem"> = submenu ?? menu;
 			if (templates.length === 0) {
@@ -183,7 +168,7 @@ export class AnalyzeManager {
 
 	private async buildPrompt(vaultPath: string, templateName?: string): Promise<string | null> {
 		if (!templateName) {
-			return `Please analyze @${vaultPath}.`;
+			return `Please analyse @${vaultPath}.`;
 		}
 		const templates = await this.loadTemplates();
 		const tmpl = templates.find((t) => t.name === templateName);

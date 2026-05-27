@@ -5,8 +5,10 @@ plugin/dist/
 node_modules/
 
 # IDE
-.idea/
-.vscode/
+.idea
+.vscode
+plugin/.claude/
+container/.claude/
 
 # OS
 .DS_Store
@@ -65,3 +67,4 @@ tmux-*.log
 
 # test artifacts
 plugin/test/fixtures/vault/.oas/memory.json
+container/example-vault/.oas/memory.json

@@ -11,9 +11,9 @@ This is Claude's configurable workspace inside the Agent Sandbox container. Ever
 | `.claude/skills/` | Project skills shipped with the workspace (see `ls .claude/skills/` for the current set). |
 | `.claude/agents/` | Sub-agents directory — *not present by default*; create this folder + files in it if you want repo-managed sub-agents. |
 | `.claude/commands/` | Slash-command directory — *not present by default*; create this folder + files in it for repo-managed commands. |
-| `.claude/hooks/` | Claude Code lifecycle hook scripts — `notify-status.sh` (reports working/idle/awaiting_input to the Obsidian plugin via MCP) |
+| `.claude/hooks/` | Claude Code lifecycle hook scripts — `notify-status.sh` (reports working/idle to the Obsidian plugin via MCP) |
 | `.claude/scripts/` | Statusline and other helper scripts referenced from `.claude/settings.json` |
-| `.claude/prompts/` | "Analyze in Sandbox" prompt-template library (`summarize`, `extract-todos`, `critique`, `explain`) |
+| `.claude/prompts/` | "Analyse in Sandbox" prompt-template library (`summarize`, `extract-todos`, `critique`, `explain`) |
 | `.mcp.json` | MCP server configuration (memory, etc.) |
 | `CLAUDE.md` | This file — workspace rules |
 | `vault/` | Obsidian vault overlay (read-only, see below) |

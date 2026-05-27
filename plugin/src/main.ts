@@ -1,8 +1,11 @@
+import { promises as fsp } from "fs";
+import { homedir } from "os";
+import { dirname, join } from "path";
 import type { TFile, WorkspaceLeaf } from "obsidian";
 import { Menu, Notice, Plugin, debounce } from "obsidian";
 import { getVaultBasePath } from "./obsidian-internals";
 import { confirmModal, inputModal } from "./modals";
-import { AnalyzeManager } from "./analyze";
+import { AnalyseManager } from "./analyse";
 import { type AgentSandboxSettings, DEFAULT_SETTINGS, AgentSandboxSettingTab } from "./settings";
 import { DockerManager } from "./docker";
 import type { ContainerState } from "./status-bar";
@@ -33,6 +36,7 @@ const FIREWALL_EVENT_THROTTLE = 10_000;
 
 export default class AgentSandboxPlugin extends Plugin {
 	settings: AgentSandboxSettings = { ...DEFAULT_SETTINGS };
+	sudoPassword: string = "";
 	// `!` definite-assignment: onload assigns each field synchronously
 	// before any await, so all later code paths (including onunload) see
 	// them initialized. The `?.` in onunload is defensive against a future
@@ -48,7 +52,7 @@ export default class AgentSandboxPlugin extends Plugin {
 	private lastKnownContainerId: string = "";
 	private activityUi!: ActivityUi;
 	private agentOutput!: AgentOutputNotifier;
-	private analyze!: AnalyzeManager;
+	private analyse!: AnalyseManager;
 
 	private debouncedSaveSettings = debounce(
 		async () => {
@@ -77,6 +81,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		resetTerminalConnectionLog();
 		resetTemplaterSuppression();
 		await this.loadSettings();
+		await this.loadSudoPassword();
 		this.addSettingTab(new AgentSandboxSettingTab(this.app, this));
 
 		this.docker = new DockerManager(() => {
@@ -98,7 +103,7 @@ export default class AgentSandboxPlugin extends Plugin {
 				additionalFirewallDomains: this.settings.additionalFirewallDomains,
 				containerMemory: this.settings.containerMemory,
 				containerCpus: this.settings.containerCpus,
-				sudoPassword: this.settings.sudoPassword,
+				sudoPassword: this.sudoPassword,
 				mcpToken: this.settings.mcpEnabled ? this.settings.mcpToken : undefined,
 				mcpPort: this.settings.mcpEnabled ? this.settings.mcpPort : undefined,
 			};
@@ -114,6 +119,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			updateTooltip: () => this.updateTooltip(),
 			onActivity: (update) => this.activityUi.route(update),
 			clearActivity: () => this.activityUi.clear(),
+			onMcpWrite: (path) => this.agentOutput.markMcpWrite(path),
 		});
 		this.activityUi = new ActivityUi(this.app, this.statusBar, () =>
 			this.mcpLifecycle.getActivity(),
@@ -122,13 +128,13 @@ export default class AgentSandboxPlugin extends Plugin {
 			() => this.settings.agentOutputNotify,
 			() => this.settings.vaultWriteDir,
 		);
-		this.analyze = new AnalyzeManager({
+		this.analyse = new AnalyseManager({
 			app: this.app,
 			isContainerRunning: () => this.isContainerRunning(),
 			activateTerminalView: (sessionName, initialPrompt) =>
 				this.activateTerminalView(sessionName, initialPrompt),
 		});
-		void this.analyze
+		void this.analyse
 			.prewarm()
 			.catch((err) => logger.warn("Plugin", `Template prewarm failed: ${errMsg(err)}`));
 
@@ -195,7 +201,7 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-claude-terminal",
-			name: "Open Sandbox Terminal",
+			name: "Sandbox: Open Terminal",
 			callback: () => {
 				void this.openTerminalOrPromptStart();
 			},
@@ -233,7 +239,7 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-session",
-			name: "Open Sandbox Session...",
+			name: "Sandbox: Open Session...",
 			callback: async () => {
 				const name = await this.promptSessionName("New Session");
 				if (name) void this.activateTerminalView(name);
@@ -242,7 +248,7 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-browser",
-			name: "Open Sandbox in Browser",
+			name: "Sandbox: Open in Browser",
 			callback: () => {
 				window.open(
 					resolveTtydBrowserUrl(this.settings.ttydPort, this.settings.ttydBindAddress),
@@ -284,12 +290,12 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		this.addCommand({
 			id: "sandbox-cleanup-sessions",
-			name: "Sandbox: Clean up empty sessions",
+			name: "Sandbox: Clean up detached sessions",
 			callback: () =>
 				void showSessionCleanup(
 					this.app,
 					{
-						listEmptySessions: () => this.docker.listEmptySessions(),
+						listDetachedSessions: () => this.docker.listDetachedSessions(),
 						killSession: (name) => this.docker.killSession(name),
 					},
 					() => this.isContainerRunning(),
@@ -310,29 +316,29 @@ export default class AgentSandboxPlugin extends Plugin {
 			}
 		});
 
-		// obsidian://agent-sandbox/analyze?path=<vault/path>&template=<name>
-		this.registerObsidianProtocolHandler("agent-sandbox/analyze", async (params) => {
+		// obsidian://agent-sandbox/analyse?vault=<name>&path=<vault/path>&template=<name>
+		this.registerObsidianProtocolHandler("agent-sandbox/analyse", async (params) => {
 			try {
 				const path = params.path;
 				if (!path) {
-					new Notice("Analyze: missing 'path' parameter.");
+					new Notice("Analyse: missing 'path' parameter.");
 					return;
 				}
-				await this.analyze.runAnalyze(path, params.template);
+				await this.analyse.runAnalyse(path, params.template);
 			} catch (e) {
 				// Obsidian's protocol-handler dispatcher swallows unhandled
 				// rejections silently — external tooling triggering this URI
 				// would see no visible failure (e.g. template load throws).
-				logger.error("Plugin", "agent-sandbox/analyze handler failed", e);
-				new Notice(`Analyze failed: ${errMsg(e)}`);
+				logger.error("Plugin", "agent-sandbox/analyse handler failed", e);
+				new Notice(`Analyse failed: ${errMsg(e)}`);
 			}
 		});
 
-		// File context menu → "Analyze in Sandbox" submenu
+		// File context menu → "Analyse in Sandbox" submenu
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu, file) => {
 				if (!("extension" in file)) return;
-				this.analyze.attachFileMenu(menu, file as TFile);
+				this.analyse.attachFileMenu(menu, file as TFile);
 			}),
 		);
 
@@ -340,15 +346,22 @@ export default class AgentSandboxPlugin extends Plugin {
 			void this.mcpLifecycle.applyEnabled(true);
 		}
 
-		this.registerEvent(
-			this.app.vault.on("create", (file) => {
-				if (!("extension" in file)) return;
-				this.agentOutput.onCreate(file.path);
-			}),
-		);
-		this.registerEvent(
-			this.app.vault.on("modify", (file) => this.agentOutput.onModify(file.path)),
-		);
+		// Defer vault listeners until after layout-ready + 2s grace so the
+		// initial vault scan (which fires "create" for every existing file)
+		// doesn't trigger agent-output notices at startup.
+		this.app.workspace.onLayoutReady(() => {
+			window.setTimeout(() => {
+				this.registerEvent(
+					this.app.vault.on("create", (file) => {
+						if (!("extension" in file)) return;
+						this.agentOutput.onCreate(file.path);
+					}),
+				);
+				this.registerEvent(
+					this.app.vault.on("modify", (file) => this.agentOutput.onModify(file.path)),
+				);
+			}, 2000);
+		});
 
 		// Quick-Switcher-style picker for open sandbox sessions
 		this.addCommand({
@@ -454,6 +467,35 @@ export default class AgentSandboxPlugin extends Plugin {
 			}
 		}
 		setLogLevel(this.settings.logLevel);
+	}
+
+	private secretsFilePath(): string {
+		return join(homedir(), ".config", "obsidian-agent-sandbox", "secrets.json");
+	}
+
+	async loadSudoPassword(): Promise<void> {
+		try {
+			const raw = await fsp.readFile(this.secretsFilePath(), "utf8");
+			this.sudoPassword = (JSON.parse(raw) as { sudoPassword?: string }).sudoPassword ?? "";
+		} catch (e: unknown) {
+			if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+				logger.warn("Plugin", "Could not read secrets file", e);
+			}
+			this.sudoPassword = "";
+		}
+	}
+
+	saveSudoPassword(): void {
+		const filePath = this.secretsFilePath();
+		const dir = dirname(filePath);
+		fsp.mkdir(dir, { recursive: true, mode: 0o700 })
+			.then(() =>
+				fsp.writeFile(filePath, JSON.stringify({ sudoPassword: this.sudoPassword }), {
+					encoding: "utf8",
+					mode: 0o600,
+				}),
+			)
+			.catch((e) => logger.error("Plugin", "Could not save secrets file", e));
 	}
 
 	saveSettings() {

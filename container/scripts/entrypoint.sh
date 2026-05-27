@@ -135,6 +135,8 @@ if [[ -r /proc/sys/net/ipv6/conf/all/disable_ipv6 ]]; then
     fi
 fi
 
+# Prompt templates are not seeded — auto-seeding would overwrite user-edited prompts.
+
 # Ensure memory file exists (MCP memory server expects it).
 memory_file="/workspace/vault/.oas/${OAS_MEMORY_FILE_NAME:-memory.json}"
 if [[ ! -f "$memory_file" ]]; then

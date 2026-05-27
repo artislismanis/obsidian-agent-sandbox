@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -27,11 +27,11 @@ vi.mock("obsidian", () => {
 
 import { FileSystemAdapter } from "obsidian";
 
-import { AnalyzeManager } from "../analyze";
+import { AnalyseManager } from "../analyse";
 
-function tmpPromptsDir(files: Record<string, string>): string {
+function tmpOasPromptsDir(files: Record<string, string>): string {
 	const dir = mkdtempSync(join(tmpdir(), "oas-prompts-"));
-	const prompts = join(dir, ".claude", "prompts");
+	const prompts = join(dir, ".oas", "prompts");
 	mkdirSync(prompts, { recursive: true });
 	for (const [name, body] of Object.entries(files)) {
 		writeFileSync(join(prompts, name), body, "utf-8");
@@ -50,26 +50,24 @@ function makeHost(vaultBase: string) {
 	};
 }
 
-describe("AnalyzeManager template loading", () => {
+describe("AnalyseManager template loading", () => {
 	let tmpBase: string;
 
-	beforeEach(() => {});
-
-	it("returns an empty list when the prompts directory is missing", async () => {
+	it("returns an empty list when .oas/prompts is missing", async () => {
 		tmpBase = mkdtempSync(join(tmpdir(), "oas-empty-"));
 		const host = makeHost(tmpBase);
-		const mgr = new AnalyzeManager(host);
+		const mgr = new AnalyseManager(host);
 		expect(await mgr.loadTemplates()).toEqual([]);
 		rmSync(tmpBase, { recursive: true, force: true });
 	});
 
-	it("reads templates and parses labels + bodies", async () => {
-		tmpBase = tmpPromptsDir({
+	it("reads templates from .oas/prompts and parses labels + bodies", async () => {
+		tmpBase = tmpOasPromptsDir({
 			"summarize.md": "Summarize\n---\nPlease summarize @{{file}}.",
 			"critique.md": "Critique\n---\nCritique @{{file}} honestly.",
 		});
 		const host = makeHost(tmpBase);
-		const mgr = new AnalyzeManager(host);
+		const mgr = new AnalyseManager(host);
 		const templates = await mgr.loadTemplates();
 		expect(templates).toHaveLength(2);
 		expect(templates.map((t) => t.name).sort()).toEqual(["critique", "summarize"]);
@@ -80,11 +78,11 @@ describe("AnalyzeManager template loading", () => {
 	});
 
 	it("prewarm() populates the cache so attachFileMenu sees entries synchronously", async () => {
-		tmpBase = tmpPromptsDir({
+		tmpBase = tmpOasPromptsDir({
 			"explain.md": "Explain\n---\nExplain @{{file}}",
 		});
 		const host = makeHost(tmpBase);
-		const mgr = new AnalyzeManager(host);
+		const mgr = new AnalyseManager(host);
 		// Before prewarm the cache is empty — loadTemplates does disk I/O.
 		await mgr.prewarm();
 		const cached = await mgr.loadTemplates();
@@ -92,54 +90,35 @@ describe("AnalyzeManager template loading", () => {
 		rmSync(tmpBase, { recursive: true, force: true });
 	});
 
-	it("refreshTemplates() invalidates the cache", async () => {
-		tmpBase = tmpPromptsDir({
-			"a.md": "A\n---\nbody A",
-		});
+	it("runAnalyse with an unknown template produces no terminal activation", async () => {
+		tmpBase = tmpOasPromptsDir({});
 		const host = makeHost(tmpBase);
-		const mgr = new AnalyzeManager(host);
-		await mgr.prewarm();
-		expect(await mgr.loadTemplates()).toHaveLength(1);
-
-		// Add a new template on disk — cache hides it until refresh.
-		writeFileSync(join(tmpBase, ".claude", "prompts", "b.md"), "B\n---\nbody B", "utf-8");
-		expect(await mgr.loadTemplates()).toHaveLength(1);
-
-		mgr.refreshTemplates();
-		const fresh = await mgr.loadTemplates();
-		expect(fresh).toHaveLength(2);
-		rmSync(tmpBase, { recursive: true, force: true });
-	});
-
-	it("runAnalyze with an unknown template produces no terminal activation", async () => {
-		tmpBase = tmpPromptsDir({});
-		const host = makeHost(tmpBase);
-		const mgr = new AnalyzeManager(host);
-		await mgr.runAnalyze("notes/foo.md", "nonexistent");
+		const mgr = new AnalyseManager(host);
+		await mgr.runAnalyse("notes/foo.md", "nonexistent");
 		expect(host.activateTerminalView).not.toHaveBeenCalled();
 		rmSync(tmpBase, { recursive: true, force: true });
 	});
 
-	it("runAnalyze with no template uses the default prompt", async () => {
-		tmpBase = tmpPromptsDir({});
+	it("runAnalyse with no template uses the default prompt", async () => {
+		tmpBase = tmpOasPromptsDir({});
 		const host = makeHost(tmpBase);
-		const mgr = new AnalyzeManager(host);
-		await mgr.runAnalyze("notes/foo.md");
+		const mgr = new AnalyseManager(host);
+		await mgr.runAnalyse("notes/foo.md");
 		expect(host.activateTerminalView).toHaveBeenCalledWith(
 			undefined,
-			"Please analyze @notes/foo.md.",
+			"Please analyse @notes/foo.md.",
 		);
 		rmSync(tmpBase, { recursive: true, force: true });
 	});
 
-	it("runAnalyze substitutes {{file}} in the template body", async () => {
-		tmpBase = tmpPromptsDir({
+	it("runAnalyse substitutes {{file}} in the template body", async () => {
+		tmpBase = tmpOasPromptsDir({
 			"summarize.md": "Summarize\n---\nSummarize @{{file}} in 3 points.",
 		});
 		const host = makeHost(tmpBase);
-		const mgr = new AnalyzeManager(host);
+		const mgr = new AnalyseManager(host);
 		await mgr.prewarm();
-		await mgr.runAnalyze("notes/foo.md", "summarize");
+		await mgr.runAnalyse("notes/foo.md", "summarize");
 		expect(host.activateTerminalView).toHaveBeenCalledWith(
 			undefined,
 			"Summarize @notes/foo.md in 3 points.",
@@ -148,11 +127,11 @@ describe("AnalyzeManager template loading", () => {
 	});
 
 	it("skips terminal activation when container is not running", async () => {
-		tmpBase = tmpPromptsDir({});
+		tmpBase = tmpOasPromptsDir({});
 		const host = makeHost(tmpBase);
 		host.isContainerRunning = vi.fn(() => false);
-		const mgr = new AnalyzeManager(host);
-		await mgr.runAnalyze("notes/foo.md");
+		const mgr = new AnalyseManager(host);
+		await mgr.runAnalyse("notes/foo.md");
 		expect(host.activateTerminalView).not.toHaveBeenCalled();
 		rmSync(tmpBase, { recursive: true, force: true });
 	});

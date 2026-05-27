@@ -3,6 +3,7 @@ import type { Server, IncomingMessage, ServerResponse } from "http";
 import type { App } from "obsidian";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { McpError } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID, timingSafeEqual } from "crypto";
 import type {
 	PermissionTier,
@@ -46,6 +47,10 @@ export interface McpServerHooks {
 	reviewBatch?: ReviewBatchFn;
 	/** Called on every `agent_status_set` tool invocation. */
 	onActivity?: OnActivity;
+	/** Called immediately before every successful MCP write tool apply — used to
+	 *  mark paths as agent-originated so the vault event listener can distinguish
+	 *  agent writes from human edits. */
+	onMcpWrite?: (path: string) => void;
 }
 
 export interface McpServerConfig {
@@ -116,6 +121,7 @@ export class ObsidianMcpServer {
 			reviewBatch: hooks.reviewBatch,
 			cache,
 			onActivity: (update) => this.recordActivity(update),
+			onMcpWrite: hooks.onMcpWrite,
 			enabledTiers: this.config.enabledTiers,
 		}).filter((t) => this.config.enabledTiers.has(t.tier));
 
@@ -693,6 +699,7 @@ export class ObsidianMcpServer {
 					success = out.success;
 					result = out.result;
 				} catch (err: unknown) {
+					if (err instanceof McpError) throw err;
 					const msg = errMsg(err);
 					logger.error("MCP", `Tool ${tool.name} threw`, err);
 					result = {

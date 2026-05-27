@@ -126,7 +126,8 @@ List files in the vault. Optionally filter by folder or extension.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `folder` | `string` | no | Filter by folder path |
+| `folder` | `string` | no | Filter by folder path (alias: path) |
+| `path` | `string` | no | Alias for folder |
 | `extension` | `string` | no | Filter by extension (e.g. md, json) |
 
 ### `vault_orphans`
@@ -185,7 +186,7 @@ Search for text across all markdown files in the vault. Returns matching file pa
 
 **Title:** Fuzzy search vault
 
-Fuzzy full-text search across all markdown files — tolerates typos and approximate matches. Results are score-sorted.
+Fuzzy full-text search across all markdown files — matches note content, not file names. Tolerates typos and approximate matches. Results are score-sorted.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -241,7 +242,7 @@ Append content to the end of a file (within write directory). Restricted to the 
 
 **Title:** Create file (within write directory)
 
-Create a new file (within write directory). Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Create a new file (within write directory). Intermediate parent folders are created automatically. Paths whose final component starts with '.' (dotfiles) are rejected. Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -264,7 +265,7 @@ Remove a YAML frontmatter property from a file (within write directory). Restric
 
 **Title:** Set frontmatter (within write directory)
 
-Set a YAML frontmatter property on a file (within write directory). Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Set a YAML frontmatter property on a file (within write directory). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading `#` is stripped from tag values automatically — pass `"tag"` or `"#tag"` interchangeably. JSON-encoded string arrays (e.g. `'["a","b"]'`) are coerced to real arrays. Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -272,6 +273,7 @@ Set a YAML frontmatter property on a file (within write directory). Restricted t
 | `path` | `string` | no | Exact path from vault root |
 | `property` | `string` | yes | Property name |
 | `value` | `any` | yes | Property value — string, number, boolean, array, or object |
+| `append` | `boolean` | no | Add to existing array instead of replacing it (default false). When the current value is not an array it is wrapped in one first. |
 
 ### `vault_modify`
 
@@ -298,7 +300,7 @@ Insert or replace content at a specific location in a file (within write directo
 | `content` | `string` | yes | Content to insert |
 | `heading` | `string` | no | Target heading text (e.g. '## Details') |
 | `line` | `number` | no | Target line number (1-based) |
-| `position` | `"before" \| "after" \| "replace"` | no | Where to insert relative to target (default 'after') |
+| `position` | `"before" \| "after" \| "replace" \| "start_of_block" \| "end_of_block"` | no | Where to insert relative to target (default 'after'). With a heading target: 'before' inserts before the heading line; 'start_of_block' inserts immediately after the heading line (before the section body); 'end_of_block' inserts at the end of the section; 'after' is an alias for 'end_of_block'. With a line target: 'before', 'after', 'replace' are supported; 'start_of_block' and 'end_of_block' are not valid for line targets. |
 
 ### `vault_prepend`
 
@@ -345,7 +347,7 @@ Append content to the end of a file (reviewed). Each write prompts the user for 
 
 **Title:** Create file (reviewed)
 
-Create a new file (reviewed). Each write prompts the user for approval via a diff modal before applying. Call mcp_capabilities to see the current write directory and enabled tiers.
+Create a new file (reviewed). Intermediate parent folders are created automatically. Paths whose final component starts with '.' (dotfiles) are rejected. Each write prompts the user for approval via a diff modal before applying. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -368,7 +370,7 @@ Remove a YAML frontmatter property from a file (reviewed). Each write prompts th
 
 **Title:** Set frontmatter (reviewed)
 
-Set a YAML frontmatter property on a file (reviewed). Each write prompts the user for approval via a diff modal before applying. Call mcp_capabilities to see the current write directory and enabled tiers.
+Set a YAML frontmatter property on a file (reviewed). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading `#` is stripped from tag values automatically — pass `"tag"` or `"#tag"` interchangeably. JSON-encoded string arrays (e.g. `'["a","b"]'`) are coerced to real arrays. Each write prompts the user for approval via a diff modal before applying. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -376,6 +378,7 @@ Set a YAML frontmatter property on a file (reviewed). Each write prompts the use
 | `path` | `string` | no | Exact path from vault root |
 | `property` | `string` | yes | Property name |
 | `value` | `any` | yes | Property value — string, number, boolean, array, or object |
+| `append` | `boolean` | no | Add to existing array instead of replacing it (default false). When the current value is not an array it is wrapped in one first. |
 
 ### `vault_modify_reviewed`
 
@@ -402,7 +405,7 @@ Insert or replace content at a specific location in a file (reviewed). Each writ
 | `content` | `string` | yes | Content to insert |
 | `heading` | `string` | no | Target heading text (e.g. '## Details') |
 | `line` | `number` | no | Target line number (1-based) |
-| `position` | `"before" \| "after" \| "replace"` | no | Where to insert relative to target (default 'after') |
+| `position` | `"before" \| "after" \| "replace" \| "start_of_block" \| "end_of_block"` | no | Where to insert relative to target (default 'after'). With a heading target: 'before' inserts before the heading line; 'start_of_block' inserts immediately after the heading line (before the section body); 'end_of_block' inserts at the end of the section; 'after' is an alias for 'end_of_block'. With a line target: 'before', 'after', 'replace' are supported; 'start_of_block' and 'end_of_block' are not valid for line targets. |
 
 ### `vault_prepend_reviewed`
 
@@ -449,7 +452,7 @@ Append content to the end of a file (vault-wide). Unrestricted — writes anywhe
 
 **Title:** Create file (vault-wide)
 
-Create a new file (vault-wide). Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Create a new file (vault-wide). Intermediate parent folders are created automatically. Paths whose final component starts with '.' (dotfiles) are rejected. Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -472,7 +475,7 @@ Remove a YAML frontmatter property from a file (vault-wide). Unrestricted — wr
 
 **Title:** Set frontmatter (vault-wide)
 
-Set a YAML frontmatter property on a file (vault-wide). Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Set a YAML frontmatter property on a file (vault-wide). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading `#` is stripped from tag values automatically — pass `"tag"` or `"#tag"` interchangeably. JSON-encoded string arrays (e.g. `'["a","b"]'`) are coerced to real arrays. Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -480,6 +483,7 @@ Set a YAML frontmatter property on a file (vault-wide). Unrestricted — writes 
 | `path` | `string` | no | Exact path from vault root |
 | `property` | `string` | yes | Property name |
 | `value` | `any` | yes | Property value — string, number, boolean, array, or object |
+| `append` | `boolean` | no | Add to existing array instead of replacing it (default false). When the current value is not an array it is wrapped in one first. |
 
 ### `vault_modify_anywhere`
 
@@ -506,7 +510,7 @@ Insert or replace content at a specific location in a file (vault-wide). Unrestr
 | `content` | `string` | yes | Content to insert |
 | `heading` | `string` | no | Target heading text (e.g. '## Details') |
 | `line` | `number` | no | Target line number (1-based) |
-| `position` | `"before" \| "after" \| "replace"` | no | Where to insert relative to target (default 'after') |
+| `position` | `"before" \| "after" \| "replace" \| "start_of_block" \| "end_of_block"` | no | Where to insert relative to target (default 'after'). With a heading target: 'before' inserts before the heading line; 'start_of_block' inserts immediately after the heading line (before the section body); 'end_of_block' inserts at the end of the section; 'after' is an alias for 'end_of_block'. With a line target: 'before', 'after', 'replace' are supported; 'start_of_block' and 'end_of_block' are not valid for line targets. |
 
 ### `vault_prepend_anywhere`
 
