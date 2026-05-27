@@ -43,7 +43,10 @@ describe("MCP tool handlers", () => {
 	let tools: McpToolDef[];
 
 	beforeEach(() => {
-		app = createMockApp(testFiles, { caches });
+		app = createMockApp(testFiles, {
+			caches,
+			folders: [makeTFolder("notes"), makeTFolder("agent-workspace")],
+		});
 		app.metadataCache.resolvedLinks = {
 			"notes/hello.md": { "notes/world.md": 2 },
 			"notes/world.md": {},
@@ -155,6 +158,28 @@ describe("MCP tool handlers", () => {
 			const r = getResult(await getTool(tools, "vault_list").handler({ folder: "notes" }));
 			expect(r.text).toContain("notes/hello.md");
 			expect(r.text).not.toContain("config.json");
+		});
+
+		it("accepts path as alias for folder", async () => {
+			const r = getResult(await getTool(tools, "vault_list").handler({ path: "notes" }));
+			expect(r.text).toContain("notes/hello.md");
+			expect(r.text).not.toContain("config.json");
+		});
+
+		it("errors when folder does not exist", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_list").handler({ folder: "nonexistent" }),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("Folder not found");
+		});
+
+		it("errors when path points to a file not a folder", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_list").handler({ folder: "notes/hello.md" }),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("Not a folder");
 		});
 
 		it("filters by extension", async () => {

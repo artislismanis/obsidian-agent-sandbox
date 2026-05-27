@@ -126,7 +126,8 @@ List files in the vault. Optionally filter by folder or extension.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `folder` | `string` | no | Filter by folder path |
+| `folder` | `string` | no | Filter by folder path (alias: path) |
+| `path` | `string` | no | Alias for folder |
 | `extension` | `string` | no | Filter by extension (e.g. md, json) |
 
 ### `vault_orphans`

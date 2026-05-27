@@ -539,12 +539,20 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			title: "List files",
 			description: "List files in the vault. Optionally filter by folder or extension.",
 			inputSchema: {
-				folder: z.string().optional().describe("Filter by folder path"),
+				folder: z.string().optional().describe("Filter by folder path (alias: path)"),
+				path: z.string().optional().describe("Alias for folder"),
 				extension: z.string().optional().describe("Filter by extension (e.g. md, json)"),
 			},
-			handler: async ({ folder, extension }) => {
+			handler: async ({ folder, path: pathArg, extension }) => {
+				const folderFilter = folder ?? pathArg;
+				if (folderFilter) {
+					const abstract = app.vault.getAbstractFileByPath(folderFilter);
+					if (!abstract) return error(`Folder not found: ${folderFilter}`);
+					if (!("children" in abstract)) return error(`Not a folder: ${folderFilter}`);
+				}
 				let files = app.vault.getFiles();
-				if (folder) files = files.filter((f) => isPathWithinDir(f.path, folder));
+				if (folderFilter)
+					files = files.filter((f) => isPathWithinDir(f.path, folderFilter));
 				if (extension) files = files.filter((f) => f.extension === extension);
 				// Apply pathFilter so blocklisted regions don't leak file
 				// paths — otherwise `vault_list({folder: "secrets"})`
