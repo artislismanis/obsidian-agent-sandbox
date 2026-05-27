@@ -49,6 +49,21 @@ describe("StatusBarManager", () => {
 		expect(el.setText).toHaveBeenCalledWith("Sandbox: \uD83D\uDD0D Checking");
 	});
 
+	it("shows bell badge when sessions await input", () => {
+		const el = createMockElement();
+		const mgr = new StatusBarManager(el);
+		mgr.setState("running");
+		mgr.setAttention(2, ["work", "research"]);
+		expect(el.setText).toHaveBeenLastCalledWith("Sandbox: ▶ Running 🔔");
+	});
+
+	it("shows no badge without attention", () => {
+		const el = createMockElement();
+		const mgr = new StatusBarManager(el);
+		mgr.setState("running");
+		expect(el.setText).toHaveBeenLastCalledWith("Sandbox: ▶ Running");
+	});
+
 	it("skips render when state unchanged", () => {
 		const el = createMockElement();
 		const mgr = new StatusBarManager(el);
