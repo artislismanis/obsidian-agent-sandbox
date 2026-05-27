@@ -300,7 +300,7 @@ Insert or replace content at a specific location in a file (within write directo
 | `content` | `string` | yes | Content to insert |
 | `heading` | `string` | no | Target heading text (e.g. '## Details') |
 | `line` | `number` | no | Target line number (1-based) |
-| `position` | `"before" \| "after" \| "replace"` | no | Where to insert relative to target (default 'after') |
+| `position` | `"before" \| "after" \| "replace" \| "start_of_block" \| "end_of_block"` | no | Where to insert relative to target (default 'after'). With a heading target: 'before' inserts before the heading line; 'start_of_block' inserts immediately after the heading line (before the section body); 'end_of_block' inserts at the end of the section; 'after' is an alias for 'end_of_block'. With a line target: 'before', 'after', 'replace' are supported; 'start_of_block' and 'end_of_block' are not valid for line targets. |
 
 ### `vault_prepend`
 
@@ -405,7 +405,7 @@ Insert or replace content at a specific location in a file (reviewed). Each writ
 | `content` | `string` | yes | Content to insert |
 | `heading` | `string` | no | Target heading text (e.g. '## Details') |
 | `line` | `number` | no | Target line number (1-based) |
-| `position` | `"before" \| "after" \| "replace"` | no | Where to insert relative to target (default 'after') |
+| `position` | `"before" \| "after" \| "replace" \| "start_of_block" \| "end_of_block"` | no | Where to insert relative to target (default 'after'). With a heading target: 'before' inserts before the heading line; 'start_of_block' inserts immediately after the heading line (before the section body); 'end_of_block' inserts at the end of the section; 'after' is an alias for 'end_of_block'. With a line target: 'before', 'after', 'replace' are supported; 'start_of_block' and 'end_of_block' are not valid for line targets. |
 
 ### `vault_prepend_reviewed`
 
@@ -510,7 +510,7 @@ Insert or replace content at a specific location in a file (vault-wide). Unrestr
 | `content` | `string` | yes | Content to insert |
 | `heading` | `string` | no | Target heading text (e.g. '## Details') |
 | `line` | `number` | no | Target line number (1-based) |
-| `position` | `"before" \| "after" \| "replace"` | no | Where to insert relative to target (default 'after') |
+| `position` | `"before" \| "after" \| "replace" \| "start_of_block" \| "end_of_block"` | no | Where to insert relative to target (default 'after'). With a heading target: 'before' inserts before the heading line; 'start_of_block' inserts immediately after the heading line (before the section body); 'end_of_block' inserts at the end of the section; 'after' is an alias for 'end_of_block'. With a line target: 'before', 'after', 'replace' are supported; 'start_of_block' and 'end_of_block' are not valid for line targets. |
 
 ### `vault_prepend_anywhere`
 

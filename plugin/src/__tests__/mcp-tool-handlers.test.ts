@@ -1532,6 +1532,149 @@ describe("MCP tool handlers", () => {
 			expect(r.isError).toBe(true);
 			expect(r.text).toContain("not found");
 		});
+
+		// Helper: build heading metadata for a multi-section file
+		// "# Title\nIntro\n## Details\nBody\n## Next\nTail"
+		// Line 0: # Title, Line 2: ## Details, Line 4: ## Next
+		const multiSectionFile = "# Title\nIntro\n## Details\nBody\n## Next\nTail";
+		const multiSectionHeadings = [
+			{ heading: "Title", level: 1, position: { start: { line: 0 } } },
+			{ heading: "Details", level: 2, position: { start: { line: 2 } } },
+			{ heading: "Next", level: 2, position: { start: { line: 4 } } },
+		];
+
+		it("end_of_block with heading inserts at end of section (same as after)", async () => {
+			app.vault.read.mockResolvedValueOnce(multiSectionFile);
+			app.metadataCache.getFileCache.mockReturnValueOnce({ headings: multiSectionHeadings });
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "ADDED",
+					heading: "## Details",
+					position: "end_of_block",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
+			expect(modified).toBe("# Title\nIntro\n## Details\nBody\nADDED\n## Next\nTail");
+		});
+
+		it("start_of_block with heading inserts immediately after heading line", async () => {
+			app.vault.read.mockResolvedValueOnce(multiSectionFile);
+			app.metadataCache.getFileCache.mockReturnValueOnce({ headings: multiSectionHeadings });
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "PREPENDED",
+					heading: "## Details",
+					position: "start_of_block",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
+			expect(modified).toBe("# Title\nIntro\n## Details\nPREPENDED\nBody\n## Next\nTail");
+		});
+
+		it("before with heading inserts before the heading line", async () => {
+			app.vault.read.mockResolvedValueOnce(multiSectionFile);
+			app.metadataCache.getFileCache.mockReturnValueOnce({ headings: multiSectionHeadings });
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "BEFORE",
+					heading: "## Details",
+					position: "before",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
+			expect(modified).toBe("# Title\nIntro\nBEFORE\n## Details\nBody\n## Next\nTail");
+		});
+
+		it("end_of_block on a single-section file (last heading) inserts at document end", async () => {
+			// Single section: heading is the last one — endLine falls back to lines.length
+			app.vault.read.mockResolvedValueOnce("## Only\nContent");
+			app.metadataCache.getFileCache.mockReturnValueOnce({
+				headings: [{ heading: "Only", level: 2, position: { start: { line: 0 } } }],
+			});
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "APPENDED",
+					heading: "## Only",
+					position: "end_of_block",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
+			expect(modified).toBe("## Only\nContent\nAPPENDED");
+		});
+
+		it("start_of_block on a heading with no body inserts between heading and next heading", async () => {
+			app.vault.read.mockResolvedValueOnce("## Empty\n## Next");
+			app.metadataCache.getFileCache.mockReturnValueOnce({
+				headings: [
+					{ heading: "Empty", level: 2, position: { start: { line: 0 } } },
+					{ heading: "Next", level: 2, position: { start: { line: 1 } } },
+				],
+			});
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "BODY",
+					heading: "## Empty",
+					position: "start_of_block",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			const modified = (app.vault.modify.mock.calls[0] as unknown[])[1] as string;
+			expect(modified).toBe("## Empty\nBODY\n## Next");
+		});
+
+		it("replace is rejected for heading targets", async () => {
+			app.vault.read.mockResolvedValueOnce("## H\nBody");
+			app.metadataCache.getFileCache.mockReturnValueOnce({
+				headings: [{ heading: "H", level: 2, position: { start: { line: 0 } } }],
+			});
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "x",
+					heading: "## H",
+					position: "replace",
+				}),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("replace");
+		});
+
+		it("start_of_block is rejected for line targets", async () => {
+			app.vault.read.mockResolvedValueOnce("line1\nline2");
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "x",
+					line: 1,
+					position: "start_of_block",
+				}),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("start_of_block");
+		});
+
+		it("end_of_block is rejected for line targets", async () => {
+			app.vault.read.mockResolvedValueOnce("line1\nline2");
+			const r = getResult(
+				await getTool(tools, "vault_patch").handler({
+					path: "agent-workspace/draft.md",
+					content: "x",
+					line: 1,
+					position: "end_of_block",
+				}),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("end_of_block");
+		});
 	});
 
 	describe("vault_search chunked early-exit", () => {

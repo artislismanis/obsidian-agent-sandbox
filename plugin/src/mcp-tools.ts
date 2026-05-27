@@ -1855,9 +1855,17 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						.describe("Target heading text (e.g. '## Details')"),
 					line: z.coerce.number().optional().describe("Target line number (1-based)"),
 					position: z
-						.enum(["before", "after", "replace"])
+						.enum(["before", "after", "replace", "start_of_block", "end_of_block"])
 						.optional()
-						.describe("Where to insert relative to target (default 'after')"),
+						.describe(
+							"Where to insert relative to target (default 'after').\n" +
+								"With a heading target: 'before' inserts before the heading line; " +
+								"'start_of_block' inserts immediately after the heading line (before the section body); " +
+								"'end_of_block' inserts at the end of the section; " +
+								"'after' is an alias for 'end_of_block'.\n" +
+								"With a line target: 'before', 'after', 'replace' are supported; " +
+								"'start_of_block' and 'end_of_block' are not valid for line targets.",
+						),
 				},
 				refine: requireFileOrPath,
 				handler: async ({
@@ -1876,44 +1884,61 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 
 					if (!headingArg && lineArg === undefined)
 						return error("Provide either 'heading' or 'line' target.");
-					if (headingArg && position !== "after")
+					if (headingArg && position === "replace")
 						return error(
-							"Heading targets only support position='after'. Use a line target for before/replace.",
+							"position='replace' is not valid for heading targets. Use a line target for replace.",
 						);
 
 					if (headingArg) {
-						// Heading mode only supports position='after' (guarded
-						// above). Compute endLine directly from heading bounds.
 						const cache = app.metadataCache.getFileCache(f);
 						const headings = cache?.headings ?? [];
 						const match = headings.find(
 							(h) => h.heading === headingArg.replace(/^#+\s*/, ""),
 						);
 						if (!match) return error(`Heading '${headingArg}' not found.`);
+						const headingLine = match.position.start.line;
 						const matchLevel = match.level;
-						let endLine = lines.length;
 						const matchIdx = headings.indexOf(match);
 						const next = headings
 							.slice(matchIdx + 1)
 							.find((h) => h.level <= matchLevel);
-						if (next) endLine = next.position.start.line;
+						const endLine = next ? next.position.start.line : lines.length;
+
+						let insertAt: number;
+						let posLabel: string;
+						if (position === "before") {
+							insertAt = headingLine;
+							posLabel = "before";
+						} else if (position === "start_of_block") {
+							insertAt = headingLine + 1;
+							posLabel = "start of block after";
+						} else {
+							// 'after' | 'end_of_block' | default
+							insertAt = endLine;
+							posLabel = "end of block after";
+						}
 						const updated = [
-							...lines.slice(0, endLine),
+							...lines.slice(0, insertAt),
 							insertContent,
-							...lines.slice(endLine),
+							...lines.slice(insertAt),
 						].join("\n");
 						return runWrite({
 							operation: "patch",
 							filePath: f.path,
 							oldContent: existing,
 							newContent: updated,
-							description: `Patch ${f.path} after heading '${headingArg}'`,
+							description: `Patch ${f.path} at ${posLabel} heading '${headingArg}'`,
 							review,
 							apply: () => app.vault.modify(f, updated),
-							successMsg: `Patched ${f.path} after heading '${headingArg}'`,
+							successMsg: `Patched ${f.path} at ${posLabel} heading '${headingArg}'`,
 							recheckFile: f,
 						});
 					}
+
+					if (position === "start_of_block" || position === "end_of_block")
+						return error(
+							`position='${position}' is only valid with a heading target. Use a line target with 'before', 'after', or 'replace'.`,
+						);
 
 					const targetLine = lineArg! - 1;
 					// `replace` requires the line to actually exist; before/after
