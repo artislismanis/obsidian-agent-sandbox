@@ -60,7 +60,7 @@ export interface SessionCleanupApi {
 }
 
 /**
- * Opens the "Clean up empty sessions" modal if the container is running
+ * Opens the "Clean up detached sessions" modal if the container is running
  * and there are candidates. Kills only the user-checked names.
  */
 export async function showSessionCleanup(
@@ -83,11 +83,11 @@ export async function showSessionCleanup(
 		return;
 	}
 	if (candidates.length === 0) {
-		new Notice("No empty tmux sessions to clean up.");
+		new Notice("No detached tmux sessions to clean up.");
 		return;
 	}
 	const modal = new Modal(app);
-	modal.titleEl.setText("Clean up empty sessions");
+	modal.titleEl.setText("Clean up detached sessions");
 	modal.contentEl.createEl("p", {
 		text: `${candidates.length} session(s) have no attached clients. Kill the selected ones?`,
 	});

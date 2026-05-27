@@ -196,7 +196,7 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-claude-terminal",
-			name: "Open Sandbox Terminal",
+			name: "Sandbox: Open Terminal",
 			callback: () => {
 				void this.openTerminalOrPromptStart();
 			},
@@ -234,7 +234,7 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-session",
-			name: "Open Sandbox Session...",
+			name: "Sandbox: Open Session...",
 			callback: async () => {
 				const name = await this.promptSessionName("New Session");
 				if (name) void this.activateTerminalView(name);
@@ -243,7 +243,7 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-browser",
-			name: "Open Sandbox in Browser",
+			name: "Sandbox: Open in Browser",
 			callback: () => {
 				window.open(
 					resolveTtydBrowserUrl(this.settings.ttydPort, this.settings.ttydBindAddress),
@@ -285,7 +285,7 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		this.addCommand({
 			id: "sandbox-cleanup-sessions",
-			name: "Sandbox: Clean up empty sessions",
+			name: "Sandbox: Clean up detached sessions",
 			callback: () =>
 				void showSessionCleanup(
 					this.app,
