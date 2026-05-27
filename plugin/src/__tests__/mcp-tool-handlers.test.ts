@@ -568,13 +568,13 @@ describe("MCP tool handlers", () => {
 		it("accepts native arrays", async () => {
 			await getTool(tools, "vault_frontmatter_set").handler({
 				path: "agent-workspace/draft.md",
-				property: "tags",
+				property: "categories",
 				value: ["a", "b"],
 			});
 			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
 			const fm: Record<string, unknown> = {};
 			callback(fm);
-			expect(fm.tags).toEqual(["a", "b"]);
+			expect(fm.categories).toEqual(["a", "b"]);
 		});
 
 		it("accepts native numbers, booleans, and objects", async () => {
@@ -619,7 +619,8 @@ describe("MCP tool handlers", () => {
 			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
 			const fm: Record<string, unknown> = {};
 			callback(fm);
-			expect(fm.tags).toEqual(["x", "y"]);
+			// JSON-string coercion + tag # normalisation applied together
+			expect(fm.tags).toEqual(["#x", "#y"]);
 		});
 
 		it("coerces JSON-string object to native object", async () => {
@@ -649,13 +650,122 @@ describe("MCP tool handlers", () => {
 		it("leaves invalid JSON array-shaped strings unchanged", async () => {
 			await getTool(tools, "vault_frontmatter_set").handler({
 				path: "agent-workspace/draft.md",
-				property: "tags",
+				property: "status",
 				value: "[not valid",
 			});
 			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
 			const fm: Record<string, unknown> = {};
 			callback(fm);
-			expect(fm.tags).toBe("[not valid");
+			expect(fm.status).toBe("[not valid");
+		});
+
+		describe("tag normalisation", () => {
+			const callFm = async (value: unknown) => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "tags",
+					value,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = {};
+				callback(fm);
+				return fm.tags;
+			};
+
+			it("prefixes bare tag strings with #", async () => {
+				expect(await callFm("work")).toBe("#work");
+			});
+
+			it("leaves already-prefixed tags unchanged", async () => {
+				expect(await callFm("#work")).toBe("#work");
+			});
+
+			it("normalises all elements in an array", async () => {
+				expect(await callFm(["project", "#active", "todo"])).toEqual([
+					"#project",
+					"#active",
+					"#todo",
+				]);
+			});
+
+			it("does not normalise non-tag properties", async () => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "category",
+					value: ["a", "b"],
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = {};
+				callback(fm);
+				expect(fm.category).toEqual(["a", "b"]);
+			});
+		});
+
+		describe("append mode", () => {
+			it("appends to an existing array", async () => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "categories",
+					value: ["c"],
+					append: true,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = { categories: ["a", "b"] };
+				callback(fm);
+				expect(fm.categories).toEqual(["a", "b", "c"]);
+			});
+
+			it("deduplicates when appending", async () => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "categories",
+					value: ["b", "c"],
+					append: true,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = { categories: ["a", "b"] };
+				callback(fm);
+				expect(fm.categories).toEqual(["a", "b", "c"]);
+			});
+
+			it("wraps a scalar existing value in an array then appends", async () => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "categories",
+					value: ["b"],
+					append: true,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = { categories: "a" };
+				callback(fm);
+				expect(fm.categories).toEqual(["a", "b"]);
+			});
+
+			it("sets value directly when no existing value", async () => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "categories",
+					value: ["x"],
+					append: true,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = {};
+				callback(fm);
+				expect(fm.categories).toEqual(["x"]);
+			});
+
+			it("appends and normalises tags simultaneously", async () => {
+				await getTool(tools, "vault_frontmatter_set").handler({
+					path: "agent-workspace/draft.md",
+					property: "tags",
+					value: ["new"],
+					append: true,
+				});
+				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
+				const fm: Record<string, unknown> = { tags: ["#existing"] };
+				callback(fm);
+				expect(fm.tags).toEqual(["#existing", "#new"]);
+			});
 		});
 	});
 
@@ -1003,7 +1113,7 @@ describe("MCP tool handlers", () => {
 			expect(r.text).not.toContain("agent-workspace/draft.md");
 		});
 
-		it("coerces JSON-string array to native array when applying", async () => {
+		it("coerces JSON-string array to native array when applying (with tag normalisation)", async () => {
 			await getTool(tools, "vault_batch_frontmatter").handler({
 				folder: "agent-workspace",
 				property: "tags",
@@ -1013,7 +1123,7 @@ describe("MCP tool handlers", () => {
 			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
 			const fm: Record<string, unknown> = {};
 			callback(fm);
-			expect(fm.tags).toEqual(["a", "b"]);
+			expect(fm.tags).toEqual(["#a", "#b"]);
 		});
 	});
 

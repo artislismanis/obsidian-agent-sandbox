@@ -268,6 +268,22 @@ function coerceJsonValue(value: unknown): unknown {
 	return value;
 }
 
+function ensureTagHash(tag: string): string {
+	return tag.startsWith("#") ? tag : `#${tag}`;
+}
+
+// Coerce JSON-string inputs then apply property-specific normalisation.
+// Currently: tags arrays/strings are prefixed with # for consistency.
+function normalizeFrontmatterValue(property: string, value: unknown): unknown {
+	const coerced = coerceJsonValue(value);
+	if (property === "tags") {
+		if (Array.isArray(coerced))
+			return coerced.map((v) => (typeof v === "string" ? ensureTagHash(v) : v));
+		if (typeof coerced === "string") return ensureTagHash(coerced);
+	}
+	return coerced;
+}
+
 /** Parallel-chunked iteration over markdown files; handler returning true stops the walk.
  *
  * Returns the read-failure count so callers can surface a "scan skipped N
@@ -1498,7 +1514,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				name: `vault_frontmatter_set${suffix}`,
 				tier,
 				title: `Set frontmatter${scopeLabel}`,
-				description: `Set a YAML frontmatter property on a file${scopeLabel}. Replaces any existing value; there is no append-style variant.${note}`,
+				description: `Set a YAML frontmatter property on a file${scopeLabel}. Pass \`append: true\` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first.${note}`,
 				inputSchema: {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),
@@ -1506,14 +1522,29 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					value: z
 						.unknown()
 						.describe("Property value — string, number, boolean, array, or object"),
+					append: coercedBoolean()
+						.optional()
+						.describe(
+							"Add to existing array instead of replacing it (default false). When the current value is not an array it is wrapped in one first.",
+						),
 				},
 				refine: requireFileOrPath,
-				handler: async ({ file, path, property, value }) => {
+				handler: async ({ file, path, property, value, append = false }) => {
 					if (!isSafeFrontmatterProperty(property))
 						return error(
 							`Property name '${property}' is not allowed (reserved or invalid).`,
 						);
-					const coercedValue = coerceJsonValue(value);
+					const normalizedValue = normalizeFrontmatterValue(property, value);
+					// Merges `normalizedValue` into `existing` when append mode is on.
+					// null/undefined existing → just set; scalar existing → wrap in array first.
+					const mergeAppend = (existing: unknown): unknown => {
+						if (!append || existing == null) return normalizedValue;
+						const base = Array.isArray(existing) ? existing : [existing];
+						const additions = Array.isArray(normalizedValue)
+							? normalizedValue
+							: [normalizedValue];
+						return [...base, ...additions.filter((v) => !base.includes(v))];
+					};
 					const result = resolveForWrite({ file, path });
 					if (!result.ok) return result.error;
 					const f = result.file;
@@ -1529,12 +1560,16 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						operation: "frontmatter_set",
 						filePath: f.path,
 						oldContent: JSON.stringify(oldFm, null, 2),
-						newContent: JSON.stringify({ ...oldFm, [property]: coercedValue }, null, 2),
+						newContent: JSON.stringify(
+							{ ...oldFm, [property]: mergeAppend(oldFm[property]) },
+							null,
+							2,
+						),
 						description: `Set frontmatter '${property}' on ${f.path}`,
 						review,
 						apply: () =>
 							app.fileManager.processFrontMatter(f, (fm) => {
-								fm[property] = coercedValue;
+								fm[property] = mergeAppend(fm[property]);
 							}),
 						successMsg: `Set ${property} on ${f.path}`,
 						// Recheck full content so external edits during a long
@@ -2229,7 +2264,9 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// `hasValue` distinguishes set vs delete; the value itself can
 				// legitimately be `null` or `false`.
 				const hasValue = value !== undefined;
-				const coercedValue = hasValue ? coerceJsonValue(value) : undefined;
+				const coercedValue = hasValue
+					? normalizeFrontmatterValue(property, value)
+					: undefined;
 				if (!isSafeFrontmatterProperty(property))
 					return error(
 						`Property name '${property}' is not allowed (reserved or invalid).`,
