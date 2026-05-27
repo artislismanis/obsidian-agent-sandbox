@@ -268,18 +268,18 @@ function coerceJsonValue(value: unknown): unknown {
 	return value;
 }
 
-function ensureTagHash(tag: string): string {
-	return tag.startsWith("#") ? tag : `#${tag}`;
+function stripTagHash(tag: string): string {
+	return tag.startsWith("#") ? tag.slice(1) : tag;
 }
 
 // Coerce JSON-string inputs then apply property-specific normalisation.
-// Currently: tags arrays/strings are prefixed with # for consistency.
+// Tags: strip leading # to match Obsidian's native YAML frontmatter convention.
 function normalizeFrontmatterValue(property: string, value: unknown): unknown {
 	const coerced = coerceJsonValue(value);
 	if (property === "tags") {
 		if (Array.isArray(coerced))
-			return coerced.map((v) => (typeof v === "string" ? ensureTagHash(v) : v));
-		if (typeof coerced === "string") return ensureTagHash(coerced);
+			return coerced.map((v) => (typeof v === "string" ? stripTagHash(v) : v));
+		if (typeof coerced === "string") return stripTagHash(coerced);
 	}
 	return coerced;
 }

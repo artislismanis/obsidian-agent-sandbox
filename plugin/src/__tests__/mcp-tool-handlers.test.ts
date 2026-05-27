@@ -619,8 +619,8 @@ describe("MCP tool handlers", () => {
 			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
 			const fm: Record<string, unknown> = {};
 			callback(fm);
-			// JSON-string coercion + tag # normalisation applied together
-			expect(fm.tags).toEqual(["#x", "#y"]);
+			// JSON-string coercion + tag # stripping applied together
+			expect(fm.tags).toEqual(["x", "y"]);
 		});
 
 		it("coerces JSON-string object to native object", async () => {
@@ -672,19 +672,19 @@ describe("MCP tool handlers", () => {
 				return fm.tags;
 			};
 
-			it("prefixes bare tag strings with #", async () => {
-				expect(await callFm("work")).toBe("#work");
+			it("strips # from tag strings", async () => {
+				expect(await callFm("#work")).toBe("work");
 			});
 
-			it("leaves already-prefixed tags unchanged", async () => {
-				expect(await callFm("#work")).toBe("#work");
+			it("leaves already-bare tags unchanged", async () => {
+				expect(await callFm("work")).toBe("work");
 			});
 
 			it("normalises all elements in an array", async () => {
 				expect(await callFm(["project", "#active", "todo"])).toEqual([
-					"#project",
-					"#active",
-					"#todo",
+					"project",
+					"active",
+					"todo",
 				]);
 			});
 
@@ -758,13 +758,13 @@ describe("MCP tool handlers", () => {
 				await getTool(tools, "vault_frontmatter_set").handler({
 					path: "agent-workspace/draft.md",
 					property: "tags",
-					value: ["new"],
+					value: ["#new"],
 					append: true,
 				});
 				const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
-				const fm: Record<string, unknown> = { tags: ["#existing"] };
+				const fm: Record<string, unknown> = { tags: ["existing"] };
 				callback(fm);
-				expect(fm.tags).toEqual(["#existing", "#new"]);
+				expect(fm.tags).toEqual(["existing", "new"]);
 			});
 		});
 	});
@@ -1117,13 +1117,13 @@ describe("MCP tool handlers", () => {
 			await getTool(tools, "vault_batch_frontmatter").handler({
 				folder: "agent-workspace",
 				property: "tags",
-				value: '["a","b"]',
+				value: '["#a","#b"]',
 				dryRun: false,
 			});
 			const callback = app.fileManager.processFrontMatter.mock.calls[0][1];
 			const fm: Record<string, unknown> = {};
 			callback(fm);
-			expect(fm.tags).toEqual(["#a", "#b"]);
+			expect(fm.tags).toEqual(["a", "b"]);
 		});
 	});
 
