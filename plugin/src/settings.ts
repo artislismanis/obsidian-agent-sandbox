@@ -267,7 +267,12 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
 			.addText((text) => {
 				if (opts.placeholder) text.setPlaceholder(opts.placeholder);
-				text.setValue(String(this.plugin.settings[opts.key])).onChange(async (value) => {
+				const initial = String(this.plugin.settings[opts.key]);
+				text.setValue(initial);
+				if (opts.validator && !opts.validator(initial)) {
+					text.inputEl.addClass("sandbox-input-error");
+				}
+				text.onChange(async (value) => {
 					if (!opts.validator || opts.validator(value)) {
 						(this.plugin.settings[opts.key] as string) = value;
 						this.plugin.saveSettings();
@@ -619,8 +624,8 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		new Setting(el)
 			.setName("Auth token")
 			.setDesc(
-				"Bearer token for MCP authentication. Auto-generated and passed to the container. " +
-					"Regenerating requires a container restart so the container picks up the new token.",
+				"Bearer token for MCP authentication. Auto-generated and passed to the container." +
+					RESTART_CONTAINER_SUFFIX,
 			)
 			.addText((text) => {
 				text.setValue(this.plugin.settings.mcpToken).setDisabled(true);
