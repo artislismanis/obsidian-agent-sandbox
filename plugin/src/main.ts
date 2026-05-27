@@ -114,6 +114,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			updateTooltip: () => this.updateTooltip(),
 			onActivity: (update) => this.activityUi.route(update),
 			clearActivity: () => this.activityUi.clear(),
+			onMcpWrite: (path) => this.agentOutput.markMcpWrite(path),
 		});
 		this.activityUi = new ActivityUi(this.app, this.statusBar, () =>
 			this.mcpLifecycle.getActivity(),
@@ -340,15 +341,22 @@ export default class AgentSandboxPlugin extends Plugin {
 			void this.mcpLifecycle.applyEnabled(true);
 		}
 
-		this.registerEvent(
-			this.app.vault.on("create", (file) => {
-				if (!("extension" in file)) return;
-				this.agentOutput.onCreate(file.path);
-			}),
-		);
-		this.registerEvent(
-			this.app.vault.on("modify", (file) => this.agentOutput.onModify(file.path)),
-		);
+		// Defer vault listeners until after layout-ready + 2s grace so the
+		// initial vault scan (which fires "create" for every existing file)
+		// doesn't trigger agent-output notices at startup.
+		this.app.workspace.onLayoutReady(() => {
+			window.setTimeout(() => {
+				this.registerEvent(
+					this.app.vault.on("create", (file) => {
+						if (!("extension" in file)) return;
+						this.agentOutput.onCreate(file.path);
+					}),
+				);
+				this.registerEvent(
+					this.app.vault.on("modify", (file) => this.agentOutput.onModify(file.path)),
+				);
+			}, 2000);
+		});
 
 		// Quick-Switcher-style picker for open sandbox sessions
 		this.addCommand({

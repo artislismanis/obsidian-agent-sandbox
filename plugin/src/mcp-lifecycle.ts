@@ -15,6 +15,7 @@ interface McpLifecycleCallbacks {
 	updateTooltip: () => void;
 	onActivity: OnActivity;
 	clearActivity: () => void;
+	onMcpWrite: (path: string) => void;
 }
 
 export class McpLifecycle {
@@ -126,6 +127,7 @@ export class McpLifecycle {
 						? async (req) => new BatchReviewModal(this.app, req).review()
 						: undefined,
 					onActivity: (update) => this.cb.onActivity(update),
+					onMcpWrite: (path) => this.cb.onMcpWrite(path),
 				},
 				toolTimeoutMs: settings.mcpToolTimeout * 1000,
 				reviewTimeoutMs: settings.mcpReviewTimeout * 1000,

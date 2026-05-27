@@ -155,21 +155,36 @@ interface BufferedEntry {
 
 const DEBOUNCE_MS = 2000;
 const RATE_LIMIT_MS = 5000;
+// How long a path stays in the "recently written by MCP" set before expiring.
+const MCP_WRITE_TTL_MS = 5000;
 
 export class AgentOutputNotifier {
 	private buffer: BufferedEntry[] = [];
+	/** Batch frozen at the rate-limit boundary, waiting for the next window. */
+	private pendingBuffer: BufferedEntry[] = [];
 	private debounceId: ReturnType<typeof setTimeout> | null = null;
 	private lastNoticeAt = 0;
+	/** Paths recently written via MCP tools — keyed to their expiry epoch ms. */
+	private recentMcpWrites = new Map<string, number>();
 
 	constructor(
 		private getMode: () => AgentOutputMode,
 		private getWriteDir: () => string,
 	) {}
 
+	/**
+	 * Called by MCP write tool handlers immediately before a vault write so
+	 * the subsequent vault event can be identified as agent-originated.
+	 */
+	markMcpWrite(path: string): void {
+		this.recentMcpWrites.set(path, Date.now() + MCP_WRITE_TTL_MS);
+	}
+
 	/** Feed `vault.on("create")` events. */
 	onCreate(path: string): void {
 		if (this.getMode() === "off") return;
 		if (!this.pathInsideWriteDir(path)) return;
+		if (!this.isRecentMcpWrite(path)) return;
 		this.enqueue({ kind: "created", path });
 	}
 
@@ -177,6 +192,7 @@ export class AgentOutputNotifier {
 	onModify(path: string): void {
 		if (this.getMode() !== "new_or_modified") return;
 		if (!this.pathInsideWriteDir(path)) return;
+		if (!this.isRecentMcpWrite(path)) return;
 		this.enqueue({ kind: "modified", path });
 	}
 
@@ -187,6 +203,18 @@ export class AgentOutputNotifier {
 			this.debounceId = null;
 		}
 		this.buffer = [];
+		this.pendingBuffer = [];
+		this.recentMcpWrites.clear();
+	}
+
+	private isRecentMcpWrite(path: string): boolean {
+		const expiry = this.recentMcpWrites.get(path);
+		if (expiry === undefined) return false;
+		if (Date.now() >= expiry) {
+			this.recentMcpWrites.delete(path);
+			return false;
+		}
+		return true;
 	}
 
 	private pathInsideWriteDir(path: string): boolean {
@@ -210,18 +238,45 @@ export class AgentOutputNotifier {
 		const now = Date.now();
 		const sinceLast = now - this.lastNoticeAt;
 		if (sinceLast < RATE_LIMIT_MS) {
-			// Inside the rate-limit window — hold the buffer and re-arm so the
-			// accumulated events land in the next available slot instead of
-			// being silently dropped.
+			// Freeze the current batch so new events arriving during the wait
+			// don't mix into this notice. The debounce timer becomes the
+			// rate-limit hold timer; new enqueue() calls see it non-null and
+			// just append to this.buffer — they'll be picked up in the next
+			// window via the recursive flush() below.
+			this.pendingBuffer = [...this.pendingBuffer, ...this.buffer];
+			this.buffer = [];
 			this.debounceId = setTimeout(() => {
 				this.debounceId = null;
-				this.flush();
+				this.flushPending();
 			}, RATE_LIMIT_MS - sinceLast);
 			return;
 		}
 		const buf = this.buffer;
 		this.buffer = [];
 		this.lastNoticeAt = now;
+		this.emitBatch(buf);
+	}
+
+	private flushPending(): void {
+		if (this.pendingBuffer.length === 0) {
+			// Nothing to emit for the frozen batch; try current buffer instead.
+			this.flush();
+			return;
+		}
+		const buf = this.pendingBuffer;
+		this.pendingBuffer = [];
+		this.lastNoticeAt = Date.now();
+		this.emitBatch(buf);
+		// If new events arrived during the hold, start a fresh debounce for them.
+		if (this.buffer.length > 0) {
+			this.debounceId = setTimeout(() => {
+				this.debounceId = null;
+				this.flush();
+			}, DEBOUNCE_MS);
+		}
+	}
+
+	private emitBatch(buf: BufferedEntry[]): void {
 		if (buf.length === 1) {
 			new Notice(`Agent ${buf[0].kind} ${buf[0].path}`, 5000);
 			return;

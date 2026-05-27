@@ -46,6 +46,10 @@ export interface McpServerHooks {
 	reviewBatch?: ReviewBatchFn;
 	/** Called on every `agent_status_set` tool invocation. */
 	onActivity?: OnActivity;
+	/** Called immediately before every successful MCP write tool apply — used to
+	 *  mark paths as agent-originated so the vault event listener can distinguish
+	 *  agent writes from human edits. */
+	onMcpWrite?: (path: string) => void;
 }
 
 export interface McpServerConfig {
@@ -116,6 +120,7 @@ export class ObsidianMcpServer {
 			reviewBatch: hooks.reviewBatch,
 			cache,
 			onActivity: (update) => this.recordActivity(update),
+			onMcpWrite: hooks.onMcpWrite,
 			enabledTiers: this.config.enabledTiers,
 		}).filter((t) => this.config.enabledTiers.has(t.tier));
 

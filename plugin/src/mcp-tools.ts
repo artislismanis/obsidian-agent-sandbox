@@ -401,6 +401,7 @@ export interface BuildToolsOptions {
 	reviewBatch?: ReviewBatchFn;
 	cache?: { get<T>(key: string, compute: () => T): T };
 	onActivity?: OnActivity;
+	onMcpWrite?: (path: string) => void;
 	enabledTiers?: ReadonlySet<PermissionTier>;
 }
 
@@ -413,6 +414,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		reviewBatch: reviewBatchFn,
 		cache,
 		onActivity,
+		onMcpWrite,
 		enabledTiers = ALL_TIERS,
 	} = opts;
 	const tools: McpToolDef[] = [];
@@ -1287,6 +1289,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		// server runtime also wraps throws, but mirroring gateVaultWrite's
 		// structure keeps both paths returning well-formed McpToolResult.
 		try {
+			onMcpWrite?.(op.filePath);
 			const applyResult = await op.apply();
 			const msg = op.successMsg.replace("{result}", applyResult ?? "");
 			return text(msg);
