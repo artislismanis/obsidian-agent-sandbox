@@ -3,6 +3,7 @@ import type { Server, IncomingMessage, ServerResponse } from "http";
 import type { App } from "obsidian";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { McpError } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID, timingSafeEqual } from "crypto";
 import type {
 	PermissionTier,
@@ -698,6 +699,7 @@ export class ObsidianMcpServer {
 					success = out.success;
 					result = out.result;
 				} catch (err: unknown) {
+					if (err instanceof McpError) throw err;
 					const msg = errMsg(err);
 					logger.error("MCP", `Tool ${tool.name} threw`, err);
 					result = {

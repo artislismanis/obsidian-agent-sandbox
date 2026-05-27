@@ -1,6 +1,7 @@
 import type { App, TFile, CachedMetadata } from "obsidian";
 import { prepareSimpleSearch, prepareFuzzySearch } from "obsidian";
 import { z } from "zod/v4";
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { isPathWithinDir, isPathAllowed, pathHasParentSegment } from "./validation";
 import type { WriteOperation } from "./diff-review-modal";
 import { registerExtensionTools } from "./mcp-extensions";
@@ -113,7 +114,11 @@ export function defineTool<S extends Record<string, z.ZodType>>(def: {
 			const data = parsed.data as z.infer<z.ZodObject<S>>;
 			if (def.refine) {
 				const refineErr = def.refine(data);
-				if (refineErr) return error(`Invalid arguments: ${refineErr}`);
+				if (refineErr)
+					throw new McpError(
+						ErrorCode.InvalidParams,
+						`Input validation error: ${refineErr}`,
+					);
 			}
 			return def.handler(data);
 		},

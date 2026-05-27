@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { TFile } from "obsidian";
+import { ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 
 vi.mock("obsidian", () => ({
 	prepareSimpleSearch: vi.fn(() => () => ({ score: 1, matches: [[0, 5]] })),
@@ -140,10 +141,11 @@ describe("MCP tool handlers", () => {
 			expect(r.text.startsWith("Invalid arguments")).toBe(true);
 		});
 
-		it("rejects missing file/path with Invalid arguments", async () => {
-			const r = getResult(await getTool(tools, "vault_read").handler({}));
-			expect(r.isError).toBe(true);
-			expect(r.text).toBe("Invalid arguments: Provide either 'file' or 'path'.");
+		it("rejects missing file/path as McpError -32602", async () => {
+			await expect(getTool(tools, "vault_read").handler({})).rejects.toMatchObject({
+				code: ErrorCode.InvalidParams,
+				message: expect.stringContaining("Input validation error"),
+			});
 		});
 	});
 
@@ -1155,14 +1157,15 @@ describe("MCP tool handlers", () => {
 		});
 
 		it("requires at least one of folder or query", async () => {
-			const r = getResult(
-				await getTool(tools, "vault_batch_frontmatter").handler({
+			await expect(
+				getTool(tools, "vault_batch_frontmatter").handler({
 					property: "reviewed",
 					value: "true",
 				}),
-			);
-			expect(r.isError).toBe(true);
-			expect(r.text).toBe("Invalid arguments: Provide at least one of 'query' or 'folder'.");
+			).rejects.toMatchObject({
+				code: ErrorCode.InvalidParams,
+				message: expect.stringContaining("Input validation error"),
+			});
 		});
 
 		it("intersects folder + query", async () => {
