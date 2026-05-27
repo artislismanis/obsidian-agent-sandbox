@@ -333,6 +333,40 @@ describe("MCP tool handlers", () => {
 			expect(r.isError).toBe(true);
 			expect(r.text).toContain("already exists");
 		});
+
+		it("rejects dotfile basename", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_create").handler({
+					path: "agent-workspace/.hidden.md",
+				}),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("dotfile");
+			expect(app.vault.create).not.toHaveBeenCalled();
+		});
+
+		it("creates missing parent folders", async () => {
+			const localApp = createMockApp(testFiles, {
+				caches,
+				folders: [makeTFolder("agent-workspace")],
+			});
+			const localTools = buildTools({
+				app: localApp as never,
+				getWriteDir: () => "agent-workspace",
+				review: async () => ({ approved: true }),
+			});
+			const r = getResult(
+				await getTool(localTools, "vault_create").handler({
+					path: "agent-workspace/newdir/file.md",
+				}),
+			);
+			expect(r.isError).toBe(false);
+			expect(localApp.vault.createFolder).toHaveBeenCalledWith("agent-workspace/newdir");
+			expect(localApp.vault.create).toHaveBeenCalledWith(
+				"agent-workspace/newdir/file.md",
+				"",
+			);
+		});
 	});
 
 	describe("vault_create + Templater folder templates", () => {
@@ -943,6 +977,15 @@ describe("MCP tool handlers", () => {
 			expect(r.isError).toBe(true);
 			expect(r.text).toBe("Path notes/clash exists as a file; refusing to create folder.");
 			expect(localApp.vault.createFolder).not.toHaveBeenCalled();
+		});
+
+		it("rejects dotfile basename", async () => {
+			const r = getResult(
+				await getTool(tools, "vault_create_folder").handler({ path: ".hidden" }),
+			);
+			expect(r.isError).toBe(true);
+			expect(r.text).toContain("dotfile");
+			expect(app.vault.createFolder).not.toHaveBeenCalled();
 		});
 	});
 

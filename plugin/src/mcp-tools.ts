@@ -239,6 +239,9 @@ export function validateNewVaultPath(
 	if (!isPathAllowedByFilter(path, pathFilter))
 		return error("Path is blocked by allow/block list.");
 	if (!isVaultPathSafe(app, path)) return error("Path resolves outside the vault (symlink).");
+	const basename = path.split("/").pop() ?? path;
+	if (/^\.[^/]+$/.test(basename))
+		return error("Path may not create a dotfile (basename starting with '.').");
 	return null;
 }
 
@@ -434,6 +437,16 @@ export interface BuildToolsOptions {
 	onActivity?: OnActivity;
 	onMcpWrite?: (path: string) => void;
 	enabledTiers?: ReadonlySet<PermissionTier>;
+}
+
+// vault.createFolder throws if any ancestor is absent — walk the tree so
+// agents can write into brand-new nested paths in one shot.
+async function ensureParentFolder(app: App, filePath: string): Promise<void> {
+	const parentPath = filePath.split("/").slice(0, -1).join("/");
+	if (!parentPath) return;
+	if (app.vault.getAbstractFileByPath(parentPath)) return;
+	await ensureParentFolder(app, parentPath);
+	await app.vault.createFolder(parentPath);
 }
 
 export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
@@ -1403,6 +1416,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						review,
 						apply: () =>
 							withTemplaterHookSuppressed(app, async () => {
+								await ensureParentFolder(app, path);
 								const created = await app.vault.create(path, content);
 								// Capture the path before Templater runs — when a
 								// template calls `tp.file.move(...)`, Obsidian mutates
