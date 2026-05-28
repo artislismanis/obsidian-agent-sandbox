@@ -58,7 +58,7 @@ If a port is already in use, a Notice explains which one. Free it (close whateve
 
 ## 5. Open a terminal
 
-Ribbon → **Open Sandbox Terminal**, or command **Open Sandbox Terminal**, or `obsidian://agent-sandbox/open-terminal`.
+Ribbon → **Open Sandbox Terminal**, or command **Sandbox: Open Terminal**, or `obsidian://agent-sandbox/open-terminal`.
 
 A new Obsidian tab opens hosting xterm.js connected to the container's ttyd. You should see a bash prompt.
 

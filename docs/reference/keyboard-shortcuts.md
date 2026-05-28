@@ -16,6 +16,6 @@ The plugin doesn't ship with hotkey bindings — Obsidian's own hotkey system ha
 
 Not shipped — set these yourself if you use them often:
 
-- **Open Sandbox Terminal** — e.g. `Ctrl` + `` ` ``
+- **Sandbox: Open Terminal** — e.g. `Ctrl` + `` ` ``
 - **Sandbox: Switch to Sandbox session…** — e.g. `Ctrl` + `Shift` + `S`
 - **Sandbox: Toggle Firewall** — e.g. `Ctrl` + `Alt` + `F`
