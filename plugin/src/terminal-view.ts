@@ -145,6 +145,9 @@ export class TerminalView extends ItemView {
 	private resizeRafId: number | null = null;
 	private termDisposables: { dispose(): void }[] = [];
 	private wsDispose: (() => void) | null = null;
+	// True when the viewport is at (or past) the last line. Used to auto-follow
+	// new output without yanking the viewport while the user has scrolled up.
+	private atBottom = true;
 
 	// Lifecycle stats — reset per WS attach. Used for close diagnostics.
 	private wsConnectStartedAt = 0;
@@ -564,6 +567,23 @@ export class TerminalView extends ItemView {
 		});
 		this.resizeObserver.observe(wrapper);
 
+		// Scroll tracking: keep atBottom in sync so onMessage knows whether to
+		// auto-follow new output. Read viewportY from the scroll event argument
+		// rather than term.buffer.active (which may lag on rapid writes).
+		this.atBottom = true;
+		this.termDisposables.push(
+			term.onScroll((viewportY) => {
+				this.atBottom = viewportY >= term.buffer.active.baseY;
+			}),
+		);
+
+		// Snap to bottom on focus so typing always lands at the prompt, even
+		// when the user has scrolled up to read previous output. xterm routes
+		// keyboard focus through its hidden textarea — listen there.
+		if (term.textarea) {
+			this.registerDomEvent(term.textarea, "focus", () => term.scrollToBottom());
+		}
+
 		this.attachWebSocket(container, gen, /*isReconnect*/ false);
 	}
 
@@ -713,7 +733,14 @@ export class TerminalView extends ItemView {
 			if (rawData.byteLength === 0) return;
 			// Only OUTPUT carries terminal data; TITLE / PREFERENCES are ignored.
 			if (new Uint8Array(rawData, 0, 1)[0] === SERVER_MSG.OUTPUT) {
-				term.write(new Uint8Array(rawData, 1));
+				// Read atBottom before write — xterm processes writes async, so
+				// the flag could flip during parsing. Follow only if the user
+				// was already at the bottom; scrolled-up viewports stay put.
+				const follow = this.atBottom;
+				term.write(
+					new Uint8Array(rawData, 1),
+					follow ? () => term.scrollToBottom() : undefined,
+				);
 			}
 		};
 
