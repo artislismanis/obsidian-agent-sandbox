@@ -5,7 +5,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import type { TerminalSettings, TerminalThemeMode } from "./settings";
 import { logger, errMsg } from "./logger";
 import { refreshLeafHeader } from "./obsidian-internals";
-import { pollUntilReady, buildWsUrl, exponentialBackoff } from "./ttyd-client";
+import { pollUntilReady, buildWsUrl, exponentialBackoff, encodeInputFrames } from "./ttyd-client";
 import { isValidSessionName } from "./validation";
 
 import { VIEW_TYPE_TERMINAL } from "./view-types";
@@ -75,18 +75,19 @@ function pushConnectionEvent(ev: TerminalConnectionEvent): void {
 }
 
 /**
- * Send a ttyd INPUT frame (`'0' + UTF-8 bytes`) over the socket, returning the
- * number of bytes written or 0 if the socket isn't open. Encodes the text
- * exactly once and prefixes the command byte — no over-allocation guesswork.
+ * Send one or more ttyd INPUT frames over the socket, returning total bytes
+ * written or 0 if the socket isn't open. Large inputs are split into ≤16 KiB
+ * chunks to avoid `message-too-big` (1009) disconnects on large pastes.
  */
 function sendInputText(ws: WebSocket | null, text: string): number {
 	if (!ws || ws.readyState !== WebSocket.OPEN) return 0;
-	const encoded = textEncoder.encode(text);
-	const payload = new Uint8Array(encoded.length + 1);
-	payload[0] = CLIENT_MSG.INPUT.charCodeAt(0);
-	payload.set(encoded, 1);
-	ws.send(payload);
-	return payload.length;
+	const frames = encodeInputFrames(text);
+	let total = 0;
+	for (const frame of frames) {
+		ws.send(frame);
+		total += frame.length;
+	}
+	return total;
 }
 
 export function getTerminalConnectionLog(): TerminalConnectionEvent[] {
@@ -480,7 +481,7 @@ export class TerminalView extends ItemView {
 			/* container may not be visible yet */
 		}
 
-		// Clipboard: auto-copy on selection (opt-out via setting), Ctrl+Shift+V to paste
+		// Clipboard: auto-copy on selection (opt-out via setting), Ctrl+V / Ctrl+Shift+V to paste
 		this.termDisposables.push(
 			term.onSelectionChange(() => {
 				if (!this.getSettings().clipboardAutoCopy) return;
@@ -514,7 +515,18 @@ export class TerminalView extends ItemView {
 				term.clearSelection();
 				return false;
 			}
-			if (event.ctrlKey && event.shiftKey && event.key === "V" && event.type === "keydown") {
+			// Ctrl+V and Ctrl+Shift+V both paste. Call preventDefault() to
+			// suppress xterm's native textarea paste handler — without it,
+			// attachCustomKeyEventHandler's `return false` exits _keyDown
+			// without calling preventDefault, so the browser fires its own
+			// paste on top of our term.paste() → double paste.
+			if (
+				event.type === "keydown" &&
+				event.ctrlKey &&
+				!event.altKey &&
+				event.key.toLowerCase() === "v"
+			) {
+				event.preventDefault();
 				navigator.clipboard.readText().then(
 					(text) => term.paste(text),
 					() => {},
