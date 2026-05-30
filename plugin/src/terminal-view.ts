@@ -145,9 +145,10 @@ export class TerminalView extends ItemView {
 	private resizeRafId: number | null = null;
 	private termDisposables: { dispose(): void }[] = [];
 	private wsDispose: (() => void) | null = null;
-	// True when the viewport is at (or past) the last line. Used to auto-follow
-	// new output without yanking the viewport while the user has scrolled up.
-	private atBottom = true;
+	// Set when scheduleFit() runs while the pane is hidden (zero-size, e.g. on an
+	// inactive tab). On the next real-size fit we know we're returning from a
+	// hide and must resync xterm's stale viewport geometry — see resyncViewport.
+	private wasHidden = false;
 
 	// Lifecycle stats — reset per WS attach. Used for close diagnostics.
 	private wsConnectStartedAt = 0;
@@ -315,13 +316,50 @@ export class TerminalView extends ItemView {
 			this.resizeRafId = null;
 			if (!this.fitAddon || !this.term) return;
 			const el = this.contentEl.querySelector(".sandbox-terminal-container");
-			if (!el || el.clientWidth < 10 || el.clientHeight < 10) return;
+			if (!el || el.clientWidth < 10 || el.clientHeight < 10) {
+				// Pane is hidden (inactive tab → display:none → zero size).
+				// Remember it so the next real-size fit knows to resync.
+				this.wasHidden = true;
+				return;
+			}
 			try {
 				this.fitAddon.fit();
 			} catch {
 				/* pane not visible */
 			}
+			if (this.wasHidden) {
+				this.wasHidden = false;
+				this.resyncViewport(el);
+			}
 		});
+	}
+
+	/**
+	 * Force xterm to re-measure its viewport after the pane returns from being
+	 * hidden. While an Obsidian tab is inactive the pane is `display:none`, so
+	 * the xterm viewport records `offsetHeight === 0`; any output that streams
+	 * in while hidden sizes the scroll area against that stale zero height. On
+	 * return, FitAddon.fit() no-ops because the row/col count is unchanged, so
+	 * the viewport never re-reads its real height and the mouse wheel can't
+	 * reach the true bottom (a keypress works because it bypasses the scrollbar
+	 * math). A real dimension change is the only thing that forces the viewport
+	 * to re-measure, so round-trip the row count by one and back. We restore the
+	 * exact prior dimensions, so the user's scroll position is preserved.
+	 */
+	private resyncViewport(el: Element): void {
+		const term = this.term;
+		if (!term) return;
+		const { cols, rows } = term;
+		if (rows <= 1) return;
+		const viewport = el.querySelector(".xterm-viewport");
+		if (viewport instanceof HTMLElement) {
+			logger.debug(
+				"Terminal",
+				`Resyncing viewport after reveal (instance ${this.instanceId}, cols=${cols} rows=${rows} viewportH=${viewport.offsetHeight})`,
+			);
+		}
+		term.resize(cols, rows - 1);
+		term.resize(cols, rows);
 	}
 
 	private async connect(): Promise<void> {
@@ -567,23 +605,6 @@ export class TerminalView extends ItemView {
 		});
 		this.resizeObserver.observe(wrapper);
 
-		// Scroll tracking: keep atBottom in sync so onMessage knows whether to
-		// auto-follow new output. Read viewportY from the scroll event argument
-		// rather than term.buffer.active (which may lag on rapid writes).
-		this.atBottom = true;
-		this.termDisposables.push(
-			term.onScroll((viewportY) => {
-				this.atBottom = viewportY >= term.buffer.active.baseY;
-			}),
-		);
-
-		// Snap to bottom on focus so typing always lands at the prompt, even
-		// when the user has scrolled up to read previous output. xterm routes
-		// keyboard focus through its hidden textarea — listen there.
-		if (term.textarea) {
-			this.registerDomEvent(term.textarea, "focus", () => term.scrollToBottom());
-		}
-
 		this.attachWebSocket(container, gen, /*isReconnect*/ false);
 	}
 
@@ -733,14 +754,7 @@ export class TerminalView extends ItemView {
 			if (rawData.byteLength === 0) return;
 			// Only OUTPUT carries terminal data; TITLE / PREFERENCES are ignored.
 			if (new Uint8Array(rawData, 0, 1)[0] === SERVER_MSG.OUTPUT) {
-				// Read atBottom before write — xterm processes writes async, so
-				// the flag could flip during parsing. Follow only if the user
-				// was already at the bottom; scrolled-up viewports stay put.
-				const follow = this.atBottom;
-				term.write(
-					new Uint8Array(rawData, 1),
-					follow ? () => term.scrollToBottom() : undefined,
-				);
+				term.write(new Uint8Array(rawData, 1));
 			}
 		};
 
