@@ -1,6 +1,6 @@
 import type { App } from "obsidian";
 import { Notice, PluginSettingTab, Setting } from "obsidian";
-import { confirmModal } from "./modals";
+import { confirmModal, inputModal } from "./modals";
 import type AgentSandboxPlugin from "./main";
 import { setLogLevel, errMsg } from "./logger";
 import type { PermissionTier } from "./mcp-tools";
@@ -320,6 +320,79 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					}
 				});
 			});
+	}
+
+	/**
+	 * Render a per-entry add/remove list editor for a comma-separated string
+	 * setting. Each entry gets its own row with a × remove button. An "Add"
+	 * button opens an inputModal to capture and validate a new entry.
+	 */
+	private renderFirewallListEditor(
+		containerEl: HTMLElement,
+		opts: {
+			name: string;
+			desc: string;
+			key: "additionalFirewallDomains" | "allowedPrivateHosts";
+			validator: (v: string) => boolean;
+			placeholder: string;
+		},
+	): void {
+		const save = (entries: string[]) => {
+			(this.plugin.settings[opts.key] as string) = entries.join(",");
+			void this.plugin.saveSettings();
+			this.markRestart();
+			this.display();
+		};
+
+		const entries = (this.plugin.settings[opts.key] as string)
+			.split(",")
+			.map((s) => s.trim())
+			.filter(Boolean);
+
+		const wrapper = containerEl.createDiv({ cls: "setting-item sandbox-settings-list-editor" });
+		const header = wrapper.createDiv({ cls: "setting-item-info" });
+		header.createDiv({ cls: "setting-item-name", text: opts.name });
+		header.createDiv({
+			cls: "setting-item-description",
+			text: opts.desc + RESTART_CONTAINER_SUFFIX,
+		});
+
+		const listEl = wrapper.createDiv({ cls: "sandbox-settings-list-entries" });
+		for (const entry of entries) {
+			const row = listEl.createDiv({ cls: "sandbox-settings-list-row" });
+			row.createSpan({ text: entry, cls: "sandbox-settings-list-entry-text" });
+			const removeBtn = row.createEl("button", {
+				text: "×",
+				cls: "sandbox-settings-list-remove",
+			});
+			removeBtn.setAttribute("aria-label", `Remove ${entry}`);
+			removeBtn.addEventListener("click", () => {
+				save(entries.filter((e) => e !== entry));
+			});
+		}
+
+		const addBtn = wrapper.createEl("button", {
+			text: "Add",
+			cls: "mod-cta sandbox-settings-list-add",
+		});
+		addBtn.addEventListener("click", () => {
+			void inputModal(this.app, {
+				title: `Add ${opts.name}`,
+				placeholder: opts.placeholder,
+				multiline: false,
+			}).then((value) => {
+				if (value === null) return;
+				if (!opts.validator(value)) {
+					new Notice(`Invalid entry: ${value}`);
+					return;
+				}
+				if (entries.includes(value)) {
+					new Notice(`Entry already exists: ${value}`);
+					return;
+				}
+				save([...entries, value]);
+			});
+		});
 	}
 
 	display(): void {
@@ -836,28 +909,26 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			key: "autoEnableFirewall",
 		});
 
-		this.addValidatedTextSetting(el, {
+		this.renderFirewallListEditor(el, {
 			name: "Allowed private hosts",
 			desc:
-				"Comma-separated IPs or CIDRs allowed through the firewall. " +
+				"IPs or CIDRs allowed through the firewall. " +
 				"Use for local services like NAS, API servers, etc. " +
 				"The Docker gateway is always allowed.",
 			key: "allowedPrivateHosts",
 			validator: isValidPrivateHosts,
-			placeholder: "e.g. 192.168.1.100, 10.0.0.0/8",
-			requiresRestart: true,
+			placeholder: "e.g. 192.168.1.100 or 10.0.0.0/8",
 		});
 
-		this.addValidatedTextSetting(el, {
+		this.renderFirewallListEditor(el, {
 			name: "Additional firewall domains",
 			desc:
-				"Comma-separated domains to add to the firewall allowlist (e.g. api.atlassian.com, slack.com). " +
+				"Domains to add to the firewall allowlist. " +
 				"Adds to — never overrides — the built-in baseline. For host-managed rules Claude cannot see, " +
 				"edit container/firewall-extras.txt instead.",
 			key: "additionalFirewallDomains",
 			validator: isValidDomainList,
-			placeholder: "e.g. api.atlassian.com, slack.com",
-			requiresRestart: true,
+			placeholder: "e.g. api.atlassian.com",
 		});
 
 		const sourcesBox = el.createDiv({ cls: "setting-item sandbox-settings-sources" });
