@@ -166,6 +166,7 @@ const RESTART_REQUIRED_KEYS: ReadonlyArray<keyof AgentSandboxSettings> = [
 	"ttydPort",
 	"ttydBindAddress",
 	"mcpPort",
+	"mcpToken",
 	"containerMemory",
 	"containerCpus",
 	"allowedPrivateHosts",
@@ -178,7 +179,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	plugin: AgentSandboxPlugin;
 	private activeTab: TabId = "general";
 	private restartSnapshot: Partial<AgentSandboxSettings> = {};
-	private restartDirectlyMarked = false;
+	private sudoPasswordSnapshot: string | undefined;
 	// Cache of compose-file-existence checks keyed by path, populated async
 	// to avoid blocking the renderer with sync `existsSync`. Values:
 	// true=found, false=missing, undefined=not yet checked. Re-renders when
@@ -193,7 +194,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	hide(): void {
 		const dirty = this.needsRestart();
 		this.restartSnapshot = {};
-		this.restartDirectlyMarked = false;
+		this.sudoPasswordSnapshot = undefined;
 		if (!dirty) return;
 		if (this.plugin.isContainerRunning()) {
 			void confirmModal(this.app, {
@@ -212,13 +213,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		}
 	}
 
-	private markRestart(): void {
-		this.restartDirectlyMarked = true;
-	}
-
 	private needsRestart(): boolean {
 		return (
-			this.restartDirectlyMarked ||
+			this.isSudoRestartDirty() ||
 			(Object.keys(this.restartSnapshot).length > 0 &&
 				RESTART_REQUIRED_KEYS.some(
 					(k) => this.plugin.settings[k] !== this.restartSnapshot[k],
@@ -233,9 +230,25 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		);
 	}
 
-	/** Returns RESTART_CONTAINER_SUFFIX plus a pending-restart badge if the field value has diverged from the snapshot. */
-	private restartSuffix(key: keyof AgentSandboxSettings): string {
-		return RESTART_CONTAINER_SUFFIX + (this.isRestartDirty(key) ? " ↺ Pending restart" : "");
+	private isSudoRestartDirty(): boolean {
+		return (
+			this.sudoPasswordSnapshot !== undefined &&
+			this.plugin.sudoPassword !== this.sudoPasswordSnapshot
+		);
+	}
+
+	/**
+	 * Append a `↺ Pending restart` pill span to a setting's descEl.
+	 * The span is initially shown or hidden based on `dirty`.
+	 * Returns the element for live toggling in onChange handlers.
+	 */
+	private restartIndicator(s: Setting, dirty: boolean): HTMLSpanElement {
+		const el = s.descEl.createEl("span", {
+			cls: "sandbox-settings-restart-indicator",
+			text: "↺ Pending restart",
+		});
+		el.style.display = dirty ? "" : "none";
+		return el;
 	}
 
 	/**
@@ -256,6 +269,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			onChange?: () => void;
 		},
 	): void {
+		let indicator: HTMLSpanElement | null = null;
 		const s = new Setting(el)
 			.setName(opts.name)
 			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
@@ -267,7 +281,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						(this.plugin.settings[opts.key] as number) = n;
 						this.plugin.saveSettings();
 						text.inputEl.removeClass("sandbox-input-error");
-						if (opts.requiresRestart)
+						if (indicator)
 							indicator.style.display = this.isRestartDirty(opts.key) ? "" : "none";
 						opts.onChange?.();
 					} else {
@@ -276,12 +290,8 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				});
 				if (opts.narrow) text.inputEl.addClass("sandbox-settings-narrow-input");
 			});
-		const indicator = s.descEl.createEl("span", {
-			cls: "sandbox-settings-restart-indicator",
-			text: " ↺ Pending restart",
-		});
-		indicator.style.display =
-			opts.requiresRestart && this.isRestartDirty(opts.key) ? "" : "none";
+		if (opts.requiresRestart)
+			indicator = this.restartIndicator(s, this.isRestartDirty(opts.key));
 	}
 
 	/** Add a boolean Setting backed by a toggle. */
@@ -295,6 +305,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			onChange?: (value: boolean) => void | Promise<void>;
 		},
 	): void {
+		let indicator: HTMLSpanElement | null = null;
 		const s = new Setting(el)
 			.setName(opts.name)
 			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
@@ -304,17 +315,13 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						(this.plugin.settings[opts.key] as boolean) = value;
 						this.plugin.saveSettings();
-						if (opts.requiresRestart)
+						if (indicator)
 							indicator.style.display = this.isRestartDirty(opts.key) ? "" : "none";
 						await opts.onChange?.(value);
 					}),
 			);
-		const indicator = s.descEl.createEl("span", {
-			cls: "sandbox-settings-restart-indicator",
-			text: " ↺ Pending restart",
-		});
-		indicator.style.display =
-			opts.requiresRestart && this.isRestartDirty(opts.key) ? "" : "none";
+		if (opts.requiresRestart)
+			indicator = this.restartIndicator(s, this.isRestartDirty(opts.key));
 	}
 
 	/**
@@ -333,6 +340,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			onChange?: () => void;
 		},
 	): void {
+		let indicator: HTMLSpanElement | null = null;
 		const s = new Setting(el)
 			.setName(opts.name)
 			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
@@ -348,7 +356,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						(this.plugin.settings[opts.key] as string) = value;
 						this.plugin.saveSettings();
 						text.inputEl.removeClass("sandbox-input-error");
-						if (opts.requiresRestart)
+						if (indicator)
 							indicator.style.display = this.isRestartDirty(opts.key) ? "" : "none";
 						opts.onChange?.();
 					} else {
@@ -356,12 +364,8 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					}
 				});
 			});
-		const indicator = s.descEl.createEl("span", {
-			cls: "sandbox-settings-restart-indicator",
-			text: " ↺ Pending restart",
-		});
-		indicator.style.display =
-			opts.requiresRestart && this.isRestartDirty(opts.key) ? "" : "none";
+		if (opts.requiresRestart)
+			indicator = this.restartIndicator(s, this.isRestartDirty(opts.key));
 	}
 
 	/**
@@ -382,7 +386,6 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		const save = (entries: string[]) => {
 			(this.plugin.settings[opts.key] as string) = entries.join(",");
 			void this.plugin.saveSettings();
-			this.markRestart();
 			this.display();
 		};
 
@@ -394,10 +397,14 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		const wrapper = containerEl.createDiv({ cls: "setting-item sandbox-settings-list-editor" });
 		const infoEl = wrapper.createDiv({ cls: "setting-item-info" });
 		infoEl.createDiv({ cls: "setting-item-name", text: opts.name });
-		infoEl.createDiv({
-			cls: "setting-item-description",
-			text: opts.desc + RESTART_CONTAINER_SUFFIX,
-		});
+		const descDiv = infoEl.createDiv({ cls: "setting-item-description" });
+		descDiv.appendText(opts.desc + RESTART_CONTAINER_SUFFIX);
+		if (this.isRestartDirty(opts.key)) {
+			descDiv.createEl("span", {
+				cls: "sandbox-settings-restart-indicator",
+				text: "↺ Pending restart",
+			});
+		}
 
 		const listEl = infoEl.createDiv({ cls: "sandbox-settings-list-entries" });
 		for (const entry of entries) {
@@ -443,6 +450,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			this.restartSnapshot = Object.fromEntries(
 				RESTART_REQUIRED_KEYS.map((k) => [k, this.plugin.settings[k]]),
 			) as Partial<AgentSandboxSettings>;
+			this.sudoPasswordSnapshot = this.plugin.sudoPassword;
 		}
 		const { containerEl } = this;
 		containerEl.empty();
@@ -492,12 +500,12 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	}
 
 	private renderGeneral(el: HTMLElement): void {
-		new Setting(el)
+		const dockerModeSetting = new Setting(el)
 			.setName("Docker mode")
 			.setDesc(
 				"How Docker is accessed. WSL runs commands via wsl.exe. " +
 					"Local runs docker compose directly on the host." +
-					this.restartSuffix("dockerMode"),
+					RESTART_CONTAINER_SUFFIX,
 			)
 			.addDropdown((dropdown) =>
 				dropdown
@@ -510,16 +518,18 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						this.display();
 					}),
 			);
+		// dockerMode re-renders via display() on change — badge is correct at render time.
+		this.restartIndicator(dockerModeSetting, this.isRestartDirty("dockerMode"));
 
 		const isWsl = this.plugin.settings.dockerMode === "wsl";
 
 		const composeDesc = isWsl
-			? "Absolute WSL path to the directory containing docker-compose.yml." +
-				this.restartSuffix("dockerComposeFilePath")
-			: "Absolute path to the directory containing docker-compose.yml." +
-				this.restartSuffix("dockerComposeFilePath");
+			? "Absolute WSL path to the directory containing docker-compose.yml."
+			: "Absolute path to the directory containing docker-compose.yml.";
 
-		const composeSetting = new Setting(el).setName("Docker Compose path").setDesc(composeDesc);
+		const composeSetting = new Setting(el)
+			.setName("Docker Compose path")
+			.setDesc(composeDesc + RESTART_CONTAINER_SUFFIX);
 
 		// Compose-file existence is computed off the event loop — the settings
 		// tab re-renders on every keystroke (onChange → display()), so a sync
@@ -548,7 +558,11 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					});
 			}
 		}
-
+		// composePath onChange does NOT call display(), so we toggle the indicator live.
+		const composeIndicator = this.restartIndicator(
+			composeSetting,
+			this.isRestartDirty("dockerComposeFilePath"),
+		);
 		composeSetting.addText((text) =>
 			text
 				.setPlaceholder(
@@ -560,6 +574,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.dockerComposeFilePath = value;
 					this.plugin.saveSettings();
+					composeIndicator.style.display = this.isRestartDirty("dockerComposeFilePath")
+						? ""
+						: "none";
 				}),
 		);
 
@@ -686,11 +703,10 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		});
 		ttydBindWarning.style.display =
 			this.plugin.settings.ttydBindAddress === "0.0.0.0" ? "" : "none";
-		const ttydBindIndicator = ttydBindSetting.descEl.createEl("span", {
-			cls: "sandbox-settings-restart-indicator",
-			text: " ↺ Pending restart",
-		});
-		ttydBindIndicator.style.display = this.isRestartDirty("ttydBindAddress") ? "" : "none";
+		const ttydBindIndicator = this.restartIndicator(
+			ttydBindSetting,
+			this.isRestartDirty("ttydBindAddress"),
+		);
 
 		new Setting(el).setName("Appearance").setHeading();
 
@@ -795,7 +811,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		mcpBindWarning.style.display =
 			this.plugin.settings.mcpBindAddress === "0.0.0.0" ? "" : "none";
 
-		new Setting(el)
+		const mcpTokenSetting = new Setting(el)
 			.setName("Auth token")
 			.setDesc(
 				"Bearer token for MCP authentication. Auto-generated and passed to the container." +
@@ -810,11 +826,12 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					const { generateToken } = await import("./mcp-server");
 					this.plugin.settings.mcpToken = generateToken();
 					this.plugin.saveSettings();
-					this.markRestart();
 					await this.plugin.restartMcpIfRunning();
 					this.display();
 				}),
 			);
+		// mcpToken re-renders via display() on Regenerate — badge is correct at render time.
+		this.restartIndicator(mcpTokenSetting, this.isRestartDirty("mcpToken"));
 
 		new Setting(el).setName("Always enabled").setHeading();
 
@@ -1073,7 +1090,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			}
 		});
 
-		new Setting(el)
+		const sudoSetting = new Setting(el)
 			.setName("Sudo password")
 			.setDesc(
 				"Password for the narrow apt-get/apt sudo inside the container. " +
@@ -1087,8 +1104,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					.onChange((value) => {
 						this.plugin.sudoPassword = value;
 						this.plugin.saveSudoPassword();
-						this.markRestart();
+						sudoIndicator.style.display = this.isSudoRestartDirty() ? "" : "none";
 					});
 			});
+		const sudoIndicator = this.restartIndicator(sudoSetting, this.isSudoRestartDirty());
 	}
 }

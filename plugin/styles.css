@@ -275,6 +275,22 @@
 	opacity: 0.9;
 }
 
+/* ── Pending-restart pill (inside a Setting's descEl) ────────── */
+
+.sandbox-settings-restart-indicator {
+	display: inline-block;
+	margin-left: 6px;
+	margin-top: 4px;
+	padding: 1px 7px;
+	background-color: var(--background-modifier-accent, rgba(var(--interactive-accent-rgb), 0.15));
+	border: 1px solid var(--interactive-accent);
+	border-radius: 10px;
+	color: var(--interactive-accent);
+	font-size: var(--font-ui-smaller);
+	font-weight: 500;
+	vertical-align: middle;
+}
+
 /* ── Inline field warning banner (inside a Setting's descEl) ─ */
 
 .sandbox-settings-field-warning {
