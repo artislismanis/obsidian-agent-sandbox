@@ -453,7 +453,6 @@ export interface BuildToolsOptions {
 	reviewBatch?: ReviewBatchFn;
 	cache?: { get<T>(key: string, compute: () => T): T };
 	onActivity?: OnActivity;
-	onMcpWrite?: (path: string) => void;
 	enabledTiers?: ReadonlySet<PermissionTier>;
 }
 
@@ -476,7 +475,6 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		reviewBatch: reviewBatchFn,
 		cache,
 		onActivity,
-		onMcpWrite,
 		enabledTiers = ALL_TIERS,
 	} = opts;
 	const tools: McpToolDef[] = [];
@@ -1359,7 +1357,6 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		// server runtime also wraps throws, but mirroring gateVaultWrite's
 		// structure keeps both paths returning well-formed McpToolResult.
 		try {
-			onMcpWrite?.(op.filePath);
 			const applyResult = await op.apply();
 			const msg = op.successMsg.replace("{result}", applyResult ?? "");
 			return text(msg);
@@ -2135,12 +2132,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					enabledTiers,
 					review: reviewFn,
 					affectedLinks: collectBacklinks(f.path),
-					apply: () => {
-						// Mark both old and new paths so vault rename event can be identified.
-						onMcpWrite?.(f.path);
-						onMcpWrite?.(newPath);
-						return app.fileManager.renameFile(f, newPath);
-					},
+					apply: () => app.fileManager.renameFile(f, newPath),
 					successMsg: `Renamed to ${newPath}`,
 				});
 			},
@@ -2201,12 +2193,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					enabledTiers,
 					review: reviewFn,
 					affectedLinks: collectBacklinks(f.path),
-					apply: () => {
-						// Mark both old and new paths so vault rename event can be identified.
-						onMcpWrite?.(f.path);
-						onMcpWrite?.(newPath);
-						return app.fileManager.renameFile(f, newPath);
-					},
+					apply: () => app.fileManager.renameFile(f, newPath),
 					successMsg: `Moved to ${newPath}`,
 				});
 			},
@@ -2252,11 +2239,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					review: reviewFn,
 					// Folders carry no link metadata of their own.
 					affectedLinks: isFolder ? undefined : collectBacklinks(target.path),
-					apply: () => {
-						// Mark path before delete so vault delete event can be identified.
-						onMcpWrite?.(target.path);
-						return app.vault.trash(target, true);
-					},
+					apply: () => app.vault.trash(target, true),
 					successMsg: isFolder
 						? `Deleted folder ${target.path}`
 						: `Deleted ${target.path}`,

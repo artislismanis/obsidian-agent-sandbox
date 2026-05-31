@@ -152,8 +152,6 @@ interface BufferedEntry {
 
 const DEBOUNCE_MS = 2000;
 const RATE_LIMIT_MS = 5000;
-// How long a path stays in the "recently written by MCP" set before expiring.
-const MCP_WRITE_TTL_MS = 5000;
 
 export class AgentOutputNotifier {
 	private buffer: BufferedEntry[] = [];
@@ -161,8 +159,8 @@ export class AgentOutputNotifier {
 	private pendingBuffer: BufferedEntry[] = [];
 	private debounceId: ReturnType<typeof setTimeout> | null = null;
 	private lastNoticeAt = 0;
-	/** Paths recently written via MCP tools — keyed to their expiry epoch ms. */
-	private recentMcpWrites = new Map<string, number>();
+	/** Paths recently edited by the user in Obsidian — keyed to their expiry epoch ms. */
+	private recentUserEdits = new Map<string, number>();
 
 	constructor(
 		private getNotifyCreated: () => boolean,
@@ -171,21 +169,19 @@ export class AgentOutputNotifier {
 		private getNotifyRenamed: () => boolean,
 		private getVaultWide: () => boolean,
 		private getWriteDir: () => string,
+		private getUserEditTtl: () => number,
 	) {}
 
-	/**
-	 * Called by MCP write tool handlers immediately before a vault write so
-	 * the subsequent vault event can be identified as agent-originated.
-	 */
-	markMcpWrite(path: string): void {
-		this.recentMcpWrites.set(path, Date.now() + MCP_WRITE_TTL_MS);
+	/** Mark a path as recently edited by the user (suppresses notifications). */
+	markUserEdit(path: string): void {
+		this.recentUserEdits.set(path, Date.now() + this.getUserEditTtl() * 1000);
 	}
 
 	/** Feed `vault.on("create")` events. */
 	onCreate(path: string): void {
 		if (!this.getNotifyCreated()) return;
 		if (!this.pathInScope(path)) return;
-		if (!this.isRecentMcpWrite(path)) return;
+		if (this.isRecentUserEdit(path)) return;
 		this.enqueue({ kind: "created", path });
 	}
 
@@ -193,7 +189,7 @@ export class AgentOutputNotifier {
 	onModify(path: string): void {
 		if (!this.getNotifyEdited()) return;
 		if (!this.pathInScope(path)) return;
-		if (!this.isRecentMcpWrite(path)) return;
+		if (this.isRecentUserEdit(path)) return;
 		this.enqueue({ kind: "modified", path });
 	}
 
@@ -201,16 +197,15 @@ export class AgentOutputNotifier {
 	onDelete(path: string): void {
 		if (!this.getNotifyDeleted()) return;
 		if (!this.pathInScope(path)) return;
-		if (!this.isRecentMcpWrite(path)) return;
+		if (this.isRecentUserEdit(path)) return;
 		this.enqueue({ kind: "deleted", path });
 	}
 
 	/** Feed `vault.on("rename")` events. */
 	onRename(newPath: string, oldPath: string): void {
 		if (!this.getNotifyRenamed()) return;
-		// Check old path for scope — that's where the file lived.
 		if (!this.pathInScope(oldPath)) return;
-		if (!this.isRecentMcpWrite(oldPath)) return;
+		if (this.isRecentUserEdit(oldPath)) return;
 		this.enqueue({ kind: "renamed", path: `${oldPath} → ${newPath}` });
 	}
 
@@ -222,14 +217,14 @@ export class AgentOutputNotifier {
 		}
 		this.buffer = [];
 		this.pendingBuffer = [];
-		this.recentMcpWrites.clear();
+		this.recentUserEdits.clear();
 	}
 
-	private isRecentMcpWrite(path: string): boolean {
-		const expiry = this.recentMcpWrites.get(path);
+	private isRecentUserEdit(path: string): boolean {
+		const expiry = this.recentUserEdits.get(path);
 		if (expiry === undefined) return false;
 		if (Date.now() >= expiry) {
-			this.recentMcpWrites.delete(path);
+			this.recentUserEdits.delete(path);
 			return false;
 		}
 		return true;

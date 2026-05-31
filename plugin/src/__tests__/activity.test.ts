@@ -25,6 +25,7 @@ describe("AgentOutputNotifier", () => {
 	let notifyRenamed = true;
 	let vaultWide = false;
 	let dir = "agent-workspace";
+	let userEditTtl = 10;
 
 	beforeEach(() => {
 		vi.useFakeTimers();
@@ -34,6 +35,7 @@ describe("AgentOutputNotifier", () => {
 		notifyRenamed = true;
 		vaultWide = false;
 		dir = "agent-workspace";
+		userEditTtl = 10;
 		(Notice as NoticeMock).lastMessage = "";
 		(Notice as NoticeMock).lastTimeout = undefined;
 	});
@@ -50,12 +52,12 @@ describe("AgentOutputNotifier", () => {
 			() => notifyRenamed,
 			() => vaultWide,
 			() => dir,
+			() => userEditTtl,
 		);
 	}
 
 	it("fires a single notice for one create after debounce elapses", () => {
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
 		n.onCreate("agent-workspace/a.md");
 		expect((Notice as NoticeMock).lastMessage).toBe("");
 		vi.advanceTimersByTime(1999);
@@ -66,9 +68,6 @@ describe("AgentOutputNotifier", () => {
 
 	it("aggregates burst of creates into one notice", () => {
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
-		n.markMcpWrite("agent-workspace/b.md");
-		n.markMcpWrite("agent-workspace/c.md");
 		n.onCreate("agent-workspace/a.md");
 		n.onCreate("agent-workspace/b.md");
 		n.onCreate("agent-workspace/c.md");
@@ -78,7 +77,6 @@ describe("AgentOutputNotifier", () => {
 
 	it("ignores modify events when notifyEdited is false", () => {
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
 		n.onModify("agent-workspace/a.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("");
@@ -87,7 +85,6 @@ describe("AgentOutputNotifier", () => {
 	it("fires for modify events when notifyEdited is true", () => {
 		notifyEdited = true;
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/b.md");
 		n.onModify("agent-workspace/b.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("Agent modified agent-workspace/b.md");
@@ -95,7 +92,6 @@ describe("AgentOutputNotifier", () => {
 
 	it("fires for delete events when notifyDeleted is true", () => {
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
 		n.onDelete("agent-workspace/a.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("Agent deleted agent-workspace/a.md");
@@ -104,7 +100,6 @@ describe("AgentOutputNotifier", () => {
 	it("ignores delete events when notifyDeleted is false", () => {
 		notifyDeleted = false;
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
 		n.onDelete("agent-workspace/a.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("");
@@ -112,7 +107,6 @@ describe("AgentOutputNotifier", () => {
 
 	it("fires for rename events when notifyRenamed is true", () => {
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
 		n.onRename("agent-workspace/b.md", "agent-workspace/a.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe(
@@ -123,7 +117,6 @@ describe("AgentOutputNotifier", () => {
 	it("ignores rename events when notifyRenamed is false", () => {
 		notifyRenamed = false;
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
 		n.onRename("agent-workspace/b.md", "agent-workspace/a.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("");
@@ -131,7 +124,6 @@ describe("AgentOutputNotifier", () => {
 
 	it("ignores paths outside the write directory", () => {
 		const n = notifier();
-		n.markMcpWrite("other/path.md");
 		n.onCreate("other/path.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("");
@@ -140,7 +132,6 @@ describe("AgentOutputNotifier", () => {
 	it("vault-wide scope fires for paths outside the write directory", () => {
 		vaultWide = true;
 		const n = notifier();
-		n.markMcpWrite("other/path.md");
 		n.onCreate("other/path.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("Agent created other/path.md");
@@ -152,30 +143,37 @@ describe("AgentOutputNotifier", () => {
 		notifyDeleted = false;
 		notifyRenamed = false;
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
 		n.onCreate("agent-workspace/a.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("");
 	});
 
-	it("silently ignores creates not preceded by markMcpWrite (human edits)", () => {
+	it("suppresses notifications when the user recently edited the file (markUserEdit)", () => {
 		const n = notifier();
-		n.onCreate("agent-workspace/a.md"); // no markMcpWrite — human edit
+		n.markUserEdit("agent-workspace/a.md");
+		n.onCreate("agent-workspace/a.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("");
 	});
 
+	it("resumes notifications after user-edit TTL expires", () => {
+		userEditTtl = 5;
+		const n = notifier();
+		n.markUserEdit("agent-workspace/a.md");
+		vi.advanceTimersByTime(5001); // TTL expires
+		n.onCreate("agent-workspace/a.md");
+		vi.advanceTimersByTime(2000);
+		expect((Notice as NoticeMock).lastMessage).toBe("Agent created agent-workspace/a.md");
+	});
+
 	it("requeues buffered events under rate-limit instead of dropping them", () => {
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
 		n.onCreate("agent-workspace/a.md");
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("Agent created agent-workspace/a.md");
 
 		// Second burst arrives during the 5s rate-limit window.
 		(Notice as NoticeMock).lastMessage = "";
-		n.markMcpWrite("agent-workspace/b.md");
-		n.markMcpWrite("agent-workspace/c.md");
 		n.onCreate("agent-workspace/b.md");
 		n.onCreate("agent-workspace/c.md");
 		// Debounce fires inside the rate-limit window — should NOT emit yet.
@@ -189,9 +187,6 @@ describe("AgentOutputNotifier", () => {
 	it("second burst after rate-limit window starts fresh (no cross-burst leakage)", () => {
 		const n = notifier();
 		// First burst — 3 files
-		n.markMcpWrite("agent-workspace/a.md");
-		n.markMcpWrite("agent-workspace/b.md");
-		n.markMcpWrite("agent-workspace/c.md");
 		n.onCreate("agent-workspace/a.md");
 		n.onCreate("agent-workspace/b.md");
 		n.onCreate("agent-workspace/c.md");
@@ -200,8 +195,6 @@ describe("AgentOutputNotifier", () => {
 
 		// During rate-limit hold: 2 new events arrive.
 		(Notice as NoticeMock).lastMessage = "";
-		n.markMcpWrite("agent-workspace/d.md");
-		n.markMcpWrite("agent-workspace/e.md");
 		n.onCreate("agent-workspace/d.md");
 		n.onCreate("agent-workspace/e.md");
 		vi.advanceTimersByTime(2000); // debounce fires inside hold → held
@@ -213,9 +206,6 @@ describe("AgentOutputNotifier", () => {
 	it("mixed kinds in one batch produce correct counts", () => {
 		notifyEdited = true;
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
-		n.markMcpWrite("agent-workspace/b.md");
-		n.markMcpWrite("agent-workspace/c.md");
 		n.onCreate("agent-workspace/a.md");
 		n.onModify("agent-workspace/b.md");
 		n.onDelete("agent-workspace/c.md");
@@ -227,7 +217,6 @@ describe("AgentOutputNotifier", () => {
 
 	it("dispose() clears pending timer and buffer", () => {
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
 		n.onCreate("agent-workspace/a.md");
 		n.dispose();
 		vi.advanceTimersByTime(10000);
@@ -236,8 +225,6 @@ describe("AgentOutputNotifier", () => {
 
 	it("emitBatch includes 'renamed' count when batch has renames", () => {
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
-		n.markMcpWrite("agent-workspace/b.md");
 		n.onRename("agent-workspace/a-new.md", "agent-workspace/a.md");
 		n.onRename("agent-workspace/b-new.md", "agent-workspace/b.md");
 		vi.advanceTimersByTime(2000);
@@ -247,9 +234,6 @@ describe("AgentOutputNotifier", () => {
 	it("emitBatch includes 'deleted' and 'renamed' counts together", () => {
 		notifyEdited = true;
 		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
-		n.markMcpWrite("agent-workspace/b.md");
-		n.markMcpWrite("agent-workspace/c.md");
 		n.onDelete("agent-workspace/a.md");
 		n.onRename("agent-workspace/b-new.md", "agent-workspace/b.md");
 		n.onModify("agent-workspace/c.md");
@@ -257,16 +241,6 @@ describe("AgentOutputNotifier", () => {
 		expect((Notice as NoticeMock).lastMessage).toBe(
 			"Agent output: 1 modified, 1 deleted, 1 renamed",
 		);
-	});
-
-	it("markMcpWrite TTL expiry — write older than MCP_WRITE_TTL_MS is not recognised", () => {
-		const n = notifier();
-		n.markMcpWrite("agent-workspace/a.md");
-		// Advance past the 5s TTL so the expiry branch in isRecentMcpWrite fires.
-		vi.advanceTimersByTime(5001);
-		n.onCreate("agent-workspace/a.md");
-		vi.advanceTimersByTime(2000);
-		expect((Notice as NoticeMock).lastMessage).toBe("");
 	});
 });
 
