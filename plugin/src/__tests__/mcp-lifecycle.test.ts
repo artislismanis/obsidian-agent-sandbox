@@ -109,6 +109,23 @@ describe("McpLifecycle.startServer — pathFilter wiring", () => {
 		expect(config.pathFilter?.blocklist).toEqual([".obsidian", "custom/", "private/"]);
 	});
 
+	it("configDir is omitted from blocklist when mcpBlockConfigDir is false", async () => {
+		const { lifecycle } = makeLifecycle({ mcpBlockConfigDir: false, mcpPathBlocklist: "" });
+		await lifecycle.applyEnabled(true);
+		const config = capturedConfig as CapturedMcpConfig;
+		expect(config.pathFilter?.blocklist).toEqual([]);
+	});
+
+	it("configDir is omitted but user blocklist still applies when mcpBlockConfigDir is false", async () => {
+		const { lifecycle } = makeLifecycle({
+			mcpBlockConfigDir: false,
+			mcpPathBlocklist: "private/",
+		});
+		await lifecycle.applyEnabled(true);
+		const config = capturedConfig as CapturedMcpConfig;
+		expect(config.pathFilter?.blocklist).toEqual(["private/"]);
+	});
+
 	it("allowlist is empty when mcpPathAllowlist is empty string", async () => {
 		const { lifecycle } = makeLifecycle({ mcpPathAllowlist: "" });
 		await lifecycle.applyEnabled(true);
