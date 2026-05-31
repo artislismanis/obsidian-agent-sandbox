@@ -6,7 +6,7 @@ vi.mock("obsidian", () => ({
 }));
 
 import { requestUrl } from "obsidian";
-import { pollUntilReady, buildWsUrl } from "../ttyd-client";
+import { pollUntilReady, buildWsUrl, encodeInputFrames } from "../ttyd-client";
 
 const mockRequestUrl = requestUrl as ReturnType<typeof vi.fn>;
 
@@ -56,6 +56,50 @@ describe("pollUntilReady", () => {
 		mockRequestUrl.mockResolvedValue({ status: 500 });
 		const result = await pollUntilReady(7681, 2, 10, () => false);
 		expect(result).toBe(false);
+	});
+});
+
+describe("encodeInputFrames", () => {
+	const INPUT_CMD = 0x30; // '0'
+
+	it("empty string produces one frame containing only the command byte", () => {
+		const frames = encodeInputFrames("");
+		expect(frames).toHaveLength(1);
+		expect(frames[0]).toEqual(new Uint8Array([INPUT_CMD]));
+	});
+
+	it("small input produces one frame with correct prefix and payload", () => {
+		const text = "hello";
+		const frames = encodeInputFrames(text);
+		expect(frames).toHaveLength(1);
+		const expected = new Uint8Array([INPUT_CMD, ...new TextEncoder().encode(text)]);
+		expect(frames[0]).toEqual(expected);
+	});
+
+	it("input exactly at chunk size produces one frame", () => {
+		const chunkBytes = 4;
+		const text = "abcd"; // exactly 4 bytes
+		const frames = encodeInputFrames(text, chunkBytes);
+		expect(frames).toHaveLength(1);
+		expect(frames[0][0]).toBe(INPUT_CMD);
+		expect(frames[0].length).toBe(5); // 1 cmd + 4 payload
+	});
+
+	it("input larger than chunk size splits into ordered frames covering all bytes", () => {
+		const chunkBytes = 4;
+		const text = "abcdefgh"; // 8 bytes → 2 chunks
+		const frames = encodeInputFrames(text, chunkBytes);
+		expect(frames).toHaveLength(2);
+		for (const frame of frames) expect(frame[0]).toBe(INPUT_CMD);
+		const payload = new Uint8Array([...frames[0].subarray(1), ...frames[1].subarray(1)]);
+		expect(payload).toEqual(new TextEncoder().encode(text));
+	});
+
+	it("multibyte UTF-8 chars: payload bytes equal TextEncoder output", () => {
+		const text = "héllo"; // 'é' is 2 UTF-8 bytes
+		const frames = encodeInputFrames(text);
+		expect(frames).toHaveLength(1);
+		expect(frames[0].subarray(1)).toEqual(new TextEncoder().encode(text));
 	});
 });
 
