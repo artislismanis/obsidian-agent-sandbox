@@ -113,7 +113,10 @@ function paramsFromSchema(inputSchema: Record<string, z.ZodType> | undefined): P
 			name,
 			type: formatType(jsonSchema),
 			required,
-			description: description.replace(/\|/g, "\\|").replace(/\n/g, " "),
+			description: description
+				.replace(/\\/g, "\\\\")
+				.replace(/\|/g, "\\|")
+				.replace(/\n/g, " "),
 		});
 	}
 	return rows;

@@ -14,8 +14,12 @@ function shouldLog(level: LogLevel): boolean {
 	return LEVELS[level] >= LEVELS[currentLevel];
 }
 
+function sanitize(s: string): string {
+	return s.replace(/[\r\n]+/g, " ");
+}
+
 function fmt(component: string, msg: string): string {
-	return `${PREFIX} [${component}] ${msg}`;
+	return `${PREFIX} [${sanitize(component)}] ${sanitize(msg)}`;
 }
 
 /** Extract a string message from an unknown thrown value. */
