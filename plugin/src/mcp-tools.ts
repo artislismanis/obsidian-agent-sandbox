@@ -1,5 +1,5 @@
 import type { App, TFile, CachedMetadata } from "obsidian";
-import { prepareSimpleSearch, prepareFuzzySearch } from "obsidian";
+import { prepareSimpleSearch, prepareFuzzySearch, moment } from "obsidian";
 import { z } from "zod/v4";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { isPathWithinDir, isPathAllowed, pathHasParentSegment } from "./validation";
@@ -2508,6 +2508,30 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				const name = (sessionName ?? "").trim() || DEFAULT_SESSION_KEY;
 				onActivity?.({ sessionName: name, status, detail });
 				return text("OK");
+			},
+		}),
+	);
+
+	tools.push(
+		defineTool({
+			name: "agent_time",
+			tier: "agent",
+			title: "Host clock",
+			description:
+				"Return the current date/time as seen by the Obsidian host process (not the container). " +
+				"Date-sensitive tools (e.g. vault_periodic_note) resolve relative dates using this host clock. " +
+				"Call this when you need to know the host date or detect the UTC offset between container and host — " +
+				"if they differ, pass an explicit `date` param derived from `localIso` rather than relying on your own clock.",
+			inputSchema: {},
+			handler: async () => {
+				const m = moment();
+				return text(
+					JSON.stringify({
+						localIso: m.format(),
+						utcOffsetMinutes: m.utcOffset(),
+						tzAbbr: m.format("z"),
+					}),
+				);
 			},
 		}),
 	);
