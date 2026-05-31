@@ -72,7 +72,7 @@ export function windowsToWslPath(windowsPath: string): string {
 
 /**
  * Builds the inner shell command string with env vars and cd.
- * `dockerCmd` must be a trusted literal — it is NOT escaped.
+ * `dockerCmd` must be a trusted literal - it is NOT escaped.
  */
 /** Reject control characters in any env-var value. Every value flows through
  *  the same `bash -c export KEY='value' && ...` envelope (or the cmd.exe
@@ -115,7 +115,7 @@ function buildInnerCommand(
 
 // Escape a string so it round-trips unchanged through `bash -c "..."`. The
 // single-quoted inner command does NOT shield `$` or backtick from the outer
-// double-quoted context — bash still expands them. Order matters: backslash
+// double-quoted context - bash still expands them. Order matters: backslash
 // first, otherwise later passes would re-escape the escapes.
 function escapeForOuterDoubleQuote(s: string): string {
 	return s.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$").replace(/"/g, '\\"');
@@ -152,7 +152,7 @@ export function buildLocalCommand(
 /**
  * Builds a command string for Windows cmd.exe when using Local Docker mode.
  * Uses `set` for env vars and `cd /d` for Windows drive paths.
- * No explicit shell wrapper — exec() uses cmd.exe on Windows by default.
+ * No explicit shell wrapper - exec() uses cmd.exe on Windows by default.
  */
 export function buildLocalWindowsCommand(
 	composePath: string,
@@ -164,7 +164,7 @@ export function buildLocalWindowsCommand(
 	const envParts = Object.entries(envVars).map(([key, value]) => {
 		// Symmetric with buildInnerCommand (bash path): CR/LF or NUL in any
 		// value can terminate the `set "KEY=..."` statement and let the rest
-		// run as a fresh cmd.exe command after the &&. Apply to all keys —
+		// run as a fresh cmd.exe command after the &&. Apply to all keys -
 		// hand-edited data.json can carry an injected newline in any of them.
 		assertNoControlBytes(key, value);
 		const escapedValue = value.replace(/"/g, '""');
@@ -208,7 +208,7 @@ export async function getWslNetworkingMode(wslDistro: string): Promise<string | 
 // the host, or undefined when not on Windows / no suitable adapter is found.
 // In WSL mirrored mode, eth0 inside WSL carries the Windows LAN IP, so the
 // plugin picks the primary LAN adapter. In NAT mode (and when the mode can't
-// be detected), picks the vEthernet(WSL) adapter — the NAT default.
+// be detected), picks the vEthernet(WSL) adapter - the NAT default.
 export function getWslHostIp(mode: string | undefined): string | undefined {
 	if (process.platform !== "win32") return undefined;
 	const nets = networkInterfaces();
@@ -418,7 +418,7 @@ export class DockerManager {
 		const envVars: Record<string, string> = {};
 		for (const { key, value, validate, invalidMsg } of envSpec) {
 			const v = value === undefined ? "" : String(value);
-			// Validate before the empty-skip — a validator that rejects empty
+			// Validate before the empty-skip - a validator that rejects empty
 			// (e.g. OAS_VAULT_HOST_PATH) must surface as an error instead of
 			// silently falling through to compose's `${VAR:-fallback}`.
 			if (validate && !validate(v)) throw new Error(invalidMsg!);
@@ -427,7 +427,7 @@ export class DockerManager {
 		}
 
 		// Host-side bind-mount containment check. The compose YAML source is
-		// `${OAS_VAULT_HOST_PATH}/${OAS_VAULT_WRITE_DIR}` — Docker resolves it on the
+		// `${OAS_VAULT_HOST_PATH}/${OAS_VAULT_WRITE_DIR}` - Docker resolves it on the
 		// host before the container starts, so the entrypoint's guard runs too
 		// late to prevent escape. Verify here while vaultPath is the raw native
 		// path (before WSL conversion) so path.resolve uses the right separator.
@@ -451,7 +451,7 @@ export class DockerManager {
 		// On Windows, inject the actual Windows host IP so containers can reach
 		// the host: the docker-bridge / Rancher DNS that host-gateway resolves
 		// to inside WSL2 is not reachable from the container. In mirrored mode
-		// disable Docker's bridge MASQUERADE — it rewrites to the LAN IP, which
+		// disable Docker's bridge MASQUERADE - it rewrites to the LAN IP, which
 		// Windows' Hyper-V firewall (allowlist: 172.16.0.0/12) then drops.
 		const { mode: wslMode, hostIp: wslHostIp } = await this.getWslProbe(wslDistro);
 		if (wslHostIp) {
@@ -526,7 +526,7 @@ export class DockerManager {
 					!!err.killed ||
 						combined.includes("ETIMEDOUT") ||
 						combined.includes("timed out"),
-					"Docker is not responding. It may still be starting — try again in a moment.",
+					"Docker is not responding. It may still be starting - try again in a moment.",
 				],
 			];
 			for (const [match, message] of errorPatterns) {
@@ -551,7 +551,7 @@ export class DockerManager {
 		}
 	}
 
-	/** `up -d` only — compose reconciles config matches. For a forced clean recreate, use `restart()`. */
+	/** `up -d` only - compose reconciles config matches. For a forced clean recreate, use `restart()`. */
 	async start(): Promise<string> {
 		return this.withGuard(() => this.run("docker compose up -d"));
 	}
@@ -593,7 +593,7 @@ export class DockerManager {
 
 		if (dockerMode === "wsl") {
 			// On Windows, spawn wsl.exe directly (no bash on host). Validate
-			// the distro name even on this detached path — args go as an array
+			// the distro name even on this detached path - args go as an array
 			// (no shell injection), but a malformed name lets wsl.exe error in
 			// unhelpful ways.
 			if (!VALID_DISTRO_NAME.test(wslDistro)) return;
@@ -602,11 +602,11 @@ export class DockerManager {
 			shell = "wsl";
 			args = ["-d", wslDistro, "--", "bash", "-c", innerCmd];
 		} else if (process.platform === "win32") {
-			// Native Docker on Windows — use cmd.exe (doubles internal quotes).
+			// Native Docker on Windows - use cmd.exe (doubles internal quotes).
 			shell = "cmd.exe";
 			args = ["/c", buildLocalWindowsCommand(composePath, downCmd, downEnv)];
 		} else {
-			// Linux / Mac — pass the inner command directly to bash -c. Calling
+			// Linux / Mac - pass the inner command directly to bash -c. Calling
 			// buildLocalCommand here would yield `bash -c "..."` and we'd then
 			// wrap that in another `bash -c`, double-shelling for no reason.
 			shell = "bash";
@@ -616,7 +616,7 @@ export class DockerManager {
 		// detached:true on Linux/Mac puts the child into its own process group
 		// so it survives Obsidian's exit (otherwise SIGTERM-on-parent-exit
 		// propagates). On Windows, children survive parent exit naturally and
-		// detached:true would pop a visible console window — leave it false
+		// detached:true would pop a visible console window - leave it false
 		// there. stdio:"ignore" + unref() complete the detachment.
 		const child = spawn(shell, args, {
 			detached: process.platform !== "win32",
@@ -686,7 +686,7 @@ export class DockerManager {
 				await this.run("docker compose down");
 			} catch (err) {
 				// No prior container running is the common case for the
-				// "force recreate" flow — debug-level only, not a warning.
+				// "force recreate" flow - debug-level only, not a warning.
 				logger.debug(
 					"Docker",
 					"compose down failed during restart (may not be running)",
@@ -826,7 +826,7 @@ export class DockerManager {
 	/**
 	 * Returns the current container ID, or empty string if not running.
 	 * Throws on probe failure so callers can distinguish "no container" from
-	 * "couldn't ask docker" — collapsing both to "" lets a flaky probe mask
+	 * "couldn't ask docker" - collapsing both to "" lets a flaky probe mask
 	 * container-recreation notices in checkContainerIdDrift.
 	 */
 	async getContainerId(): Promise<string> {
@@ -836,7 +836,7 @@ export class DockerManager {
 
 	/**
 	 * Returns image tag and start time for the running container.
-	 * Called only from the "Check Status" command — kept off the hot probe path.
+	 * Called only from the "Check Status" command - kept off the hot probe path.
 	 * Returns null if the container is not running or inspect fails.
 	 */
 	async getContainerInfo(): Promise<{ id: string; image: string; startedAt: string } | null> {
@@ -861,7 +861,7 @@ export class DockerManager {
 	 * Detects a half-stopped container still holding host port mappings.
 	 *
 	 * On probe failure, return `true` (and log) so the port-conflict recovery
-	 * path still attempts `docker compose down` — collapsing to `false` would
+	 * path still attempts `docker compose down` - collapsing to `false` would
 	 * make transient probe errors silently skip recovery.
 	 */
 	async hasAnyContainer(): Promise<boolean> {
@@ -871,7 +871,7 @@ export class DockerManager {
 		} catch (err) {
 			logger.warn(
 				"Docker",
-				`hasAnyContainer probe failed — assuming a container exists so cleanup can proceed: ${errMsg(err)}`,
+				`hasAnyContainer probe failed - assuming a container exists so cleanup can proceed: ${errMsg(err)}`,
 			);
 			return true;
 		}
@@ -882,7 +882,7 @@ export class DockerManager {
 	 *  - "enabled" / "disabled": container responded with the exact word
 	 *  - "unavailable": container missing, exec failed, or the script printed
 	 *    something unexpected. Caller should hide UI, not display as
-	 *    "disabled" — collapsing "broken script" into "disabled" misleads
+	 *    "disabled" - collapsing "broken script" into "disabled" misleads
 	 *    the user into thinking they just need to enable it.
 	 */
 	async firewallStatus(): Promise<"enabled" | "disabled" | "unavailable"> {
@@ -893,7 +893,7 @@ export class DockerManager {
 			logger.warn("Docker", `Unexpected firewall --status output: ${output.slice(0, 200)}`);
 			return "unavailable";
 		} catch (err) {
-			// Log the cause — otherwise the firewall badge silently flips to
+			// Log the cause - otherwise the firewall badge silently flips to
 			// "hidden" on transient exec failures (docker hang, WSL blip).
 			logger.warn("Docker", `firewallStatus probe failed: ${errMsg(err)}`);
 			return "unavailable";
@@ -937,7 +937,7 @@ export class DockerManager {
 		}
 	}
 
-	/** List sessions with no attached clients — candidates for cleanup. */
+	/** List sessions with no attached clients - candidates for cleanup. */
 	async listDetachedSessions(): Promise<string[]> {
 		try {
 			const output = await this.tmuxExec(
@@ -995,7 +995,7 @@ export class DockerManager {
 				// Log the parse failure so a malformed status envelope is
 				// debuggable instead of silently looking like "no container
 				// running". Still return false conservatively so the caller's
-				// stopped-state UI fires — better than crashing on a docker
+				// stopped-state UI fires - better than crashing on a docker
 				// version drift.
 				logger.warn(
 					"Docker",

@@ -3,7 +3,7 @@
  *
  * Templater's built-in folder-template hook calls
  * `append_template_to_active_file`, which fails when there is no active editor
- * — exactly the situation when MCP tools create files programmatically. This
+ * - exactly the situation when MCP tools create files programmatically. This
  * module sidesteps that path by calling Templater's editor-free
  * `write_template_to_file` directly, and by suppressing the create hook around
  * writes so its "no active editor" notice doesn't fire.
@@ -62,7 +62,7 @@ function findTemplaterFolderTemplate(app: App, targetPath: string): TFile | null
 
 /**
  * Read the raw body of the matching folder template, without rendering. The
- * review modal shows this verbatim — Templater placeholders like `<% tp.date.now() %>`
+ * review modal shows this verbatim - Templater placeholders like `<% tp.date.now() %>`
  * remain visible. Rendering before user approval would require creating the
  * target file, defeating the review gate.
  */
@@ -90,7 +90,7 @@ function getTemplaterPlugin(app: App): TemplaterPlugin | null {
  * `{ ok: false, reason: "none" }` when no template matches (silent skip), or
  * `{ ok: false, reason: "failed", error }` when the template existed but
  * Templater rejected the apply. The distinction matters because the caller
- * (vault_create) reviewed the template body and approved it — if the apply
+ * (vault_create) reviewed the template body and approved it - if the apply
  * fails, the on-disk file is empty and the user's approved content never
  * landed. Returning that as a generic "no template" is a silent failure;
  * surfacing the error lets the caller communicate that the file was created

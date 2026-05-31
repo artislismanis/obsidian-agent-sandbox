@@ -13,7 +13,7 @@ export function splitCsv(value: string): string[] {
 }
 
 /** True when any `/`- or `\`-separated path segment is exactly `..` (i.e. an
- *  actual parent traversal). Plain substring `..` rejection is too broad —
+ *  actual parent traversal). Plain substring `..` rejection is too broad -
  *  it blocks legitimate names like `foo..bar`. */
 export function pathHasParentSegment(p: string): boolean {
 	return p.split(/[/\\]/).some((seg) => seg === "..");
@@ -22,14 +22,14 @@ export function pathHasParentSegment(p: string): boolean {
 export function isValidWriteDir(dir: string): boolean {
 	const trimmed = dir.trim();
 	if (!trimmed) return false;
-	// Reject trivial current-directory aliases — `isPathWithinDir`
+	// Reject trivial current-directory aliases - `isPathWithinDir`
 	// normalises `./` to `.` and then rejects all paths as "outside the
 	// empty-after-strip directory", so `./` would silently deny every
 	// write. Fail closed at validation instead.
 	if (trimmed === "." || trimmed === "./" || trimmed === "/") return false;
 	// Reject leading dot (hidden root directories, parity with entrypoint).
 	if (trimmed.startsWith(".")) return false;
-	// Reject backslash — values flow into bash single-quoted env exports;
+	// Reject backslash - values flow into bash single-quoted env exports;
 	// backslashes also indicate Windows absolute paths that Docker rejects.
 	if (trimmed.includes("\\")) return false;
 	// Reject absolute paths. Nested relative paths with forward slashes are
@@ -43,7 +43,7 @@ export function isValidWriteDir(dir: string): boolean {
  * This is the load-bearing escape guard: the compose bind-mount source is
  * `${OAS_VAULT_HOST_PATH}/${OAS_VAULT_WRITE_DIR}` and Docker resolves it on the
  * host before the container starts. The entrypoint check runs after the
- * mount is established, so it cannot prevent escape — only this host-side
+ * mount is established, so it cannot prevent escape - only this host-side
  * check can.
  */
 export function isWriteDirInsideVault(vaultPath: string, writeDir: string): boolean {
@@ -58,12 +58,12 @@ const VALID_SESSION_NAME = /^[\w.-]+$/;
 /**
  * Validate a tmux session name: letters, digits, underscore, dot, hyphen
  * only. Used both for direct tmux exec (kill/rename) and for the initial
- * `session <name>` command injected over the ttyd WebSocket on attach —
+ * `session <name>` command injected over the ttyd WebSocket on attach -
  * rejecting shell metacharacters before injection is the only thing
  * preventing a hand-edited persisted view-state from re-executing a
  * malicious name on every Obsidian start.
  *
- * Also explicitly rejects `.` and `..` — those are dot-only names that
+ * Also explicitly rejects `.` and `..` - those are dot-only names that
  * confuse `session .` / `session ..` invocations and serve no real
  * use case as session identifiers.
  */
@@ -225,7 +225,7 @@ export function isPathAllowed(
  * stays under the vault base. Blocks symlinks that escape the vault.
  *
  * - Desktop Obsidian supplies `basePath` + `getFullPath`. Mobile / test
- *   adapters that don't should pass `basePath: null` — this function becomes
+ *   adapters that don't should pass `basePath: null` - this function becomes
  *   a no-op pass-through on those.
  * - If the target file doesn't yet exist (e.g. `vault_create` path), realpath
  *   the longest existing ancestor and verify containment there.

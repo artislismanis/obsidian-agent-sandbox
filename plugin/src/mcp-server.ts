@@ -37,11 +37,11 @@ export interface ActivityEntry {
 const ACTIVITY_STALE_MS = 10 * 60_000;
 // Cap the activity map so a buggy/malicious agent calling agent_status_set
 // with random session names can't grow it unbounded. Map preserves insertion
-// order — when at cap, drop the oldest entry to make room for the new one.
+// order - when at cap, drop the oldest entry to make room for the new one.
 const MAX_ACTIVITY_ENTRIES = 200;
 
 export interface McpServerHooks {
-	/** Fired on writes when the reviewed tier is enabled — presents a diff modal. */
+	/** Fired on writes when the reviewed tier is enabled - presents a diff modal. */
 	review?: ReviewFn;
 	/** Fired on batch writes (vault_batch_frontmatter) when review is enabled. */
 	reviewBatch?: ReviewBatchFn;
@@ -51,7 +51,7 @@ export interface McpServerHooks {
 
 export interface McpServerConfig {
 	port: number;
-	/** IP to bind the HTTP server to. Defaults to "127.0.0.1" — host-only.
+	/** IP to bind the HTTP server to. Defaults to "127.0.0.1" - host-only.
 	 *  Set to the docker bridge gateway (or 0.0.0.0) to let the sandbox
 	 *  container reach the host via host.docker.internal. */
 	bindAddress?: string;
@@ -79,7 +79,7 @@ export class ObsidianMcpServer {
 	private transports = new Map<string, StreamableHTTPServerTransport>();
 	// Track per-session McpServer SDK instances so .close() can run when the
 	// transport drops. Otherwise every new session leaks an McpServer for
-	// the life of the plugin — small per session, unbounded over time.
+	// the life of the plugin - small per session, unbounded over time.
 	private mcpServers = new Map<string, McpServer>();
 	private sessionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 	private app: App;
@@ -92,7 +92,7 @@ export class ObsidianMcpServer {
 	private activity = new Map<string, ActivityEntry>();
 	// Saved listener reference so stop() can detach it explicitly. Otherwise
 	// the listener's closure pins `this` (and the tools/audit/cache tree)
-	// to the still-attached HTTP server until GC — across plugin
+	// to the still-attached HTTP server until GC - across plugin
 	// enable/disable cycles this leaks slowly.
 	private clientErrorListener: ((err: Error) => void) | null = null;
 
@@ -135,7 +135,7 @@ export class ObsidianMcpServer {
 		};
 		httpServer.on("clientError", clientErrorListener);
 
-		// Default 127.0.0.1 — host-only. Production uses the user-configured
+		// Default 127.0.0.1 - host-only. Production uses the user-configured
 		// value via plugin settings; users who need container-side access must
 		// explicitly bind to the docker bridge gateway (or 0.0.0.0).
 		const bind = this.config.bindAddress || "127.0.0.1";
@@ -161,7 +161,7 @@ export class ObsidianMcpServer {
 			throw err;
 		}
 
-		// Listen succeeded — commit state.
+		// Listen succeeded - commit state.
 		this.cache = cache;
 		this.tools = tools;
 		this.httpServer = httpServer;
@@ -219,7 +219,7 @@ export class ObsidianMcpServer {
 			// keepalives) before close() resolves. Otherwise the 2s
 			// Promise.race fallback lets the timer win on a busy server,
 			// `this.httpServer = null` runs while the OS socket is still
-			// bound, and the next start() hits EADDRINUSE — auto-disabling
+			// bound, and the next start() hits EADDRINUSE - auto-disabling
 			// `mcpEnabled` with "MCP turned itself off" and no actionable
 			// error. closeAllConnections is Node ≥ 18.2.
 			server.closeAllConnections?.();
@@ -337,7 +337,7 @@ export class ObsidianMcpServer {
 	 * client uses Origin: app://obsidian.md).
 	 */
 	private isOriginAllowed(origin: string | undefined): boolean {
-		// Missing Origin = non-browser (curl, Obsidian's main process) — trust it.
+		// Missing Origin = non-browser (curl, Obsidian's main process) - trust it.
 		// Literal "null" = browser-suppressed Origin (file://, data:, sandboxed
 		// iframes, restrictive-Referrer-Policy cross-origin redirects); the bearer
 		// token still protects the endpoint, but echoing ACAO for "null" lets
@@ -350,7 +350,7 @@ export class ObsidianMcpServer {
 			if (u.protocol !== "http:" && u.protocol !== "https:") return false;
 			const host = u.hostname;
 			// `new URL("http://[::1]/").hostname` returns "::1" (no brackets)
-			// on every Node version — the bracketed literal was dead code.
+			// on every Node version - the bracketed literal was dead code.
 			return host === "127.0.0.1" || host === "localhost" || host === "::1";
 		} catch {
 			return false;
@@ -362,7 +362,7 @@ export class ObsidianMcpServer {
 		if (this.isOriginAllowed(origin)) {
 			// Only echo ACAO when the request comes from a trusted origin.
 			// Without an Origin header the browser won't enforce same-origin,
-			// so emitting "*" / null is unnecessary — omit entirely.
+			// so emitting "*" / null is unnecessary - omit entirely.
 			if (origin) {
 				res.setHeader("Access-Control-Allow-Origin", origin);
 				res.setHeader("Vary", "Origin");
@@ -382,7 +382,7 @@ export class ObsidianMcpServer {
 		}
 
 		if (!this.checkAuth(req)) {
-			// Strip control chars from req.url before logging — `url` is
+			// Strip control chars from req.url before logging - `url` is
 			// attacker-controlled from the loopback, and unescaped CRLF would
 			// let an attacker forge fake log lines in the developer console.
 			// The audit log already JSON-stringifies entries (safe), but the
@@ -430,7 +430,7 @@ export class ObsidianMcpServer {
 					res.writeHead(415, { "Content-Type": "application/json" });
 					res.end(
 						JSON.stringify({
-							error: "Unsupported Media Type — Content-Type must be application/json",
+							error: "Unsupported Media Type - Content-Type must be application/json",
 						}),
 					);
 					return;
@@ -578,7 +578,7 @@ export class ObsidianMcpServer {
 		);
 	}
 
-	/** Pick the timeout budget for a tool — review-modal tools get a longer window. */
+	/** Pick the timeout budget for a tool - review-modal tools get a longer window. */
 	private selectTimeoutMs(tool: McpToolDef): number {
 		const mayTriggerReview =
 			tool.tier === "writeReviewed" ||
@@ -605,7 +605,7 @@ export class ObsidianMcpServer {
 					reject(
 						new Error(
 							tool.tier === "writeReviewed"
-								? `Review timed out for '${tool.name}' — user did not respond within ${timeoutMs / 1000}s. The review modal may have been dismissed.`
+								? `Review timed out for '${tool.name}' - user did not respond within ${timeoutMs / 1000}s. The review modal may have been dismissed.`
 								: `Tool '${tool.name}' did not respond within ${timeoutMs / 1000}s`,
 						),
 					),
@@ -614,7 +614,7 @@ export class ObsidianMcpServer {
 		});
 		// Attach a catch to the handler promise before racing so a late
 		// rejection (after timeout won) doesn't surface as an unhandled
-		// rejection. Timeouts can't truly cancel an in-flight handler —
+		// rejection. Timeouts can't truly cancel an in-flight handler -
 		// apply() may complete after the "failed" result returned. Log the
 		// late outcome so the audit trail isn't silent.
 		const handlerPromise = tool.handler(args);
@@ -627,7 +627,7 @@ export class ObsidianMcpServer {
 		// Truncate every text entry independently in the byte domain, then cap
 		// the cumulative response at MAX_RESPONSE_TOTAL_BYTES so many sub-cap
 		// entries can't still produce a multi-MB payload. String .slice() is
-		// UTF-16 code units — a naive slice past a multi-byte boundary
+		// UTF-16 code units - a naive slice past a multi-byte boundary
 		// over-budgets after re-encoding. Slice the encoded buffer and decode
 		// with replacement-character fallback.
 		const TRUNCATION_SUFFIX = "\n\n[truncated]";
@@ -750,7 +750,7 @@ export class ObsidianMcpServer {
 				JSON.stringify({
 					jsonrpc: "2.0",
 					id: requestId,
-					error: { code: -32001, message: "Session expired — re-initialize" },
+					error: { code: -32001, message: "Session expired - re-initialize" },
 				}),
 			);
 			return;
@@ -787,7 +787,7 @@ export class ObsidianMcpServer {
 				// rather than after handleRequest below. The previous order
 				// had a narrow race: if the client disconnected between
 				// onsessioninitialized firing and the post-handleRequest
-				// `mcpServers.set`, the entry was never set — and
+				// `mcpServers.set`, the entry was never set - and
 				// cleanupSession had already run via onclose, so the
 				// McpServer was leaked permanently. Setting it inside the
 				// initialization callback closes the window.
@@ -802,7 +802,7 @@ export class ObsidianMcpServer {
 				logger.debug("MCP", `Session ${sid.slice(0, 8)}… closed`);
 				this.cleanupSession(sid);
 			}
-			// No sid means init never completed (no onsessioninitialized) —
+			// No sid means init never completed (no onsessioninitialized) -
 			// the transport entry was never added to this.transports, so
 			// nothing to remove. Branch left explicit for readers.
 		};

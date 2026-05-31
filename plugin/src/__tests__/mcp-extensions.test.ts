@@ -515,7 +515,7 @@ describe("Periodic Notes integration", () => {
 
 	it("rejects when the format string produces a path-traversal escape", async () => {
 		// User-controlled `format` is processed by moment, which passes
-		// through any characters that aren't moment tokens — including
+		// through any characters that aren't moment tokens - including
 		// `/`, `..`, etc. The isVaultPathSafe gate runs after path
 		// computation: a format that resolves outside the vault root
 		// must error rather than write/read.
@@ -593,14 +593,14 @@ describe("Periodic Notes integration", () => {
 	});
 });
 
-describe("Write gate — extensions tier boundary enforcement", () => {
+describe("Write gate - extensions tier boundary enforcement", () => {
 	function appWithTemplater(createImpl: ReturnType<typeof vi.fn>) {
 		const { app } = mockApp("{}");
 		(app as unknown as { plugins: unknown }).plugins = {
 			getPlugin: (id: string) =>
 				id === "templater-obsidian"
 					? {
-							// Required by isInsideTemplatesFolder — template paths
+							// Required by isInsideTemplatesFolder - template paths
 							// must live inside this folder or the tool refuses
 							// (sandbox escape via writeScoped + extensions).
 							settings: { templates_folder: "Templates" },
@@ -736,7 +736,7 @@ describe("Write gate — extensions tier boundary enforcement", () => {
 			basename: "daily",
 			extension: "md",
 		}) as unknown as TFile;
-		// Templater returns a path that differs from the gated destPath —
+		// Templater returns a path that differs from the gated destPath -
 		// simulating `tp.file.move("/elsewhere/x")` inside the template.
 		const create = vi.fn(async () => ({ path: "Elsewhere/escaped.md" }) as TFile);
 		const trash = vi.fn(async () => undefined);
@@ -831,7 +831,7 @@ describe("plugin_extensions_list", () => {
 	});
 });
 
-describe("Extensions tier — write-boundary asymmetry fixes", () => {
+describe("Extensions tier - write-boundary asymmetry fixes", () => {
 	function mdAtForCas(path: string): TFile {
 		return {
 			path,
@@ -926,7 +926,7 @@ describe("Extensions tier — write-boundary asymmetry fixes", () => {
 			basename: "daily-template",
 			extension: "md",
 		}) as unknown as TFile;
-		// The created note ends up at "Elsewhere/relocated.md" — distinct from
+		// The created note ends up at "Elsewhere/relocated.md" - distinct from
 		// the gated path. Also place an unrelated file with the same basename
 		// to confirm the relocation detector won't trash it.
 		const unrelatedSameBasename = Object.assign(new (TFileClass as new () => object)(), {
@@ -1062,7 +1062,7 @@ describe("Extensions tier — write-boundary asymmetry fixes", () => {
 		// clobbering the editor edit.
 		const file = mdAtForCas("notes/tasks.md");
 		const original = "- [ ] thing\n";
-		const concurrentEdit = "- [ ] thing — edited mid-review\n";
+		const concurrentEdit = "- [ ] thing - edited mid-review\n";
 		const reads = [original, concurrentEdit];
 		let readIdx = 0;
 		const toggle = vi.fn((line: string) => line.replace("[ ]", "[x]"));
@@ -1118,9 +1118,9 @@ describe("Extensions tier — write-boundary asymmetry fixes", () => {
 	});
 });
 
-describe("Extensions tier — pathFilter coverage (info-leak boundary)", () => {
+describe("Extensions tier - pathFilter coverage (info-leak boundary)", () => {
 	// Every extension-tier tool must respect mcpPathAllowlist / mcpPathBlocklist
-	// — otherwise an `extensions`-tier agent could read or mutate blocklisted
+	// - otherwise an `extensions`-tier agent could read or mutate blocklisted
 	// regions via canvas/dataview/tasks/templater/periodic-notes paths even
 	// though the equivalent vault_* tools refuse the same path.
 
@@ -1199,7 +1199,7 @@ describe("Extensions tier — pathFilter coverage (info-leak boundary)", () => {
 		const tools = buildTools({
 			app: app as never,
 			getWriteDir: () => "agent-workspace",
-			// Either an allowlist or a blocklist counts as "filter set" — using
+			// Either an allowlist or a blocklist counts as "filter set" - using
 			// blocklist here matches the canvas tests above.
 			pathFilter: { allowlist: [], blocklist: ["secrets/"] },
 		});
@@ -1338,7 +1338,7 @@ describe("Extensions tier — pathFilter coverage (info-leak boundary)", () => {
 			app: app as never,
 			getWriteDir: () => "agent-workspace",
 			pathFilter: { allowlist: [], blocklist: ["secrets/"] },
-			// Grant a write tier wide enough to reach the destPath check —
+			// Grant a write tier wide enough to reach the destPath check -
 			// without writeVault, gateVaultWrite would reject for being
 			// outside the write directory before the pathFilter check fires.
 			enabledTiers: new Set(["read", "writeScoped", "writeVault", "extensions"]),
@@ -1478,7 +1478,7 @@ describe("Extensions tier — pathFilter coverage (info-leak boundary)", () => {
 
 // ── Zod coercion / schema-default tests (P1/P2 bug fixes) ───────────────────
 
-describe("Zod coercion — boolean and number params accept string serialisations", () => {
+describe("Zod coercion - boolean and number params accept string serialisations", () => {
 	it("vault_batch_frontmatter dryRun: 'false' coerces to false (applies changes)", async () => {
 		// Regression: LLMs may serialise boolean args as JSON strings.
 		// z.coerce.boolean() converts "false" → true (wrong); the fix uses
@@ -1497,7 +1497,7 @@ describe("Zod coercion — boolean and number params accept string serialisation
 		});
 		// If coercion works, dryRun === false → handler runs the apply path
 		// (not dry-run), which calls processFrontMatter. The mock vault has no
-		// matching files, so the result is a no-op success — not an "Invalid arguments" error.
+		// matching files, so the result is a no-op success - not an "Invalid arguments" error.
 		expect((r.content[0] as { text: string }).text).not.toMatch(/Invalid arguments/i);
 	});
 
@@ -1559,16 +1559,16 @@ describe("Zod coercion — boolean and number params accept string serialisation
 		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
 		const r = await getTool(tools, "vault_tasks_toggle").handler({
 			path: "t.md",
-			line: "2", // string — should coerce to number 2
+			line: "2", // string - should coerce to number 2
 		});
 		// If schema coercion works, we reach the handler logic. Line 2 is a task,
-		// so the toggle should succeed or fail on a handler-level condition — not
+		// so the toggle should succeed or fail on a handler-level condition - not
 		// with "Invalid arguments" from Zod.
 		expect((r.content[0] as { text: string }).text).not.toMatch(/Invalid arguments/i);
 	});
 });
 
-describe("Zod schema defaults — vault_periodic_note", () => {
+describe("Zod schema defaults - vault_periodic_note", () => {
 	function appWithPeriodicNotes() {
 		const { app } = mockApp("{}");
 		(app as unknown as { plugins: unknown }).plugins = {
@@ -1593,13 +1593,13 @@ describe("Zod schema defaults — vault_periodic_note", () => {
 		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
 		const r = await getTool(tools, "vault_periodic_note").handler({});
 		// No periodicity given → defaults to "daily". Handler runs and returns
-		// "Not found" (file doesn't exist, create not requested) — NOT an "Invalid arguments" error.
+		// "Not found" (file doesn't exist, create not requested) - NOT an "Invalid arguments" error.
 		expect((r.content[0] as { text: string }).text).not.toMatch(/Invalid arguments/i);
 		expect((r.content[0] as { text: string }).text).toMatch(/not found|Daily\//i);
 	});
 });
 
-describe("vault_canvas_modify — schema mismatch on plain object input", () => {
+describe("vault_canvas_modify - schema mismatch on plain object input", () => {
 	it("returns a clear error when changes is a plain object instead of a JSON string", async () => {
 		const { app } = mockApp(JSON.stringify({ nodes: [{ id: "n1", type: "text" }], edges: [] }));
 		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });

@@ -39,7 +39,7 @@ export const GATED_TIERS: readonly TierDef[] = [
 	},
 ];
 
-/** Vault-wide write mode — mutually exclusive choice between scoped-only
+/** Vault-wide write mode - mutually exclusive choice between scoped-only
  * writes, reviewed writes (diff modal per change), or full unrestricted
  * writes. Rendered as a dropdown in settings. */
 export type VaultWriteMode = "scoped" | "reviewed" | "full";

@@ -29,7 +29,7 @@ import { formatUptime } from "./format";
 
 const TOOLTIP_STOPPED = "Container is not running\nClick for options";
 const HEALTH_POLL_INTERVAL = 30_000;
-// Long safety-net poll — firewall can be toggled out-of-band (user runs
+// Long safety-net poll - firewall can be toggled out-of-band (user runs
 // init-firewall.sh in the container) and event-driven refreshes can miss it.
 const FIREWALL_REFRESH_INTERVAL = 5 * 60_000;
 const FIREWALL_EVENT_THROTTLE = 10_000;
@@ -61,7 +61,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			} catch (e) {
 				// debounce doesn't surface the inner promise, so saveData
 				// rejections (disk full, permission glitch on data.json) would
-				// silently vanish — the UI shows the change "stuck" but the
+				// silently vanish - the UI shows the change "stuck" but the
 				// next reload loses it.
 				logger.error("Plugin", "Settings save failed", e);
 				new Notice(`Failed to save settings: ${errMsg(e)}`);
@@ -74,7 +74,7 @@ export default class AgentSandboxPlugin extends Plugin {
 	async onload() {
 		// Module-level state in terminal-view.ts (ring buffer + instance
 		// counter) and templater-adapter.ts (hook-suppression refcount)
-		// survives plugin disable/enable — Obsidian caches the module. Reset
+		// survives plugin disable/enable - Obsidian caches the module. Reset
 		// on each load so postmortems don't include events from a previous
 		// lifecycle, and so a previous mid-write unload doesn't leave
 		// Templater's trigger_on_file_creation pinned to false.
@@ -187,7 +187,7 @@ export default class AgentSandboxPlugin extends Plugin {
 
 		this.app.workspace.onLayoutReady(() => {
 			// onLayoutReady can fire more than once across rapid disable/enable
-			// cycles in Obsidian — re-fires have been observed when the plugin
+			// cycles in Obsidian - re-fires have been observed when the plugin
 			// re-registers during a layout transition. A double
 			// backgroundStartup races docker probe and status-bar state, so
 			// guard with a one-shot flag.
@@ -317,7 +317,7 @@ export default class AgentSandboxPlugin extends Plugin {
 				),
 		});
 
-		// obsidian://agent-sandbox/open-terminal — activate or open a terminal tab
+		// obsidian://agent-sandbox/open-terminal - activate or open a terminal tab
 		this.registerObsidianProtocolHandler("agent-sandbox/open-terminal", async () => {
 			try {
 				if (!this.isContainerRunning()) {
@@ -342,7 +342,7 @@ export default class AgentSandboxPlugin extends Plugin {
 				await this.analyse.runAnalyse(path, params.template);
 			} catch (e) {
 				// Obsidian's protocol-handler dispatcher swallows unhandled
-				// rejections silently — external tooling triggering this URI
+				// rejections silently - external tooling triggering this URI
 				// would see no visible failure (e.g. template load throws).
 				logger.error("Plugin", "agent-sandbox/analyse handler failed", e);
 				new Notice(`Analyse failed: ${errMsg(e)}`);
@@ -411,7 +411,7 @@ export default class AgentSandboxPlugin extends Plugin {
 							return;
 						}
 						// Promise.race: whichever of (docker stop) or (5s timer)
-						// resolves first wins. The losing branch keeps running —
+						// resolves first wins. The losing branch keeps running -
 						// docker stop continues in the background and the timer
 						// leaks until GC. AbortController would only cancel the
 						// timer, not the child_process.exec inside
@@ -435,19 +435,19 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.stopHealthPoll();
 		// Order is load-bearing:
 		// 1. Stop MCP first so no onActivity events fire after the UI sinks
-		//    are torn down — otherwise in-flight tool calls fire activity
+		//    are torn down - otherwise in-flight tool calls fire activity
 		//    events into a cleared UI.
 		// 2. Dispose AgentOutputNotifier and clear ActivityUi.
 		// 3. Persist settings.
 		// 4. Detach terminal leaves last (TerminalView.onClose may log a
 		//    final activity event before the MCP server is gone).
 		// The 2s race inside mcpServer.stop() bounds worst-case wait.
-		// Drain queued ops and stop server — shutdown() flushes the queue first
+		// Drain queued ops and stop server - shutdown() flushes the queue first
 		// so a toggle/restart enqueued just before unload can't construct a
 		// fresh server after stop() returns.
 		await this.mcpLifecycle?.shutdown();
 		this.agentOutput?.dispose();
-		// ActivityUi holds a setInterval for the stale-rolling tick — clear()
+		// ActivityUi holds a setInterval for the stale-rolling tick - clear()
 		// drops it. Idempotent.
 		this.activityUi?.clear();
 		// Cancel any pending debounced save so the explicit one below isn't
@@ -460,7 +460,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_TERMINAL);
 		this.firewallBar?.destroy();
 
-		// Plugin disable always stops the container — `autoStopContainer`
+		// Plugin disable always stops the container - `autoStopContainer`
 		// only governs the Obsidian-exit ("quit") path above. Disable is an
 		// explicit user action; leaving the container up would surprise
 		// users reaching for the toggle to release docker resources.
@@ -482,7 +482,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		}
 		if (needsSave) {
 			// Guard the save so a disk/permission failure on first install
-			// doesn't abort onload — the unhandled reject would make the
+			// doesn't abort onload - the unhandled reject would make the
 			// plugin appear to "not load" with no visible error.
 			try {
 				await this.saveData(this.settings);
@@ -574,10 +574,10 @@ export default class AgentSandboxPlugin extends Plugin {
 		logger.info("Plugin", "Auto-starting container from terminal prompt");
 		await this.startContainer();
 		if (this.isContainerRunning()) {
-			logger.info("Plugin", "Container started — opening terminal");
+			logger.info("Plugin", "Container started - opening terminal");
 			await this.activateTerminalView();
 		} else {
-			logger.warn("Plugin", "Container not running after startContainer — skipping terminal");
+			logger.warn("Plugin", "Container not running after startContainer - skipping terminal");
 		}
 	}
 
@@ -612,7 +612,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		let conflicts = await this.checkStartupPortConflicts();
 		if (conflicts.length > 0) {
 			// A prior `docker compose down` may still be tearing the container
-			// down — it no longer reports as "running" but the host port
+			// down - it no longer reports as "running" but the host port
 			// mapping is still held. Treat any compose-managed container as
 			// ours so cleanup finishes before retrying.
 			const isRunning = await this.docker.probeIsRunning();
@@ -620,7 +620,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			if (hasContainer) {
 				logger.info(
 					"Plugin",
-					`Port conflict from ${isRunning ? "running" : "half-stopped"} sandbox container — running compose down before retry`,
+					`Port conflict from ${isRunning ? "running" : "half-stopped"} sandbox container - running compose down before retry`,
 				);
 				this.statusBar.setState("starting");
 				this.statusBar.setDetails(
@@ -672,7 +672,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		try {
 			this.lastKnownContainerId = await this.docker.getContainerId();
 		} catch (err) {
-			// A probe failure here doesn't block startup — it just loses the
+			// A probe failure here doesn't block startup - it just loses the
 			// drift-detection baseline for this session. Logging keeps it
 			// observable; checkContainerIdDrift handles its own probe failure.
 			logger.warn("Plugin", "Initial container-id probe failed", err);
@@ -734,7 +734,7 @@ export default class AgentSandboxPlugin extends Plugin {
 				await this.docker.enableFirewall();
 				this.firewallBar.setState("enabled");
 			} catch (error: unknown) {
-				// Don't collapse the failure to "disabled" — the firewall may
+				// Don't collapse the failure to "disabled" - the firewall may
 				// be off, half-applied, or fully applied with docker exec
 				// returning non-zero on a side concern. Probe the real state
 				// instead, falling back to "hidden" (renders as "n/a") if even
@@ -745,19 +745,19 @@ export default class AgentSandboxPlugin extends Plugin {
 					this.firewallBar.setState("hidden");
 				}
 				// When the container is not running (restart-looping, exited, etc.)
-				// the firewall exec fails for that reason — surface a clearer message
+				// the firewall exec fails for that reason - surface a clearer message
 				// pointing at docker logs rather than the misleading "firewall failed".
 				let noticeMsg = `Auto-enable firewall failed: ${errMsg(error)}. You can enable it manually from the status bar.`;
 				try {
 					if (!(await this.docker.probeIsRunning())) {
 						noticeMsg =
-							"Container exited during startup — the firewall could not be applied. " +
+							"Container exited during startup - the firewall could not be applied. " +
 							"Run `docker logs oas-sandbox` for the cause " +
 							"(common: invalid Write Directory or IPv6 not disabled). " +
 							"Fix the setting and restart the container.";
 					}
 				} catch {
-					// probe failed — keep original message
+					// probe failed - keep original message
 				}
 				new Notice(noticeMsg);
 			}
@@ -797,7 +797,7 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.lastFirewallRefreshAt = Date.now();
 	}
 
-	/** Event-driven refresh — rate-limited to avoid exec spam on rapid focus/hover. */
+	/** Event-driven refresh - rate-limited to avoid exec spam on rapid focus/hover. */
 	private maybeRefreshFirewall(): void {
 		if (this.firewallBar.getState() === "hidden") return;
 		if (Date.now() - this.lastFirewallRefreshAt < FIREWALL_EVENT_THROTTLE) return;
@@ -806,7 +806,7 @@ export default class AgentSandboxPlugin extends Plugin {
 
 	// ── MCP server ────────────────────────────────────────
 
-	// Shims for settings.ts — it calls these on the plugin instance.
+	// Shims for settings.ts - it calls these on the plugin instance.
 	async applyMcpEnabled(enabled: boolean): Promise<void> {
 		return this.mcpLifecycle.applyEnabled(enabled);
 	}
@@ -970,7 +970,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			this.startHealthPoll();
 		} catch (error: unknown) {
 			// A probe throw (vs. a clean false) means the container state is
-			// indeterminate — Docker daemon momentarily unavailable, WSL
+			// indeterminate - Docker daemon momentarily unavailable, WSL
 			// handshake glitch, etc. Don't destroy persisted terminal tabs
 			// over a transient: the health poll below retries every 5s and
 			// detaches legitimately once the container is definitely down.
@@ -1012,7 +1012,7 @@ export default class AgentSandboxPlugin extends Plugin {
 	private async checkStartupPortConflicts(): Promise<number[]> {
 		// Only probe ports the container will bind. The MCP server is hosted
 		// by the plugin (this process), so its port is always "in use" from
-		// the OS's perspective — including it would always abort container
+		// the OS's perspective - including it would always abort container
 		// start when MCP is enabled.
 		const ports = [this.settings.ttydPort];
 		return this.docker.checkStartupConflicts(

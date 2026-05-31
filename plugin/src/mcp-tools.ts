@@ -126,7 +126,7 @@ export function defineTool<S extends Record<string, z.ZodType>>(def: {
 }
 
 /** Cross-field validator: require either `file` (wikilink) or `path` (exact).
- *  `vault_tags` skips this — both omitted means "vault-wide listing". */
+ *  `vault_tags` skips this - both omitted means "vault-wide listing". */
 const requireFileOrPath = (args: { file?: string; path?: string }): string | null =>
 	!args.file && !args.path ? "Provide either 'file' or 'path'." : null;
 
@@ -229,7 +229,7 @@ export async function assertUnchangedDuringReview(
 ): Promise<string | null> {
 	const current = await app.vault.read(file);
 	if (current === expected) return null;
-	return `File '${filePath}' changed during review — aborting to avoid clobbering an external edit. Re-run the tool to see the current contents.`;
+	return `File '${filePath}' changed during review - aborting to avoid clobbering an external edit. Re-run the tool to see the current contents.`;
 }
 
 /**
@@ -283,7 +283,7 @@ function coerceJsonValue(value: unknown): unknown {
 		try {
 			return JSON.parse(s);
 		} catch {
-			// not valid JSON — leave as-is
+			// not valid JSON - leave as-is
 		}
 	}
 	return value;
@@ -348,7 +348,7 @@ export type ReviewFn = (request: {
 
 /**
  * Shared write boundary for tools that don't go through the writeScoped /
- * writeReviewed / writeVault dispatch — specifically the `manage` and
+ * writeReviewed / writeVault dispatch - specifically the `manage` and
  * `extensions` tier tools that create or modify vault files. Honors the same
  * VaultWriteMode semantics: writes inside the write directory always pass;
  * writes outside require either `writeVault` (apply directly) or
@@ -368,7 +368,7 @@ export async function gateVaultWrite(args: {
 	affectedLinks?: string[];
 	/** When set alongside a writeReviewed review, after approval the file is
 	 *  re-read and the write is aborted if the contents changed out from
-	 *  under the modal. Mirrors runWrite's `recheckFile` semantics — the
+	 *  under the modal. Mirrors runWrite's `recheckFile` semantics - the
 	 *  shared CAS contract for write tools that route through this gate
 	 *  (vault_tasks_toggle, vault_batch_frontmatter, etc.) rather than
 	 *  through runWrite. */
@@ -384,7 +384,7 @@ export async function gateVaultWrite(args: {
 	// Errors thrown by apply() (e.g. the Templater post-validate guard
 	// rejecting a path-relocating template) must surface as clean tool
 	// errors. Propagating the throw would turn it into a generic 500 or
-	// return it untyped — wrap apply() so callers always get a well-formed
+	// return it untyped - wrap apply() so callers always get a well-formed
 	// McpToolResult.
 	const runApply = async (): Promise<McpToolResult> => {
 		try {
@@ -409,7 +409,7 @@ export async function gateVaultWrite(args: {
 		});
 		if (!result.approved) return error("Change rejected by user.");
 		// Compare-and-swap against editor edits between modal-show and
-		// modal-approve. Only applies on the reviewed path — direct writes
+		// modal-approve. Only applies on the reviewed path - direct writes
 		// (in-writeDir or writeVault) have no review window to race against.
 		const expected = args.recheckExpected ?? args.oldContent;
 		if (args.recheckFile && args.app && expected !== undefined) {
@@ -456,7 +456,7 @@ export interface BuildToolsOptions {
 	enabledTiers?: ReadonlySet<PermissionTier>;
 }
 
-// vault.createFolder throws if any ancestor is absent — walk the tree so
+// vault.createFolder throws if any ancestor is absent - walk the tree so
 // agents can write into brand-new nested paths in one shot.
 async function ensureParentFolder(app: App, filePath: string): Promise<void> {
 	const parentPath = filePath.split("/").slice(0, -1).join("/");
@@ -494,7 +494,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 	function visibleMarkdownFiles(): TFile[] {
 		// Apply pathFilter at the iteration boundary so vault-wide tag /
 		// property counts don't leak the existence of tags or properties
-		// from blocklisted files — otherwise `blocklist: ["secrets/"]`
+		// from blocklisted files - otherwise `blocklist: ["secrets/"]`
 		// still surfaces tag totals counting unreadable files.
 		const all = app.vault.getMarkdownFiles();
 		if (!pathFilter) return all;
@@ -571,7 +571,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					files = files.filter((f) => isPathWithinDir(f.path, folderFilter));
 				if (extension) files = files.filter((f) => f.extension === extension);
 				// Apply pathFilter so blocklisted regions don't leak file
-				// paths — otherwise `vault_list({folder: "secrets"})`
+				// paths - otherwise `vault_list({folder: "secrets"})`
 				// returns the full list regardless of allow/block config.
 				const paths = filterPaths(
 					files.map((f) => f.path),
@@ -613,7 +613,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					// Chunk size = limit (capped 1..8). forEachMarkdownChunked
 					// awaits the whole chunk before checking `stop`, so a 20
 					// chunk reads 19 extra files when limit=1. Keep chunks
-					// tight for low limits — full-batch concurrency only helps
+					// tight for low limits - full-batch concurrency only helps
 					// when limit is also high.
 					Math.max(1, Math.min(limit, 8)),
 				);
@@ -628,7 +628,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			tier: "read",
 			title: "Fuzzy search vault",
 			description:
-				"Fuzzy full-text search across all markdown files — matches note content, not file names. Tolerates typos and approximate matches. Results are score-sorted.",
+				"Fuzzy full-text search across all markdown files - matches note content, not file names. Tolerates typos and approximate matches. Results are score-sorted.",
 			inputSchema: {
 				query: z.string().describe("Search query text (fuzzy matched)"),
 				limit: z.coerce.number().optional().describe("Max results (default 20)"),
@@ -842,7 +842,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					for (const [target, count] of Object.entries(targets)) {
 						// Also filter the TARGET string. Unresolved targets don't
 						// exist on disk, but they reveal the link-text the user
-						// has typed (e.g. "Project X notes") — which can leak
+						// has typed (e.g. "Project X notes") - which can leak
 						// the user's vault structure / naming. Symmetric with
 						// the source filter above.
 						if (!isPathAllowedByFilter(target, pathFilter)) continue;
@@ -954,7 +954,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		//    leak which hidden bridges exist between visible regions.
 		//  - vault_graph_path: traversing hidden intermediates reports a
 		//    path through nodes the agent can't otherwise see.
-		// Per-tool filterPaths-on-output doesn't recover this — the structure
+		// Per-tool filterPaths-on-output doesn't recover this - the structure
 		// itself leaks. Filter at graph construction.
 		const allow = (p: string): boolean => isPathAllowedByFilter(p, pathFilter);
 		for (const [source, targets] of Object.entries(app.metadataCache.resolvedLinks)) {
@@ -1093,10 +1093,10 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 						if (neighbor === targetPath) return text(reconstruct(neighbor));
 						if (visited.size > MAX_VISITED) {
 							// Budget exhaustion is an expected outcome on large
-							// graphs, not a tool error — return as text so the
+							// graphs, not a tool error - return as text so the
 							// audit log doesn't record this as a failure.
 							return text(
-								`Search exhausted at ${MAX_VISITED} nodes — graph too large for exhaustive BFS.`,
+								`Search exhausted at ${MAX_VISITED} nodes - graph too large for exhaustive BFS.`,
 							);
 						}
 						queue.push(neighbor);
@@ -1441,7 +1441,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 							withTemplaterHookSuppressed(app, async () => {
 								await ensureParentFolder(app, path);
 								const created = await app.vault.create(path, content);
-								// Capture the path before Templater runs — when a
+								// Capture the path before Templater runs - when a
 								// template calls `tp.file.move(...)`, Obsidian mutates
 								// `created.path` in place. Comparing against the
 								// snapshot detects the escape.
@@ -1551,14 +1551,14 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				name: `vault_frontmatter_set${suffix}`,
 				tier,
 				title: `Set frontmatter${scopeLabel}`,
-				description: `Set a YAML frontmatter property on a file${scopeLabel}. Pass \`append: true\` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading \`#\` is stripped from tag values automatically — pass \`"tag"\` or \`"#tag"\` interchangeably. JSON-encoded string arrays (e.g. \`'["a","b"]'\`) are coerced to real arrays.${note}`,
+				description: `Set a YAML frontmatter property on a file${scopeLabel}. Pass \`append: true\` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading \`#\` is stripped from tag values automatically - pass \`"tag"\` or \`"#tag"\` interchangeably. JSON-encoded string arrays (e.g. \`'["a","b"]'\`) are coerced to real arrays.${note}`,
 				inputSchema: {
 					file: z.string().optional().describe("File name"),
 					path: z.string().optional().describe("Exact path from vault root"),
 					property: z.string().describe("Property name"),
 					value: z
 						.unknown()
-						.describe("Property value — string, number, boolean, array, or object"),
+						.describe("Property value - string, number, boolean, array, or object"),
 					append: coercedBoolean()
 						.optional()
 						.describe(
@@ -1586,7 +1586,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					if (!result.ok) return result.error;
 					const f = result.file;
 					const oldFm = frontmatterSnapshot(f);
-					// Capture full file content for CAS recheck — frontmatter alone
+					// Capture full file content for CAS recheck - frontmatter alone
 					// isn't enough because editor edits could change body content
 					// between the review and apply, and processFrontMatter only
 					// touches the YAML block, but the user reviewed the whole file
@@ -1644,7 +1644,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					if (!Object.prototype.hasOwnProperty.call(oldFm, property))
 						return error(`Property '${property}' not found in frontmatter.`);
 					const { [property]: _dropped, ...newFm } = oldFm;
-					// CAS recheck against editor edits during long reviews —
+					// CAS recheck against editor edits during long reviews -
 					// mirrors vault_frontmatter_set above. Otherwise an
 					// approved delete races silently against the user's
 					// concurrent FM edits.
@@ -1711,7 +1711,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 
 					// Hard length budget: even without nested quantifiers, a
 					// linear-but-large regex on multi-MB content blocks the
-					// event loop for seconds — past the MCP tool timeout (which
+					// event loop for seconds - past the MCP tool timeout (which
 					// only fires after replace returns), freezing Obsidian's UI
 					// thread. 5 MiB is generous for any sane vault note (the
 					// largest markdown file in a typical vault is well under
@@ -1727,7 +1727,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 
 					let pattern: RegExp;
 					if (useRegex) {
-						// Reject patterns with nested quantifiers — classic ReDoS
+						// Reject patterns with nested quantifiers - classic ReDoS
 						// shape (e.g. `(a+)+`, `(a*)*`). String.replace runs
 						// synchronously and blocks the event loop past the MCP
 						// tool timeout (which only fires after replace returns),
@@ -1780,7 +1780,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 										const grp = groups[singleIdx];
 										return (typeof grp === "string" ? grp : "") + sym[1];
 									}
-									// No valid group at either length — pass through.
+									// No valid group at either length - pass through.
 									return token;
 								}
 								if (idx < 1 || idx > groupCount) return token;
@@ -2003,12 +2003,12 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		tier: "writeScoped",
 		suffix: "",
 		scopeLabel: " (within write directory)",
-		scopeNote: `Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.`,
+		scopeNote: `Restricted to the configured write directory - paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.`,
 		guardPath: guardWithinWriteDir,
 		resolveForWrite: (args) => {
 			// Gate on the resolved TFile.path, not the caller-supplied args.
 			// When the caller passes `file:` (wikilink-style basename) without
-			// `path:`, resolveFile walks the whole vault to find a match — so
+			// `path:`, resolveFile walks the whole vault to find a match - so
 			// gating on `args.path` alone left a writeScoped tool free to write
 			// any file in the vault by basename. Check the resolved path here.
 			const f = resolveFile(app, args, pathFilter);
@@ -2037,7 +2037,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		suffix: "_anywhere",
 		scopeLabel: " (vault-wide)",
 		scopeNote:
-			"Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.",
+			"Unrestricted - writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.",
 		guardPath: () => null,
 		resolveForWrite: resolveAnywhere,
 	});
@@ -2120,7 +2120,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					return error(`Destination already exists: ${newPath}`);
 				// Gate the manage op through the vault-write boundary. Without
 				// this, `manage` tier with `mcpVaultWrites: "scoped"` could rename
-				// ANY vault file — the runWrite call below only checks `review`,
+				// ANY vault file - the runWrite call below only checks `review`,
 				// and `reviewFn` is undefined when no vault-wide write mode is
 				// on. gateVaultWrite enforces writeDir / writeVault / writeReviewed
 				// semantics, then chains into runWrite for the rename + recheck.
@@ -2206,7 +2206,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			tier: "manage",
 			title: "Delete file or folder",
 			description:
-				"Move a file or folder to trash. Folder deletion is recursive — children are trashed with the parent.",
+				"Move a file or folder to trash. Folder deletion is recursive - children are trashed with the parent.",
 			inputSchema: {
 				file: z.string().optional().describe("File name (files only)"),
 				path: z.string().optional().describe("Exact path from vault root (file or folder)"),
@@ -2314,7 +2314,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					.unknown()
 					.optional()
 					.describe(
-						"Value to set — string, number, boolean, array, or object. Omit to delete.",
+						"Value to set - string, number, boolean, array, or object. Omit to delete.",
 					),
 				dryRun: coercedBoolean()
 					.optional()
@@ -2351,13 +2351,13 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				if (matched.length === 0) return text("No files matched the query.");
 				const truncationNote =
 					totalMatched > BATCH_MATCH_CAP
-						? `\n\n[showing first ${BATCH_MATCH_CAP} of ${totalMatched} matches — narrow the query to operate on more]`
+						? `\n\n[showing first ${BATCH_MATCH_CAP} of ${totalMatched} matches - narrow the query to operate on more]`
 						: "";
 
 				if (dryRun) {
 					const label = hasValue ? `set ${property}` : `delete ${property}`;
 					return text(
-						`Dry run — would ${label} on ${matched.length} file(s):\n${matched.map((f) => f.path).join("\n")}${truncationNote}`,
+						`Dry run - would ${label} on ${matched.length} file(s):\n${matched.map((f) => f.path).join("\n")}${truncationNote}`,
 					);
 				}
 
@@ -2382,7 +2382,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// comparison target in the apply phase, so a file that changed
 				// between modal-show and modal-approve is skipped rather than
 				// blindly overwritten. Keyed by file.path because TFile
-				// identity isn't reliable — Obsidian recreates the wrapper
+				// identity isn't reliable - Obsidian recreates the wrapper
 				// across rename/move events.
 				const preReviewFm = new Map<string, Record<string, unknown>>();
 				for (const file of matched) {
@@ -2429,7 +2429,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// any file whose frontmatter changed during the review window is
 				// dropped from the apply set rather than clobbered. Without a
 				// review (writeVault direct-apply path), there's no race window
-				// to guard against — the snapshot and the write are back-to-back.
+				// to guard against - the snapshot and the write are back-to-back.
 				const skippedDueToConcurrentEdit: string[] = [];
 
 				// Process in chunks. Obsidian serialises per-file internally; modest
@@ -2530,7 +2530,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 			description:
 				"Return the current date/time as seen by the Obsidian host process (not the container). " +
 				"Date-sensitive tools (e.g. vault_periodic_note) resolve relative dates using this host clock. " +
-				"Call this when you need to know the host date or detect the UTC offset between container and host — " +
+				"Call this when you need to know the host date or detect the UTC offset between container and host - " +
 				"if they differ, pass an explicit `date` param derived from `localIso` rather than relying on your own clock.",
 			inputSchema: {},
 			handler: async () => {

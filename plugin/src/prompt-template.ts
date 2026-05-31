@@ -6,7 +6,7 @@
  */
 export function parsePromptTemplate(content: string, fallbackName: string): [string, string] {
 	// Treat `---` as the label/body divider only when it terminates the
-	// first non-blank line group — preceded only by optional blank lines
+	// first non-blank line group - preceded only by optional blank lines
 	// plus one or more contiguous label lines. A coarse `^---\s*$` match
 	// would split `Title\n\nIntro paragraph\n---\n## Section` at the body HR.
 	//
@@ -18,7 +18,7 @@ export function parsePromptTemplate(content: string, fallbackName: string): [str
 	let i = 0;
 	while (i < lines.length && lines[i].trim() === "") i++;
 	const labelStart = i;
-	// Walk across non-blank, non-separator lines — these form the label
+	// Walk across non-blank, non-separator lines - these form the label
 	// block. Stop at the first blank line (so a body HR after a blank
 	// paragraph isn't treated as the separator) or at the first `---` line.
 	while (i < lines.length && lines[i].trim() !== "" && !isSep(lines[i])) i++;
@@ -41,7 +41,7 @@ export function parsePromptTemplate(content: string, fallbackName: string): [str
 
 /** Substitute `{{file}}` with the vault path (matches whitespace variants).
  *  Function replacer keeps the path from being re-interpreted as a regex
- *  back-reference — a literal `$1` / `$&` in the path would otherwise expand
+ *  back-reference - a literal `$1` / `$&` in the path would otherwise expand
  *  to capture groups. */
 export function substituteFilePlaceholder(body: string, vaultPath: string): string {
 	return body.replace(/\{\{\s*file\s*\}\}/g, () => vaultPath);

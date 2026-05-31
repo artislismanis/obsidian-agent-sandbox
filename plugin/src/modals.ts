@@ -80,7 +80,7 @@ export function inputModal(app: App, opts: InputOptions): Promise<string | null>
 		const submit = () => {
 			// Trim whitespace so an empty/whitespace input becomes a cancel
 			// rather than a submit. Callers (session names, prompt names) rely
-			// on non-empty validated names downstream — accepting whitespace
+			// on non-empty validated names downstream - accepting whitespace
 			// pushes the validation failure into a less-friendly error path.
 			// Add a `preserveWhitespace` flag if a future caller needs to
 			// allow whitespace-only input.

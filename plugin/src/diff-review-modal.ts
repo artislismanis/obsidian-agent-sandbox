@@ -45,7 +45,7 @@ export interface ReviewResult {
 /**
  * Lightweight near-LCS diff: walks old/new line-pointers in lockstep and
  * peeks up to 3 lines ahead to recover from short insertions/deletions.
- * Intentionally NOT a full Myers/LCS — for the review-modal use case (small
+ * Intentionally NOT a full Myers/LCS - for the review-modal use case (small
  * text edits that the user is about to approve) the readable output of an
  * approximate diff is preferable to the implementation cost of a real LCS.
  *

@@ -83,7 +83,7 @@ describe("AnalyseManager template loading", () => {
 		});
 		const host = makeHost(tmpBase);
 		const mgr = new AnalyseManager(host);
-		// Before prewarm the cache is empty — loadTemplates does disk I/O.
+		// Before prewarm the cache is empty - loadTemplates does disk I/O.
 		await mgr.prewarm();
 		const cached = await mgr.loadTemplates();
 		expect(cached.map((t) => t.name)).toEqual(["explain"]);

@@ -176,7 +176,7 @@ describe("ObsidianMcpServer", () => {
 
 	describe("auth length compare", () => {
 		it("rejects on length mismatch without going through timingSafeEqual", async () => {
-			// timingSafeEqual throws on length mismatch — checkAuth must
+			// timingSafeEqual throws on length mismatch - checkAuth must
 			// guard with a length check first. A wrong-token of a different
 			// length should produce a clean 401 (not a 500 thrown error).
 			const res = await httpRequest(
@@ -224,7 +224,7 @@ describe("ObsidianMcpServer", () => {
 			).catch(() => null);
 			// On many platforms the server destroys the request before
 			// finishing the response, which surfaces as a connection
-			// reset (null result). Either outcome is acceptable — what
+			// reset (null result). Either outcome is acceptable - what
 			// matters is the listener is still alive after.
 			if (res) expect(res.status).toBeGreaterThanOrEqual(400);
 			// Listener still up: a small follow-up request goes through.

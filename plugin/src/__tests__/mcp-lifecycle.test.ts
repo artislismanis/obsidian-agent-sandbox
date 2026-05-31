@@ -51,7 +51,7 @@ vi.mock("../mcp-server", () => ({
 	},
 }));
 
-// diff-review-modal uses Obsidian Modal — stub it.
+// diff-review-modal uses Obsidian Modal - stub it.
 vi.mock("../diff-review-modal", () => ({
 	DiffReviewModal: class {},
 	BatchReviewModal: class {},
@@ -86,7 +86,7 @@ function makeLifecycle(overrides: Partial<AgentSandboxSettings> = {}) {
 	return { lifecycle, settings };
 }
 
-describe("McpLifecycle.startServer — pathFilter wiring", () => {
+describe("McpLifecycle.startServer - pathFilter wiring", () => {
 	beforeEach(() => {
 		capturedConfig = undefined;
 		mockStart.mockClear();

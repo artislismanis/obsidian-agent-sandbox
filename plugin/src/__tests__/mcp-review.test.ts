@@ -147,7 +147,7 @@ describe("write tools honor reviewFn", () => {
 		// only when writeReviewed is enabled AND the path is outside writeDir.
 		// In production main.ts:655 ties reviewFn presence to
 		// mcpVaultWrites=="reviewed", which sets writeReviewed (not writeVault)
-		// in enabledTiers — test setup mirrors that pairing.
+		// in enabledTiers - test setup mirrors that pairing.
 		const reviewedTiers: ReadonlySet<PermissionTier> = new Set<PermissionTier>([
 			"read",
 			"writeScoped",

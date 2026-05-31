@@ -1,5 +1,5 @@
 /**
- * Session-related modal UIs — the Quick-Switcher-style picker over open
+ * Session-related modal UIs - the Quick-Switcher-style picker over open
  * terminal tabs and the manual "Clean up detached sessions" modal. Extracted
  * from main.ts to keep the plugin entry focused on wiring.
  */
@@ -38,7 +38,7 @@ export function showSessionPicker(app: App): void {
 			row.setText(label);
 			row.addEventListener("click", () => {
 				modal.close();
-				// Revalidate — leaf may have closed between render and click.
+				// Revalidate - leaf may have closed between render and click.
 				if (!app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL).includes(leaf)) {
 					new Notice("That session has closed.");
 					return;
@@ -108,7 +108,7 @@ export async function showSessionCleanup(
 			btn.addEventListener("click", () => modal.close());
 		});
 		div.createEl("button", { text: "Kill selected", cls: "mod-cta" }, (btn) => {
-			// addEventListener's callback returns void — async body Promises
+			// addEventListener's callback returns void - async body Promises
 			// are discarded. Promise.allSettled handles per-session failures
 			// inside, but a synchronous throw before it (`[...selected]` on
 			// a corrupted Set, modal.close() throwing) would surface only as

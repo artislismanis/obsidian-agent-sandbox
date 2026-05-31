@@ -4,9 +4,9 @@
  * Kept out of main.ts so the plugin entry doesn't carry per-session UI
  * routing and debounce state inline. Two small managers:
  *
- * - `ActivityUi` — wires MCP `agent_status_set` updates into per-tab tab-title
+ * - `ActivityUi` - wires MCP `agent_status_set` updates into per-tab tab-title
  *   prefixes and the aggregate status-bar attention badge.
- * - `AgentOutputNotifier` — watches vault creates/modifies under the write
+ * - `AgentOutputNotifier` - watches vault creates/modifies under the write
  *   directory, debounces bursts, rate-limits, and surfaces an Obsidian Notice.
  */
 
@@ -21,7 +21,7 @@ import { DEFAULT_SESSION_KEY } from "./mcp-tools";
 import { isPathWithinDir } from "./validation";
 
 /**
- * Structural-typed guard that doesn't import the TerminalView class — that
+ * Structural-typed guard that doesn't import the TerminalView class - that
  * import would pull xterm.js into the (jsdom-free) unit test bundle. Checks
  * both the leaf's view-type and the required methods; a placeholder /
  * deferred view returned by Obsidian during reload satisfies neither.
@@ -69,7 +69,7 @@ export class ActivityUi {
 		// Wrap tickStale in try/catch so a late tick after teardown can't
 		// propagate as an unhandled error against stale `this.app` /
 		// `this.statusBar` refs. Raw setInterval (not Plugin.registerInterval)
-		// because ActivityUi has no Plugin reference — clear() owns cleanup.
+		// because ActivityUi has no Plugin reference - clear() owns cleanup.
 		this.staleTickId = setInterval(() => {
 			try {
 				this.tickStale();
@@ -106,7 +106,7 @@ export class ActivityUi {
 		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
 			// Defensive: getLeavesOfType normally only returns matching views,
 			// but Obsidian has been observed to surface deferred / placeholder
-			// views during plugin reload — `view` may not yet be a TerminalView.
+			// views during plugin reload - `view` may not yet be a TerminalView.
 			if (!isTerminalViewLike(leaf.view)) continue;
 			const view = leaf.view;
 			const key = view.getSessionName() ?? DEFAULT_SESSION_KEY;
@@ -161,9 +161,9 @@ export class AgentOutputNotifier {
 	private pendingBuffer: BufferedEntry[] = [];
 	private debounceId: ReturnType<typeof setTimeout> | null = null;
 	private lastNoticeAt = 0;
-	/** Paths recently edited by the user in Obsidian — keyed to their expiry epoch ms. */
+	/** Paths recently edited by the user in Obsidian - keyed to their expiry epoch ms. */
 	private recentUserEdits = new Map<string, number>();
-	/** Paths recently created by the agent — suppresses the modify that follows a create. */
+	/** Paths recently created by the agent - suppresses the modify that follows a create. */
 	private recentlyCreated = new Map<string, number>();
 
 	constructor(
@@ -250,7 +250,7 @@ export class AgentOutputNotifier {
 
 	private pathInScope(path: string): boolean {
 		if (this.getVaultWide()) return true;
-		// Empty vaultWriteDir fails closed — no path is considered in scope.
+		// Empty vaultWriteDir fails closed - no path is considered in scope.
 		return isPathWithinDir(path, this.getWriteDir());
 	}
 
@@ -271,7 +271,7 @@ export class AgentOutputNotifier {
 			// Freeze the current batch so new events arriving during the wait
 			// don't mix into this notice. The debounce timer becomes the
 			// rate-limit hold timer; new enqueue() calls see it non-null and
-			// just append to this.buffer — they'll be picked up in the next
+			// just append to this.buffer - they'll be picked up in the next
 			// window via the recursive flush() below.
 			this.pendingBuffer = [...this.pendingBuffer, ...this.buffer];
 			this.buffer = [];

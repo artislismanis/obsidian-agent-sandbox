@@ -1,6 +1,6 @@
 /**
  * Typed accessors for Obsidian APIs that aren't part of the public typings.
- * Centralising the `as unknown as` casts keeps the risk surface in one file —
+ * Centralising the `as unknown as` casts keeps the risk surface in one file -
  * if Obsidian changes one of these shapes, only this module needs an update.
  *
  * Each helper returns `undefined` (or null) when the underlying field is
@@ -34,7 +34,7 @@ let nonFileSystemAdapterWarned = false;
  * True when `vaultPath` resolves to a real filesystem path inside the vault
  * base. Returns `true` when the vault adapter isn't a `FileSystemAdapter`
  * (mobile, in-memory test adapters, or any future adapter without
- * `getBasePath`/`getFullPath`) — the symlink-traversal guard becomes a
+ * `getBasePath`/`getFullPath`) - the symlink-traversal guard becomes a
  * no-op there, and the first such call logs a warning so the dormant guard
  * is observable.
  *
