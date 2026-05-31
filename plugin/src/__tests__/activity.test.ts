@@ -166,6 +166,35 @@ describe("AgentOutputNotifier", () => {
 		expect((Notice as NoticeMock).lastMessage).toBe("Agent created agent-workspace/a.md");
 	});
 
+	it("suppresses modify that immediately follows a create for the same path", () => {
+		notifyEdited = true;
+		const n = notifier();
+		n.onCreate("agent-workspace/a.md");
+		n.onModify("agent-workspace/a.md");
+		vi.advanceTimersByTime(2000);
+		expect((Notice as NoticeMock).lastMessage).toBe("Agent created agent-workspace/a.md");
+	});
+
+	it("allows modify on a different path after a create", () => {
+		notifyEdited = true;
+		const n = notifier();
+		n.onCreate("agent-workspace/a.md");
+		n.onModify("agent-workspace/b.md");
+		vi.advanceTimersByTime(2000);
+		expect((Notice as NoticeMock).lastMessage).toBe("Agent output: 1 created, 1 modified");
+	});
+
+	it("resumes modify notifications after create-suppress TTL expires", () => {
+		notifyCreated = false; // suppress debounce/rate-limit from the create itself
+		notifyEdited = true;
+		const n = notifier();
+		n.onCreate("agent-workspace/a.md"); // stamps TTL only, no enqueue
+		vi.advanceTimersByTime(3001); // CREATE_MODIFY_SUPPRESS_MS expires
+		n.onModify("agent-workspace/a.md"); // should NOT be suppressed
+		vi.advanceTimersByTime(2000);
+		expect((Notice as NoticeMock).lastMessage).toBe("Agent modified agent-workspace/a.md");
+	});
+
 	it("requeues buffered events under rate-limit instead of dropping them", () => {
 		const n = notifier();
 		n.onCreate("agent-workspace/a.md");
