@@ -99,9 +99,9 @@ const INPUT_CMD = 0x30;
  *
  * Always returns at least one frame. Frames preserve byte order.
  */
-export function encodeInputFrames(text: string, chunkBytes = 16 * 1024): Uint8Array[] {
+export function encodeInputFrames(text: string, chunkBytes = 16 * 1024): Uint8Array<ArrayBuffer>[] {
 	const bytes = new TextEncoder().encode(text);
-	const frames: Uint8Array[] = [];
+	const frames: Uint8Array<ArrayBuffer>[] = [];
 	let off = 0;
 	do {
 		const slice = bytes.subarray(off, off + chunkBytes);

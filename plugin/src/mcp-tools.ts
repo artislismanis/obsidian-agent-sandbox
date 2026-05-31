@@ -2534,7 +2534,8 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				"if they differ, pass an explicit `date` param derived from `localIso` rather than relying on your own clock.",
 			inputSchema: {},
 			handler: async () => {
-				const m = moment();
+				// TS6 + bundler resolution: Obsidian's moment re-export loses its call signature.
+				const m = (moment as any)();
 				return text(
 					JSON.stringify({
 						localIso: m.format(),
