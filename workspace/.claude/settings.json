@@ -14,12 +14,42 @@
 		"command": "bash .claude/scripts/statusline.sh"
 	},
 	"hooks": {
+		"PreToolUse": [
+			{
+				"matcher": "Write|Edit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"REMINDER: Before writing or editing any content, confirm you have invoked the prose-style skill in this task. If not, invoke it now via the Skill tool before proceeding. This applies to all content: prose, documentation, code comments, commit messages, and notes.\"}}'"
+					}
+				]
+			},
+			{
+				"matcher": "AskUserQuestion",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "bash .claude/hooks/notify-status.sh awaiting_input"
+					}
+				]
+			}
+		],
 		"UserPromptSubmit": [
 			{
 				"hooks": [
 					{
 						"type": "command",
 						"command": "bash .claude/hooks/notify-status.sh working"
+					}
+				]
+			}
+		],
+		"Notification": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "bash .claude/hooks/notify-status.sh awaiting_input"
 					}
 				]
 			}
