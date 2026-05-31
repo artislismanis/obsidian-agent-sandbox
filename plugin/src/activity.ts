@@ -10,7 +10,7 @@
  *   directory, debounces bursts, rate-limits, and surfaces an Obsidian Notice.
  */
 
-import type { App } from "obsidian";
+import type { App, EventRef, WorkspaceLeaf } from "obsidian";
 import { Notice } from "obsidian";
 import type { ActivityEntry } from "./mcp-server";
 import type { StatusBarManager } from "./status-bar";
@@ -19,6 +19,7 @@ import { VIEW_TYPE_TERMINAL } from "./view-types";
 import type { AgentStatus } from "./mcp-tools";
 import { DEFAULT_SESSION_KEY } from "./mcp-tools";
 import { isPathWithinDir } from "./validation";
+import { setLeafTabTitle } from "./obsidian-internals";
 
 /**
  * Structural-typed guard that doesn't import the TerminalView class - that
@@ -41,10 +42,56 @@ function isTerminalViewLike(leafView: unknown): leafView is TerminalView {
 	);
 }
 
+/**
+ * True when a leaf is a deferred terminal tab (Obsidian 1.7.2+).
+ *
+ * `isDeferred` is a public getter since 1.7.2. On older builds the property
+ * is absent; in that case the leaf cannot be deferred, so we return false.
+ */
+function isDeferredTerminalLeaf(leaf: WorkspaceLeaf): boolean {
+	if (!("isDeferred" in leaf) || !(leaf as unknown as { isDeferred: boolean }).isDeferred) {
+		return false;
+	}
+	// Confirm the persisted view type is a terminal before treating it as ours.
+	const state = leaf.getViewState();
+	return state.type === VIEW_TYPE_TERMINAL;
+}
+
+/**
+ * Read the session name from a leaf's persisted view state.
+ * Returns null when the leaf has no state or the sessionName field is absent.
+ */
+function leafSessionFromState(leaf: WorkspaceLeaf): string | null {
+	const state = leaf.getViewState().state;
+	if (!state || typeof state !== "object") return null;
+	const name = (state as Record<string, unknown>).sessionName;
+	return typeof name === "string" && name.length > 0 ? name : null;
+}
+
+/**
+ * Build the display text for a deferred terminal leaf given the session name
+ * from its persisted state and an activity prefix to apply.
+ *
+ * Mirrors the PREFIX_SYMBOL map in terminal-view.ts (kept local to avoid
+ * importing xterm.js into the unit-test bundle).
+ */
+function deferredLeafTitle(sessionName: string | null, prefix: ActivityPrefix): string {
+	const prefixSymbol =
+		prefix === "working"
+			? "⚙ " // ⚙
+			: prefix === "awaiting_input"
+				? "❓ " // ❓
+				: prefix === "idle"
+					? "✓ " // ✓
+					: "";
+	const base = sessionName ? `Session: ${sessionName}` : "Sandbox Terminal";
+	return prefixSymbol + base;
+}
+
 const STATUS_TO_PREFIX: Record<AgentStatus, ActivityPrefix> = {
 	working: "working",
 	awaiting_input: "awaiting_input",
-	idle: null,
+	idle: "idle",
 };
 
 export interface ActivityUpdate {
@@ -60,6 +107,7 @@ const STALE_TICK_MS = 60_000;
 
 export class ActivityUi {
 	private staleTickId: ReturnType<typeof setInterval> | null = null;
+	private layoutChangeRef: EventRef | null = null;
 
 	constructor(
 		private app: App,
@@ -78,17 +126,39 @@ export class ActivityUi {
 				console.warn("[Agent Sandbox] [ActivityUi] tickStale failed:", e);
 			}
 		}, STALE_TICK_MS);
+
+		// Re-tick whenever the workspace layout changes so that a deferred leaf
+		// that has just become live picks up the correct prefix immediately,
+		// rather than waiting up to STALE_TICK_MS for the next interval.
+		this.layoutChangeRef = this.app.workspace.on("layout-change", () => {
+			try {
+				this.tickStale();
+			} catch (e) {
+				// eslint-disable-next-line no-console
+				console.warn("[Agent Sandbox] [ActivityUi] layout-change tick failed:", e);
+			}
+		});
 	}
 
 	route(update: ActivityUpdate): void {
 		const prefix = STATUS_TO_PREFIX[update.status];
 
 		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
-			if (!isTerminalViewLike(leaf.view)) continue;
-			const view = leaf.view;
-			const sessionKey = view.getSessionName() ?? DEFAULT_SESSION_KEY;
-			if (sessionKey === update.sessionName) {
-				view.setActivityPrefix(prefix);
+			if (isTerminalViewLike(leaf.view)) {
+				// Live view: use the view's own prefix setter (updates activityPrefix
+				// field + triggers a tab-header repaint via refreshLeafHeader).
+				const sessionKey = leaf.view.getSessionName() ?? DEFAULT_SESSION_KEY;
+				if (sessionKey === update.sessionName) {
+					leaf.view.setActivityPrefix(prefix);
+				}
+			} else if (isDeferredTerminalLeaf(leaf)) {
+				// Deferred view: the TerminalView instance isn't loaded yet.
+				// Match via persisted state and write the title directly to the
+				// tab-header element so the indicator is visible even on background tabs.
+				const stateKey = leafSessionFromState(leaf) ?? DEFAULT_SESSION_KEY;
+				if (stateKey === update.sessionName) {
+					setLeafTabTitle(leaf, deferredLeafTitle(leafSessionFromState(leaf), prefix));
+				}
 			}
 		}
 
@@ -98,20 +168,27 @@ export class ActivityUi {
 	/**
 	 * Re-route prefixes for all known sessions based on the current (rolled)
 	 * activity map. Catches "working" → "idle" transitions caused by staleness
-	 * rather than an explicit status update.
+	 * rather than an explicit status update. Also fires on layout-change so
+	 * a newly-loaded deferred leaf gets the correct prefix without waiting for
+	 * the next interval tick.
 	 */
 	private tickStale(): void {
 		const activity = this.getActivity();
 		if (!activity) return;
 		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
-			// Defensive: getLeavesOfType normally only returns matching views,
-			// but Obsidian has been observed to surface deferred / placeholder
-			// views during plugin reload - `view` may not yet be a TerminalView.
-			if (!isTerminalViewLike(leaf.view)) continue;
-			const view = leaf.view;
-			const key = view.getSessionName() ?? DEFAULT_SESSION_KEY;
-			const entry = activity.get(key);
-			view.setActivityPrefix(entry ? STATUS_TO_PREFIX[entry.status] : null);
+			if (isTerminalViewLike(leaf.view)) {
+				// Live view path.
+				const key = leaf.view.getSessionName() ?? DEFAULT_SESSION_KEY;
+				const entry = activity.get(key);
+				leaf.view.setActivityPrefix(entry ? STATUS_TO_PREFIX[entry.status] : null);
+			} else if (isDeferredTerminalLeaf(leaf)) {
+				// Deferred view path: write the title directly.
+				const sessionName = leafSessionFromState(leaf);
+				const key = sessionName ?? DEFAULT_SESSION_KEY;
+				const entry = activity.get(key);
+				const prefix = entry ? STATUS_TO_PREFIX[entry.status] : null;
+				setLeafTabTitle(leaf, deferredLeafTitle(sessionName, prefix));
+			}
 		}
 		this.refreshAttentionBadge();
 	}
@@ -121,9 +198,17 @@ export class ActivityUi {
 			clearInterval(this.staleTickId);
 			this.staleTickId = null;
 		}
+		if (this.layoutChangeRef != null) {
+			this.app.workspace.offref(this.layoutChangeRef);
+			this.layoutChangeRef = null;
+		}
 		this.statusBar.setAttention(0);
 		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
-			if (isTerminalViewLike(leaf.view)) leaf.view.setActivityPrefix(null);
+			if (isTerminalViewLike(leaf.view)) {
+				leaf.view.setActivityPrefix(null);
+			} else if (isDeferredTerminalLeaf(leaf)) {
+				setLeafTabTitle(leaf, deferredLeafTitle(leafSessionFromState(leaf), null));
+			}
 		}
 	}
 

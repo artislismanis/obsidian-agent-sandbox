@@ -13,10 +13,11 @@
 # the plugin at docker compose up). Session name is picked up from tmux
 # when available.
 #
-# Wired hooks: UserPromptSubmit → working, Stop → idle.
-# PreToolUse fires per tool use (too noisy for a clean once-per-turn signal).
-# Notification under bypassPermissions fires after Stop, leaving status stuck
-# at awaiting_input when no prompt is pending — so it is not wired.
+# Wired hooks:
+#   UserPromptSubmit      → working        (prompt received, starting turn)
+#   Stop                  → idle           (turn complete)
+#   PreToolUse[AskUserQuestion] → awaiting_input  (blocking on human answer)
+#   Notification          → awaiting_input (system notification to user)
 #
 # Implementation note: pipes JSON-RPC through the stdio→HTTP proxy at
 # .claude/scripts/obsidian-mcp-proxy.js, which performs the MCP
@@ -45,7 +46,14 @@ if [ -z "$token" ]; then
   exit 0
 fi
 
-session="$(tmux display-message -p '#S' 2>/dev/null || true)"
+# Only report a session name when actually attached to tmux ($TMUX is set by
+# tmux for all child processes). Without this guard, tmux display-message can
+# return the most-recently-active session name from a tmux server that is
+# running in another tab, causing the prefix to be routed to the wrong tab.
+session=""
+if [ -n "${TMUX:-}" ]; then
+  session="$(tmux display-message -p '#S' 2>/dev/null || true)"
+fi
 
 # jq is installed in the sandbox image (container/Dockerfile); this hook
 # only ever runs in-container, so we can rely on it.

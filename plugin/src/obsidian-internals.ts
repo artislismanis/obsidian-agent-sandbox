@@ -84,9 +84,48 @@ export function getInstalledPlugin<T = unknown>(app: App, pluginId: string): T |
 	return plugin as T | null;
 }
 
-/** Trigger Obsidian's leaf-header refresh if the leaf supports it. */
+/** Internal shape used for tab-header access. */
+interface LeafInternals {
+	updateHeader?: () => void;
+	tabHeaderInnerTitleEl?: { setText: (s: string) => void };
+}
+
+/** One-time latch so the fallback warning fires once per plugin load. */
+let updateHeaderMissingWarned = false;
+
+/**
+ * Trigger Obsidian's leaf-header refresh.
+ *
+ * Tries `updateHeader()` first — an internal that re-reads `getDisplayText()`
+ * from the view and updates the DOM. Falls back to writing `leaf.getDisplayText()`
+ * directly to `tabHeaderInnerTitleEl` if the method is absent (renamed/removed
+ * in a newer Obsidian build). Logs once so the fallback is observable.
+ */
 export function refreshLeafHeader(leaf: WorkspaceLeaf): void {
-	(leaf as unknown as { updateHeader?: () => void }).updateHeader?.();
+	const l = leaf as unknown as LeafInternals;
+	if (typeof l.updateHeader === "function") {
+		l.updateHeader();
+		return;
+	}
+	if (!updateHeaderMissingWarned) {
+		updateHeaderMissingWarned = true;
+		logger.warn(
+			"ActivityUi",
+			"`updateHeader` missing on WorkspaceLeaf — falling back to direct title write. Check for an Obsidian API change.",
+		);
+	}
+	l.tabHeaderInnerTitleEl?.setText(leaf.getDisplayText());
+}
+
+/**
+ * Write a title string directly to a leaf's tab-header title element.
+ *
+ * Used for deferred/placeholder leaves where the view's `getDisplayText()` is
+ * not trustworthy (the view hasn't loaded yet). If `tabHeaderInnerTitleEl` is
+ * absent the call is a safe no-op.
+ */
+export function setLeafTabTitle(leaf: WorkspaceLeaf, title: string): void {
+	(leaf as unknown as LeafInternals).tabHeaderInnerTitleEl?.setText(title);
 }
 
 /** Open a submenu on a context-menu item if the host build supports it; otherwise return null. */

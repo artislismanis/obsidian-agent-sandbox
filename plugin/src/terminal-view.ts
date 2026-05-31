@@ -124,11 +124,12 @@ export function formatConnectionLog(events: TerminalConnectionEvent[]): string {
 		.join("\n");
 }
 
-export type ActivityPrefix = "working" | "awaiting_input" | null;
+export type ActivityPrefix = "working" | "awaiting_input" | "idle" | null;
 
 const PREFIX_SYMBOL: Record<Exclude<ActivityPrefix, null>, string> = {
 	working: "\u2699 ", // ⚙
 	awaiting_input: "\u2753 ", // ❓
+	idle: "\u2713 ", // ✓
 };
 
 export class TerminalView extends ItemView {

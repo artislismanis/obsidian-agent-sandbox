@@ -285,6 +285,8 @@ describe("ActivityUi attention propagation", () => {
 		const app = {
 			workspace: {
 				getLeavesOfType: () => [] as unknown[],
+				on: vi.fn(() => ({})),
+				offref: vi.fn(),
 			},
 		};
 		const ui = new ActivityUi(app as never, statusBar as never, () => activity);
