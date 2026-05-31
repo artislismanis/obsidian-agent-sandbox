@@ -63,6 +63,7 @@ export interface AgentSandboxSettings {
 	notifyDeleted: boolean;
 	notifyRenamed: boolean;
 	notifyVaultWide: boolean;
+	notifyUserEditTtlSeconds: number;
 	logLevel: "debug" | "info" | "warn" | "error";
 	mcpToolTimeout: number;
 	mcpReviewTimeout: number;
@@ -146,6 +147,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	notifyDeleted: true,
 	notifyRenamed: true,
 	notifyVaultWide: false,
+	notifyUserEditTtlSeconds: 10,
 	logLevel: "warn",
 	mcpToolTimeout: 10,
 	mcpReviewTimeout: 180,
@@ -956,6 +958,16 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			placeholder: "180",
 			narrow: true,
 			onChange: () => void this.plugin.restartMcpIfRunning(),
+		});
+
+		this.addNumberSetting(el, {
+			name: "User edit suppression window (seconds)",
+			desc: "After you type in a file, agent-output notifications for that file are suppressed for this many seconds. Prevents your own Obsidian edits triggering notices.",
+			key: "notifyUserEditTtlSeconds",
+			min: 1,
+			max: 60,
+			placeholder: "10",
+			narrow: true,
 		});
 	}
 

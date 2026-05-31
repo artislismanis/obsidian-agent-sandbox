@@ -119,7 +119,6 @@ export default class AgentSandboxPlugin extends Plugin {
 			updateTooltip: () => this.updateTooltip(),
 			onActivity: (update) => this.activityUi.route(update),
 			clearActivity: () => this.activityUi.clear(),
-			onMcpWrite: (path) => this.agentOutput.markMcpWrite(path),
 		});
 		this.activityUi = new ActivityUi(this.app, this.statusBar, () =>
 			this.mcpLifecycle.getActivity(),
@@ -131,6 +130,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			() => this.settings.notifyRenamed,
 			() => this.settings.notifyVaultWide,
 			() => this.settings.vaultWriteDir,
+			() => this.settings.notifyUserEditTtlSeconds,
 		);
 		this.analyse = new AnalyseManager({
 			app: this.app,
@@ -384,6 +384,13 @@ export default class AgentSandboxPlugin extends Plugin {
 					),
 				);
 			}, 2000);
+			// Track user keystrokes so vault changes shortly after typing are
+			// not mistaken for agent writes.
+			this.registerEvent(
+				this.app.workspace.on("editor-change", (_editor, info) => {
+					if (info.file) this.agentOutput.markUserEdit(info.file.path);
+				}),
+			);
 		});
 
 		// Quick-Switcher-style picker for open sandbox sessions

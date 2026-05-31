@@ -82,7 +82,6 @@ function makeLifecycle(overrides: Partial<AgentSandboxSettings> = {}) {
 		updateTooltip: vi.fn(),
 		onActivity: vi.fn(),
 		clearActivity: vi.fn(),
-		onMcpWrite: vi.fn(),
 	});
 	return { lifecycle, settings };
 }
