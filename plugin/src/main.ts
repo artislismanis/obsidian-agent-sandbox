@@ -125,7 +125,11 @@ export default class AgentSandboxPlugin extends Plugin {
 			this.mcpLifecycle.getActivity(),
 		);
 		this.agentOutput = new AgentOutputNotifier(
-			() => this.settings.agentOutputNotify,
+			() => this.settings.notifyCreated,
+			() => this.settings.notifyEdited,
+			() => this.settings.notifyDeleted,
+			() => this.settings.notifyRenamed,
+			() => this.settings.notifyVaultWide,
 			() => this.settings.vaultWriteDir,
 		);
 		this.analyse = new AnalyseManager({
@@ -371,6 +375,14 @@ export default class AgentSandboxPlugin extends Plugin {
 				this.registerEvent(
 					this.app.vault.on("modify", (file) => this.agentOutput.onModify(file.path)),
 				);
+				this.registerEvent(
+					this.app.vault.on("delete", (file) => this.agentOutput.onDelete(file.path)),
+				);
+				this.registerEvent(
+					this.app.vault.on("rename", (file, oldPath) =>
+						this.agentOutput.onRename(file.path, oldPath),
+					),
+				);
 			}, 2000);
 		});
 
@@ -449,11 +461,35 @@ export default class AgentSandboxPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const raw = await this.loadData();
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
 		let needsSave = false;
 		// One-shot migration: "none" was renamed to "scoped" to match the tier vocabulary.
 		if ((this.settings.mcpVaultWrites as string) === "none") {
 			this.settings.mcpVaultWrites = "scoped";
+			needsSave = true;
+		}
+		// One-shot migration: agentOutputNotify enum → per-event booleans.
+		if (raw && "agentOutputNotify" in raw) {
+			const old = (raw as { agentOutputNotify: string }).agentOutputNotify;
+			if (old === "new") {
+				this.settings.notifyCreated = true;
+				this.settings.notifyEdited = false;
+				this.settings.notifyDeleted = true;
+				this.settings.notifyRenamed = true;
+			} else if (old === "new_or_modified") {
+				this.settings.notifyCreated = true;
+				this.settings.notifyEdited = true;
+				this.settings.notifyDeleted = true;
+				this.settings.notifyRenamed = true;
+			} else {
+				// "off"
+				this.settings.notifyCreated = false;
+				this.settings.notifyEdited = false;
+				this.settings.notifyDeleted = false;
+				this.settings.notifyRenamed = false;
+			}
+			this.settings.notifyVaultWide = false;
 			needsSave = true;
 		}
 		if (!this.settings.mcpToken) {
