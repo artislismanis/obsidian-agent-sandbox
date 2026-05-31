@@ -13,7 +13,7 @@ Canonical reference for every MCP tool the plugin exposes: parameter names, type
 - [navigate](#navigate) — `vault_open`
 - [manage](#manage) — `vault_batch_frontmatter`, `vault_create_folder`, `vault_delete`, `vault_move`, `vault_rename`
 - [extensions](#extensions) — `plugin_extensions_list`, `vault_canvas_modify`, `vault_canvas_read`, `vault_dataview_query`, `vault_periodic_note`, `vault_tasks_query`, `vault_tasks_toggle`, `vault_templater_create`
-- [agent](#agent) — `agent_status_set`
+- [agent](#agent) — `agent_status_set`, `agent_time`
 
 ## read
 
@@ -719,4 +719,12 @@ Report the current agent lifecycle state so the plugin can show which sessions a
 | `status` | `"idle" \| "working" \| "awaiting_input"` | yes | Current agent state |
 | `sessionName` | `string` | no | tmux session name if running inside one (e.g. $(tmux display-message -p '#S')). Omit for an unnamed session. Max 128 chars. |
 | `detail` | `string` | no | Short human-readable context (e.g. tool name, question). Max 1024 chars. |
+
+### `agent_time`
+
+**Title:** Host clock
+
+Return the current date/time as seen by the Obsidian host process (not the container). Date-sensitive tools (e.g. vault_periodic_note) resolve relative dates using this host clock. Call this when you need to know the host date or detect the UTC offset between container and host — if they differ, pass an explicit `date` param derived from `localIso` rather than relying on your own clock.
+
+_No parameters._
 
