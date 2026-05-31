@@ -17,6 +17,10 @@ fi
 # the child shell's environment (would otherwise be visible via `env`).
 unset OAS_SUDO_PASSWORD
 
+# /etc/oas/ holds ro-mounted config files (firewall allowlists). Ensure the
+# directory is traversable so non-root users can read files inside it.
+chmod 755 /etc/oas 2>/dev/null || true
+
 # On WSL2 (Rancher Desktop, Docker Desktop WSL2 backend, raw Docker Engine in
 # WSL2), host.docker.internal is set to the Docker bridge gateway (172.17.0.1)
 # by the compose extra_hosts mapping. That IP is the Linux bridge interface

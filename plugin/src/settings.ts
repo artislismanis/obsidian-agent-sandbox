@@ -392,14 +392,14 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.filter(Boolean);
 
 		const wrapper = containerEl.createDiv({ cls: "setting-item sandbox-settings-list-editor" });
-		const header = wrapper.createDiv({ cls: "setting-item-info" });
-		header.createDiv({ cls: "setting-item-name", text: opts.name });
-		header.createDiv({
+		const infoEl = wrapper.createDiv({ cls: "setting-item-info" });
+		infoEl.createDiv({ cls: "setting-item-name", text: opts.name });
+		infoEl.createDiv({
 			cls: "setting-item-description",
 			text: opts.desc + RESTART_CONTAINER_SUFFIX,
 		});
 
-		const listEl = wrapper.createDiv({ cls: "sandbox-settings-list-entries" });
+		const listEl = infoEl.createDiv({ cls: "sandbox-settings-list-entries" });
 		for (const entry of entries) {
 			const row = listEl.createDiv({ cls: "sandbox-settings-list-row" });
 			row.createSpan({ text: entry, cls: "sandbox-settings-list-entry-text" });
@@ -413,7 +413,8 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			});
 		}
 
-		const addBtn = wrapper.createEl("button", {
+		const controlEl = wrapper.createDiv({ cls: "setting-item-control" });
+		const addBtn = controlEl.createEl("button", {
 			text: "Add",
 			cls: "mod-cta sandbox-settings-list-add",
 		});
