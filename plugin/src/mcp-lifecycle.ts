@@ -108,12 +108,16 @@ export class McpLifecycle {
 				);
 			}
 			const allowlist = splitCsv(settings.mcpPathAllowlist);
-			// configDir (.obsidian/) is prepended so it's blocked by default
-			// (#124). Users can override with a more-specific allow entry
-			// (e.g. ".obsidian/plugins/my-plugin/") — most-specific-prefix
-			// wins in isPathAllowed.
+			// configDir (.obsidian/) is prepended by default (#124) unless the
+			// user has explicitly disabled the block via mcpBlockConfigDir.
+			// Users can also override a specific subtree with a more-specific
+			// allow entry (e.g. ".obsidian/plugins/my-plugin/") while keeping
+			// the rest blocked — most-specific-prefix wins in isPathAllowed.
 			const configDir = this.app.vault.configDir;
-			const effectiveBlocklist = [configDir, ...splitCsv(settings.mcpPathBlocklist)];
+			const effectiveBlocklist = [
+				...(settings.mcpBlockConfigDir !== false ? [configDir] : []),
+				...splitCsv(settings.mcpPathBlocklist),
+			];
 			this.server = new ObsidianMcpServer(this.app, {
 				port: settings.mcpPort,
 				bindAddress: settings.mcpBindAddress,

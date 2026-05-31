@@ -56,6 +56,7 @@ export interface AgentSandboxSettings {
 	mcpTierExtensions: boolean;
 	mcpPathAllowlist: string;
 	mcpPathBlocklist: string;
+	mcpBlockConfigDir: boolean;
 	notifyCreated: boolean;
 	notifyEdited: boolean;
 	notifyDeleted: boolean;
@@ -137,6 +138,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	mcpTierExtensions: false,
 	mcpPathAllowlist: "",
 	mcpPathBlocklist: "",
+	mcpBlockConfigDir: true,
 	notifyCreated: true,
 	notifyEdited: false,
 	notifyDeleted: true,
@@ -874,14 +876,35 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			)
 			.setHeading();
 
+		const blockConfigDirSetting = new Setting(el)
+			.setName("Block vault config folder (.obsidian/)")
+			.setDesc(
+				"Prevents the agent from writing to Obsidian's internal configuration folder. " +
+					"Disable only if you need the agent to modify plugin data directly.",
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.mcpBlockConfigDir).onChange(async (value) => {
+					this.plugin.settings.mcpBlockConfigDir = value;
+					this.plugin.saveSettings();
+					blockConfigDirWarning.style.display = value ? "none" : "";
+					void this.plugin.restartMcpIfRunning();
+				}),
+			);
+		const blockConfigDirWarning = blockConfigDirSetting.descEl.createEl("div", {
+			cls: "sandbox-settings-field-warning",
+			text: "The vault config folder is no longer blocked. The agent can modify Obsidian settings, plugins, and hotkeys. Re-enable when done.",
+		});
+		blockConfigDirWarning.style.display = this.plugin.settings.mcpBlockConfigDir ? "none" : "";
+
 		this.addValidatedTextSetting(el, {
 			name: "Allowed paths",
 			desc:
 				"Comma-separated vault path prefixes the agent may access outside the vault write " +
 				"directory. If set, only these paths are accessible; empty = all non-blocked paths. " +
 				"A more-specific allow entry overrides a block entry — e.g. add " +
-				"'.obsidian/plugins/my-plugin/' to permit that plugin's data while the rest of the " +
-				"vault config folder stays blocked.",
+				"'.obsidian/plugins/my-plugin/' to permit that plugin's data. Note: adding " +
+				"'.obsidian/' itself has no effect (same specificity as the default block; tie goes " +
+				"to block). Use the toggle above to fully unblock the vault config folder.",
 			key: "mcpPathAllowlist",
 			validator: isValidPathPrefixList,
 			placeholder: "notes/,projects/",
