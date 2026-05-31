@@ -152,6 +152,8 @@ interface BufferedEntry {
 
 const DEBOUNCE_MS = 2000;
 const RATE_LIMIT_MS = 5000;
+/** How long after a create to suppress a modify for the same path. */
+const CREATE_MODIFY_SUPPRESS_MS = 3000;
 
 export class AgentOutputNotifier {
 	private buffer: BufferedEntry[] = [];
@@ -161,6 +163,8 @@ export class AgentOutputNotifier {
 	private lastNoticeAt = 0;
 	/** Paths recently edited by the user in Obsidian — keyed to their expiry epoch ms. */
 	private recentUserEdits = new Map<string, number>();
+	/** Paths recently created by the agent — suppresses the modify that follows a create. */
+	private recentlyCreated = new Map<string, number>();
 
 	constructor(
 		private getNotifyCreated: () => boolean,
@@ -179,6 +183,8 @@ export class AgentOutputNotifier {
 
 	/** Feed `vault.on("create")` events. */
 	onCreate(path: string): void {
+		// Stamp before the guards so suppression applies regardless of notifyCreated state.
+		this.recentlyCreated.set(path, Date.now() + CREATE_MODIFY_SUPPRESS_MS);
 		if (!this.getNotifyCreated()) return;
 		if (!this.pathInScope(path)) return;
 		if (this.isRecentUserEdit(path)) return;
@@ -190,6 +196,7 @@ export class AgentOutputNotifier {
 		if (!this.getNotifyEdited()) return;
 		if (!this.pathInScope(path)) return;
 		if (this.isRecentUserEdit(path)) return;
+		if (this.isRecentlyCreated(path)) return;
 		this.enqueue({ kind: "modified", path });
 	}
 
@@ -218,6 +225,7 @@ export class AgentOutputNotifier {
 		this.buffer = [];
 		this.pendingBuffer = [];
 		this.recentUserEdits.clear();
+		this.recentlyCreated.clear();
 	}
 
 	private isRecentUserEdit(path: string): boolean {
@@ -225,6 +233,16 @@ export class AgentOutputNotifier {
 		if (expiry === undefined) return false;
 		if (Date.now() >= expiry) {
 			this.recentUserEdits.delete(path);
+			return false;
+		}
+		return true;
+	}
+
+	private isRecentlyCreated(path: string): boolean {
+		const expiry = this.recentlyCreated.get(path);
+		if (expiry === undefined) return false;
+		if (Date.now() >= expiry) {
+			this.recentlyCreated.delete(path);
 			return false;
 		}
 		return true;
