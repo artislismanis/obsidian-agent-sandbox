@@ -155,7 +155,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 const RESTART_CONTAINER_SUFFIX = " Requires container restart.";
 
 /** Settings keys whose values must match the snapshot to skip a restart prompt. */
-const RESTART_REQUIRED_KEYS: ReadonlyArray<keyof AgentSandboxSettings> = [
+export const RESTART_REQUIRED_KEYS: ReadonlyArray<keyof AgentSandboxSettings> = [
 	"dockerMode",
 	"dockerComposeFilePath",
 	"wslDistroName",
@@ -170,6 +170,17 @@ const RESTART_REQUIRED_KEYS: ReadonlyArray<keyof AgentSandboxSettings> = [
 	"allowedPrivateHosts",
 	"additionalFirewallDomains",
 ];
+
+/**
+ * Returns true if any restart-required key in `current` differs from its value in `baseline`.
+ * Used both by the settings tab (hide-time diff) and by the status-bar feed (live diff).
+ */
+export function restartKeysChanged(
+	current: AgentSandboxSettings,
+	baseline: Partial<AgentSandboxSettings>,
+): boolean {
+	return RESTART_REQUIRED_KEYS.some((k) => current[k] !== baseline[k]);
+}
 
 type TabId = "general" | "terminal" | "advanced" | "mcp";
 
@@ -215,9 +226,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		return (
 			this.isSudoRestartDirty() ||
 			(Object.keys(this.restartSnapshot).length > 0 &&
-				RESTART_REQUIRED_KEYS.some(
-					(k) => this.plugin.settings[k] !== this.restartSnapshot[k],
-				))
+				restartKeysChanged(this.plugin.settings, this.restartSnapshot))
 		);
 	}
 

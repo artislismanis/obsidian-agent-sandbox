@@ -6,7 +6,13 @@ import { Menu, Notice, Plugin, debounce } from "obsidian";
 import { getVaultBasePath } from "./obsidian-internals";
 import { confirmModal, inputModal } from "./modals";
 import { AnalyseManager } from "./analyse";
-import { type AgentSandboxSettings, DEFAULT_SETTINGS, AgentSandboxSettingTab } from "./settings";
+import {
+	type AgentSandboxSettings,
+	DEFAULT_SETTINGS,
+	AgentSandboxSettingTab,
+	RESTART_REQUIRED_KEYS,
+	restartKeysChanged,
+} from "./settings";
 import { DockerManager } from "./docker";
 import type { ContainerState } from "./status-bar";
 import { FirewallStatusBar, StatusBarManager } from "./status-bar";
@@ -53,6 +59,11 @@ export default class AgentSandboxPlugin extends Plugin {
 	private activityUi!: ActivityUi;
 	private agentOutput!: AgentOutputNotifier;
 	private analyse!: AnalyseManager;
+	// Snapshot of restart-required settings at last container start; null when stopped.
+	// Diffed on every save to drive the status-bar ↺ pending-restart indicator.
+	private startedWithSettings: Partial<AgentSandboxSettings> | null = null;
+	private startedWithSudo: string | null = null;
+	private restartPending = false;
 
 	private debouncedSaveSettings = debounce(
 		async () => {
@@ -530,6 +541,7 @@ export default class AgentSandboxPlugin extends Plugin {
 	}
 
 	saveSettings() {
+		this.recomputeRestartPending();
 		this.debouncedSaveSettings();
 	}
 
@@ -669,6 +681,10 @@ export default class AgentSandboxPlugin extends Plugin {
 			void this.saveSettings();
 			new Notice("Container restarted with updated settings.", 5000);
 		}
+		// Capture the baseline for the live restart-pending tooltip diff.
+		this.startedWithSettings = this.snapshotRestartKeys();
+		this.startedWithSudo = this.sudoPassword;
+		this.recomputeRestartPending();
 		try {
 			this.lastKnownContainerId = await this.docker.getContainerId();
 		} catch (err) {
@@ -714,6 +730,9 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.statusBar.setDetails(TOOLTIP_STOPPED);
 		this.stopHealthPoll();
 		this.lastKnownContainerId = "";
+		this.startedWithSettings = null;
+		this.startedWithSudo = null;
+		this.restartPending = false;
 	}
 
 	async restartContainer(): Promise<void> {
@@ -924,6 +943,23 @@ export default class AgentSandboxPlugin extends Plugin {
 		menu.showAtMouseEvent(evt);
 	}
 
+	// ── Restart-pending tracking ───────────────────────────
+
+	private snapshotRestartKeys(): Partial<AgentSandboxSettings> {
+		return Object.fromEntries(
+			RESTART_REQUIRED_KEYS.map((k) => [k, this.settings[k]]),
+		) as Partial<AgentSandboxSettings>;
+	}
+
+	/** Recompute the restart-pending flag and refresh the tooltip. */
+	private recomputeRestartPending(): void {
+		this.restartPending =
+			this.startedWithSettings !== null &&
+			(restartKeysChanged(this.settings, this.startedWithSettings) ||
+				(this.startedWithSudo !== null && this.startedWithSudo !== this.sudoPassword));
+		this.updateTooltip();
+	}
+
 	// ── Tooltip ────────────────────────────────────────────
 
 	private updateTooltip(): void {
@@ -935,7 +971,7 @@ export default class AgentSandboxPlugin extends Plugin {
 				port: this.settings.mcpPort,
 				toolCount: this.mcpLifecycle.getToolCount(),
 			},
-			pendingRestart: this.settings.pendingRestartMarker,
+			pendingRestart: this.restartPending,
 		});
 	}
 
@@ -1156,11 +1192,20 @@ export default class AgentSandboxPlugin extends Plugin {
 		this.statusBar.setState(isRunning ? "running" : "stopped");
 		if (isRunning) {
 			if (!wasRunning) await this.refreshFirewallStatus();
-			this.updateTooltip();
+			// Reattach path: plugin reloaded while container was already running.
+			// Initialise baseline from current settings so we start with no drift.
+			if (this.startedWithSettings === null) {
+				this.startedWithSettings = this.snapshotRestartKeys();
+				this.startedWithSudo = this.sudoPassword;
+			}
+			this.recomputeRestartPending();
 		} else {
 			this.firewallBar.setState("hidden");
 			this.statusBar.setDetails(TOOLTIP_STOPPED);
 			this.stopFirewallPoll();
+			this.startedWithSettings = null;
+			this.startedWithSudo = null;
+			this.restartPending = false;
 		}
 	}
 

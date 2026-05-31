@@ -14,39 +14,45 @@ function createMockElement(): HTMLElement {
 	return el as unknown as HTMLElement;
 }
 
+/** Find the last aria-label value from setAttribute mock calls. */
+function lastTooltip(el: HTMLElement): string {
+	const calls = (el.setAttribute as ReturnType<typeof vi.fn>).mock.calls;
+	return [...calls].reverse().find((c) => c[0] === "aria-label")?.[1] as string;
+}
+
 describe("StatusBarManager", () => {
 	it("renders stopped state on construction", () => {
 		const el = createMockElement();
 		new StatusBarManager(el);
-		expect(el.setText).toHaveBeenCalledWith("Sandbox: \u23F9 Stopped");
+		expect(el.setText).toHaveBeenCalledWith("Sandbox: ⏹ Stopped");
 	});
 
 	it("updates display on setState", () => {
 		const el = createMockElement();
 		const mgr = new StatusBarManager(el);
 		mgr.setState("running");
-		expect(el.setText).toHaveBeenCalledWith("Sandbox: \u25B6 Running");
+		expect(el.setText).toHaveBeenCalledWith("Sandbox: ▶ Running");
 	});
 
 	it("shows starting state", () => {
 		const el = createMockElement();
 		const mgr = new StatusBarManager(el);
 		mgr.setState("starting");
-		expect(el.setText).toHaveBeenCalledWith("Sandbox: \u23F3 Starting");
+		expect(el.setText).toHaveBeenCalledWith("Sandbox: ⏳ Starting");
 	});
 
 	it("shows error state", () => {
 		const el = createMockElement();
 		const mgr = new StatusBarManager(el);
 		mgr.setState("error");
-		expect(el.setText).toHaveBeenCalledWith("Sandbox: \u26A0 Error");
+		expect(el.setText).toHaveBeenCalledWith("Sandbox: ⚠ Error");
 	});
 
 	it("shows checking state", () => {
 		const el = createMockElement();
 		const mgr = new StatusBarManager(el);
 		mgr.setState("checking");
-		expect(el.setText).toHaveBeenCalledWith("Sandbox: \uD83D\uDD0D Checking");
+		expect(el.setText).toHaveBeenCalledWith("Sandbox: 🔍 Checking");
 	});
 
 	it("shows bell badge when sessions await input", () => {
@@ -81,6 +87,47 @@ describe("StatusBarManager", () => {
 			"Container: running\nPort: 7681",
 		);
 	});
+
+	const baseCtx = {
+		port: 7681,
+		firewall: "enabled" as const,
+		mcp: { running: false, port: 3000, toolCount: 0 },
+	};
+
+	it("running tooltip includes pending-restart line when pendingRestart is true", () => {
+		const el = createMockElement();
+		const mgr = new StatusBarManager(el);
+		mgr.setState("running");
+		mgr.setRunningTooltipContext({ ...baseCtx, pendingRestart: true });
+		expect(lastTooltip(el)).toContain("↺ Settings restart pending");
+	});
+
+	it("running tooltip omits pending-restart line when pendingRestart is false", () => {
+		const el = createMockElement();
+		const mgr = new StatusBarManager(el);
+		mgr.setState("running");
+		mgr.setRunningTooltipContext({ ...baseCtx, pendingRestart: false });
+		expect(lastTooltip(el)).not.toContain("↺ Settings restart pending");
+	});
+
+	it("running tooltip omits pending-restart line when pendingRestart is absent", () => {
+		const el = createMockElement();
+		const mgr = new StatusBarManager(el);
+		mgr.setState("running");
+		mgr.setRunningTooltipContext({ ...baseCtx });
+		expect(lastTooltip(el)).not.toContain("↺ Settings restart pending");
+	});
+
+	it("pending-restart line is suppressed by attention override", () => {
+		const el = createMockElement();
+		const mgr = new StatusBarManager(el);
+		mgr.setState("running");
+		mgr.setRunningTooltipContext({ ...baseCtx, pendingRestart: true });
+		mgr.setAttention(1, ["work"]);
+		const tooltip = lastTooltip(el);
+		expect(tooltip).not.toContain("↺ Settings restart pending");
+		expect(tooltip).toContain("1 session(s) awaiting input");
+	});
 });
 
 describe("FirewallStatusBar", () => {
@@ -97,7 +144,7 @@ describe("FirewallStatusBar", () => {
 		// Visibility is driven by the `sandbox-statusbar-hidden` class, not
 		// style.display: enabled state means the class is toggled off.
 		expect(el.toggleClass).toHaveBeenCalledWith("sandbox-statusbar-hidden", false);
-		expect(el.setText).toHaveBeenCalledWith("\uD83D\uDEE1 FW");
+		expect(el.setText).toHaveBeenCalledWith("🛡 FW");
 		expect(el.toggleClass).toHaveBeenCalledWith("firewall-enabled", true);
 		expect(el.toggleClass).toHaveBeenCalledWith("firewall-disabled", false);
 	});
