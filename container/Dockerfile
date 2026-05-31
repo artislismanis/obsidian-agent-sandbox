@@ -235,6 +235,7 @@ COPY --chmod=755 scripts/init-firewall.sh /usr/local/bin/init-firewall.sh
 # The compose mount (./firewall-baseline.txt:/etc/oas/firewall-baseline.txt:ro)
 # shadows this at runtime; this copy ensures standalone `docker run` still works.
 COPY --chmod=644 firewall-baseline.txt /etc/oas/firewall-baseline.txt
+RUN chmod 755 /etc/oas
 
 # Environment verification script (on PATH inside the image, independent of mounts)
 COPY --chmod=755 scripts/verify.sh /usr/local/bin/verify.sh
