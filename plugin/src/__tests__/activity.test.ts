@@ -233,6 +233,41 @@ describe("AgentOutputNotifier", () => {
 		vi.advanceTimersByTime(10000);
 		expect((Notice as NoticeMock).lastMessage).toBe("");
 	});
+
+	it("emitBatch includes 'renamed' count when batch has renames", () => {
+		const n = notifier();
+		n.markMcpWrite("agent-workspace/a.md");
+		n.markMcpWrite("agent-workspace/b.md");
+		n.onRename("agent-workspace/a-new.md", "agent-workspace/a.md");
+		n.onRename("agent-workspace/b-new.md", "agent-workspace/b.md");
+		vi.advanceTimersByTime(2000);
+		expect((Notice as NoticeMock).lastMessage).toBe("Agent output: 2 renamed");
+	});
+
+	it("emitBatch includes 'deleted' and 'renamed' counts together", () => {
+		notifyEdited = true;
+		const n = notifier();
+		n.markMcpWrite("agent-workspace/a.md");
+		n.markMcpWrite("agent-workspace/b.md");
+		n.markMcpWrite("agent-workspace/c.md");
+		n.onDelete("agent-workspace/a.md");
+		n.onRename("agent-workspace/b-new.md", "agent-workspace/b.md");
+		n.onModify("agent-workspace/c.md");
+		vi.advanceTimersByTime(2000);
+		expect((Notice as NoticeMock).lastMessage).toBe(
+			"Agent output: 1 modified, 1 deleted, 1 renamed",
+		);
+	});
+
+	it("markMcpWrite TTL expiry — write older than MCP_WRITE_TTL_MS is not recognised", () => {
+		const n = notifier();
+		n.markMcpWrite("agent-workspace/a.md");
+		// Advance past the 5s TTL so the expiry branch in isRecentMcpWrite fires.
+		vi.advanceTimersByTime(5001);
+		n.onCreate("agent-workspace/a.md");
+		vi.advanceTimersByTime(2000);
+		expect((Notice as NoticeMock).lastMessage).toBe("");
+	});
 });
 
 describe("ActivityUi attention propagation", () => {

@@ -8,8 +8,9 @@ vi.mock("obsidian", () => ({
 	FileSystemAdapter: class {},
 }));
 
-import { buildTools } from "../mcp-tools";
-import type { McpToolDef } from "../mcp-tools";
+import { buildTools, isPathAllowedByFilter } from "../mcp-tools";
+import type { McpToolDef, PathFilter } from "../mcp-tools";
+import { previewTemplaterFolderTemplate } from "../templater-adapter";
 import { makeTFile, makeTFolder, createMockApp, getTool } from "./fixtures";
 
 function getResult(result: { content: Array<{ text: string }>; isError?: boolean }) {
@@ -2064,5 +2065,128 @@ describe("MCP tool handlers", () => {
 				"FOO b-a-r-$9 BAZ",
 			);
 		});
+	});
+});
+
+describe("previewTemplaterFolderTemplate — no-match and no-plugin paths", () => {
+	it("returns null when Templater plugin is not installed", async () => {
+		const mockApp = createMockApp([]);
+		// No plugins property → getInstalledPlugin returns null.
+		const result = await previewTemplaterFolderTemplate(mockApp as never, "notes/new.md");
+		expect(result).toBeNull();
+	});
+
+	it("returns null when folder templates are disabled in Templater settings", async () => {
+		const mockApp = createMockApp([]);
+		(mockApp as unknown as { plugins: unknown }).plugins = {
+			enabledPlugins: new Set(["templater-obsidian"]),
+			plugins: {
+				"templater-obsidian": {
+					settings: {
+						enable_folder_templates: false,
+						folder_templates: [{ folder: "notes", template: "Templates/T.md" }],
+					},
+				},
+			},
+		};
+		const result = await previewTemplaterFolderTemplate(mockApp as never, "notes/new.md");
+		expect(result).toBeNull();
+	});
+
+	it("returns null when no folder template matches the target path", async () => {
+		const mockApp = createMockApp([]);
+		(mockApp as unknown as { plugins: unknown }).plugins = {
+			enabledPlugins: new Set(["templater-obsidian"]),
+			plugins: {
+				"templater-obsidian": {
+					settings: {
+						enable_folder_templates: true,
+						folder_templates: [{ folder: "elsewhere", template: "Templates/T.md" }],
+					},
+				},
+			},
+		};
+		// Target is in "notes/" which doesn't match "elsewhere" folder template.
+		const result = await previewTemplaterFolderTemplate(mockApp as never, "notes/new.md");
+		expect(result).toBeNull();
+	});
+
+	it("returns the template body when a matching folder template is found", async () => {
+		const tplFile = makeTFile("Templates/T.md");
+		const mockApp = createMockApp([tplFile], { readBody: "# Template content" });
+		(mockApp as unknown as { plugins: unknown }).plugins = {
+			enabledPlugins: new Set(["templater-obsidian"]),
+			plugins: {
+				"templater-obsidian": {
+					settings: {
+						enable_folder_templates: true,
+						folder_templates: [{ folder: "notes", template: "Templates/T.md" }],
+					},
+				},
+			},
+		};
+		const result = await previewTemplaterFolderTemplate(mockApp as never, "notes/new.md");
+		expect(result).toBe("# Template content");
+	});
+});
+
+describe("isPathAllowedByFilter — workspace-bypass and filter logic", () => {
+	it("returns true when no pathFilter is provided", () => {
+		expect(isPathAllowedByFilter("any/path.md", undefined)).toBe(true);
+	});
+
+	it("path inside writeDir bypasses a restrictive blocklist (workspace bypass)", () => {
+		const filter: PathFilter = {
+			allowlist: [],
+			blocklist: [".obsidian/", "secret/"],
+			getWriteDir: () => "agent-workspace",
+		};
+		// Even though the blocklist is restrictive, paths inside writeDir are always allowed.
+		expect(isPathAllowedByFilter("agent-workspace/draft.md", filter)).toBe(true);
+	});
+
+	it("path outside writeDir that is in blocklist is blocked", () => {
+		const filter: PathFilter = {
+			allowlist: [],
+			blocklist: [".obsidian/"],
+			getWriteDir: () => "agent-workspace",
+		};
+		expect(isPathAllowedByFilter(".obsidian/plugins/foo.json", filter)).toBe(false);
+	});
+
+	it("path outside writeDir with empty allow/blocklist is allowed", () => {
+		const filter: PathFilter = {
+			allowlist: [],
+			blocklist: [],
+			getWriteDir: () => "agent-workspace",
+		};
+		expect(isPathAllowedByFilter("notes/hello.md", filter)).toBe(true);
+	});
+
+	it("path outside writeDir matching allowlist is allowed", () => {
+		const filter: PathFilter = {
+			allowlist: ["notes/"],
+			blocklist: [".obsidian/"],
+			getWriteDir: () => "agent-workspace",
+		};
+		expect(isPathAllowedByFilter("notes/hello.md", filter)).toBe(true);
+	});
+
+	it("path outside writeDir not in allowlist is blocked when allowlist is non-empty", () => {
+		const filter: PathFilter = {
+			allowlist: ["notes/"],
+			blocklist: [],
+			getWriteDir: () => "agent-workspace",
+		};
+		expect(isPathAllowedByFilter("other/file.md", filter)).toBe(false);
+	});
+
+	it("filter without getWriteDir still applies allow/blocklist", () => {
+		const filter: PathFilter = {
+			allowlist: [],
+			blocklist: ["secret/"],
+		};
+		expect(isPathAllowedByFilter("secret/private.md", filter)).toBe(false);
+		expect(isPathAllowedByFilter("notes/ok.md", filter)).toBe(true);
 	});
 });
