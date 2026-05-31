@@ -335,31 +335,48 @@ export class TerminalView extends ItemView {
 	}
 
 	/**
-	 * Force xterm to re-measure its viewport after the pane returns from being
-	 * hidden. While an Obsidian tab is inactive the pane is `display:none`, so
-	 * the xterm viewport records `offsetHeight === 0`; any output that streams
-	 * in while hidden sizes the scroll area against that stale zero height. On
-	 * return, FitAddon.fit() no-ops because the row/col count is unchanged, so
-	 * the viewport never re-reads its real height and the mouse wheel can't
-	 * reach the true bottom (a keypress works because it bypasses the scrollbar
-	 * math). A real dimension change is the only thing that forces the viewport
-	 * to re-measure, so round-trip the row count by one and back. We restore the
-	 * exact prior dimensions, so the user's scroll position is preserved.
+	 * Fix the xterm scroll-area height after the pane returns from being hidden.
+	 *
+	 * While an Obsidian tab is inactive the pane is `display:none`, so the xterm
+	 * viewport element has `offsetHeight === 0`. Any output that streams in while
+	 * hidden triggers xterm's Viewport._innerRefresh via RAF, which caches that
+	 * zero and sets `.xterm-scroll-area` too short — the mouse wheel then can't
+	 * reach the true bottom (a keypress still works because scrollToBottom()
+	 * bypasses the scrollbar geometry entirely).
+	 *
+	 * The fix replicates the exact formula from Viewport._innerRefresh and writes
+	 * the correct height directly to `.xterm-scroll-area`. This is pure DOM: no
+	 * PTY resize (which would send SIGWINCH and cause Claude Code to repaint the
+	 * entire screen, duplicating visible output on every tab-switch), no xterm
+	 * internals, no scroll position change. When xterm's own _innerRefresh next
+	 * fires it reads the now-real offsetHeight and overwrites with the same value.
 	 */
 	private resyncViewport(el: Element): void {
 		const term = this.term;
-		if (!term) return;
-		const { cols, rows } = term;
-		if (rows <= 1) return;
+		if (!term || term.rows === 0) return;
 		const viewport = el.querySelector(".xterm-viewport");
-		if (viewport instanceof HTMLElement) {
-			logger.debug(
-				"Terminal",
-				`Resyncing viewport after reveal (instance ${this.instanceId}, cols=${cols} rows=${rows} viewportH=${viewport.offsetHeight})`,
-			);
-		}
-		term.resize(cols, rows - 1);
-		term.resize(cols, rows);
+		const canvas = el.querySelector(".xterm-screen canvas");
+		const scrollArea = el.querySelector(".xterm-scroll-area");
+		if (
+			!(viewport instanceof HTMLElement) ||
+			!(canvas instanceof HTMLElement) ||
+			!(scrollArea instanceof HTMLElement)
+		)
+			return;
+		const viewportH = viewport.offsetHeight;
+		const canvasH = canvas.offsetHeight;
+		if (viewportH === 0 || canvasH === 0) return;
+		// Viewport._innerRefresh formula:
+		//   height = round(rowH * bufferLength) + (viewportH - canvasH)
+		const rowH = canvasH / term.rows;
+		const bufLen = term.buffer.active.length; // IBuffer.length — public API
+		const h = Math.round(rowH * bufLen) + (viewportH - canvasH);
+		if (h <= 0) return;
+		scrollArea.style.height = `${h}px`;
+		logger.debug(
+			"Terminal",
+			`Resynced scroll area after reveal (instance ${this.instanceId}, viewportH=${viewportH} canvasH=${canvasH} rows=${term.rows} bufLen=${bufLen} h=${h})`,
+		);
 	}
 
 	private async connect(): Promise<void> {
