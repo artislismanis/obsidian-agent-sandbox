@@ -56,7 +56,6 @@ export interface AgentSandboxSettings {
 	mcpTierExtensions: boolean;
 	mcpPathAllowlist: string;
 	mcpPathBlocklist: string;
-	mcpBlockConfigDir: boolean;
 	mcpDefaultDeny: boolean;
 	notifyCreated: boolean;
 	notifyEdited: boolean;
@@ -140,7 +139,6 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	mcpTierExtensions: false,
 	mcpPathAllowlist: "",
 	mcpPathBlocklist: "",
-	mcpBlockConfigDir: true,
 	mcpDefaultDeny: false,
 	notifyCreated: true,
 	notifyEdited: false,
@@ -898,26 +896,6 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			)
 			.setHeading();
 
-		const blockConfigDirSetting = new Setting(el)
-			.setName("Block vault config folder (.obsidian/)")
-			.setDesc(
-				"Prevents the agent from writing to Obsidian's internal configuration folder. " +
-					"Disable only if you need the agent to modify plugin data directly.",
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.mcpBlockConfigDir).onChange(async (value) => {
-					this.plugin.settings.mcpBlockConfigDir = value;
-					this.plugin.saveSettings();
-					blockConfigDirWarning.style.display = value ? "none" : "";
-					void this.plugin.restartMcpIfRunning();
-				}),
-			);
-		const blockConfigDirWarning = blockConfigDirSetting.descEl.createEl("div", {
-			cls: "sandbox-settings-field-warning",
-			text: "The vault config folder is no longer blocked. The agent can modify Obsidian settings, plugins, and hotkeys. Re-enable when done.",
-		});
-		blockConfigDirWarning.style.display = this.plugin.settings.mcpBlockConfigDir ? "none" : "";
-
 		this.addValidatedTextSetting(el, {
 			name: "Allowed paths",
 			desc:
@@ -932,25 +910,25 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			onChange: () => void this.plugin.restartMcpIfRunning(),
 		});
 
-		this.addValidatedTextSetting(el, {
-			name: "Blocked paths",
-			desc:
-				"Comma-separated vault path prefixes denied outside the vault write directory. " +
-				"The vault config folder ('.obsidian/') is blocked by default — use the allow list " +
-				"above to permit a specific subtree. A more-specific allow entry takes precedence " +
-				"(most-specific prefix wins).",
-			key: "mcpPathBlocklist",
-			validator: isValidPathPrefixList,
-			placeholder: "private/,secrets/",
-			onChange: () => void this.plugin.restartMcpIfRunning(),
-		});
-
 		this.addToggleSetting(el, {
 			name: "Allowlist mode",
 			desc:
 				"When on, paths not matching the allow list above are denied. " +
 				"When off, the allow list only overrides block entries — all other paths are accessible.",
 			key: "mcpDefaultDeny",
+			onChange: () => void this.plugin.restartMcpIfRunning(),
+		});
+
+		this.addValidatedTextSetting(el, {
+			name: "Blocked paths",
+			desc:
+				"Comma-separated vault path prefixes denied outside the vault write directory. " +
+				"The vault config folder ('.obsidian/') is always blocked — use the allow list " +
+				"above to permit a specific subtree. A more-specific allow entry takes precedence " +
+				"(most-specific prefix wins).",
+			key: "mcpPathBlocklist",
+			validator: isValidPathPrefixList,
+			placeholder: "private/,secrets/",
 			onChange: () => void this.plugin.restartMcpIfRunning(),
 		});
 

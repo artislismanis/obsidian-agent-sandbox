@@ -108,10 +108,7 @@ export class McpLifecycle {
 			}
 			const allowlist = splitCsv(settings.mcpPathAllowlist);
 			const configDir = this.app.vault.configDir;
-			const effectiveBlocklist = [
-				...(settings.mcpBlockConfigDir !== false ? [configDir] : []),
-				...splitCsv(settings.mcpPathBlocklist),
-			];
+			const effectiveBlocklist = [configDir, ...splitCsv(settings.mcpPathBlocklist)];
 			this.server = new ObsidianMcpServer(this.app, {
 				port: settings.mcpPort,
 				bindAddress: settings.mcpBindAddress,
