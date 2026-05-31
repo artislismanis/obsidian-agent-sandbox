@@ -469,29 +469,6 @@ export default class AgentSandboxPlugin extends Plugin {
 			this.settings.mcpVaultWrites = "scoped";
 			needsSave = true;
 		}
-		// One-shot migration: agentOutputNotify enum → per-event booleans.
-		if (raw && "agentOutputNotify" in raw) {
-			const old = (raw as { agentOutputNotify: string }).agentOutputNotify;
-			if (old === "new") {
-				this.settings.notifyCreated = true;
-				this.settings.notifyEdited = false;
-				this.settings.notifyDeleted = true;
-				this.settings.notifyRenamed = true;
-			} else if (old === "new_or_modified") {
-				this.settings.notifyCreated = true;
-				this.settings.notifyEdited = true;
-				this.settings.notifyDeleted = true;
-				this.settings.notifyRenamed = true;
-			} else {
-				// "off"
-				this.settings.notifyCreated = false;
-				this.settings.notifyEdited = false;
-				this.settings.notifyDeleted = false;
-				this.settings.notifyRenamed = false;
-			}
-			this.settings.notifyVaultWide = false;
-			needsSave = true;
-		}
 		if (!this.settings.mcpToken) {
 			this.settings.mcpToken = generateToken();
 			needsSave = true;
