@@ -57,6 +57,7 @@ export interface AgentSandboxSettings {
 	mcpPathAllowlist: string;
 	mcpPathBlocklist: string;
 	mcpBlockConfigDir: boolean;
+	mcpDefaultDeny: boolean;
 	notifyCreated: boolean;
 	notifyEdited: boolean;
 	notifyDeleted: boolean;
@@ -139,6 +140,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	mcpPathAllowlist: "",
 	mcpPathBlocklist: "",
 	mcpBlockConfigDir: true,
+	mcpDefaultDeny: false,
 	notifyCreated: true,
 	notifyEdited: false,
 	notifyDeleted: true,
@@ -900,11 +902,10 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			name: "Allowed paths",
 			desc:
 				"Comma-separated vault path prefixes the agent may access outside the vault write " +
-				"directory. If set, only these paths are accessible; empty = all non-blocked paths. " +
-				"A more-specific allow entry overrides a block entry — e.g. add " +
-				"'.obsidian/plugins/my-plugin/' to permit that plugin's data. Note: adding " +
-				"'.obsidian/' itself has no effect (same specificity as the default block; tie goes " +
-				"to block). Use the toggle above to fully unblock the vault config folder.",
+				"directory. A more-specific allow entry overrides a block entry — e.g. add " +
+				"'.obsidian/plugins/my-plugin/' to permit that plugin's data while the rest of " +
+				"the vault config folder stays blocked. Without 'Allowlist mode' below, allow " +
+				"entries only matter when they override a block.",
 			key: "mcpPathAllowlist",
 			validator: isValidPathPrefixList,
 			placeholder: "notes/,projects/",
@@ -914,14 +915,22 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		this.addValidatedTextSetting(el, {
 			name: "Blocked paths",
 			desc:
-				"Comma-separated vault path prefixes that are denied outside the vault write directory. " +
-				"The vault config folder ('.obsidian/') is always blocked by default to prevent " +
-				"settings tampering — use the allow list above to permit a specific subtree " +
-				"(e.g. '.obsidian/plugins/my-plugin/'). A more-specific allow entry takes precedence " +
-				"over a block entry (most-specific prefix wins).",
+				"Comma-separated vault path prefixes denied outside the vault write directory. " +
+				"The vault config folder ('.obsidian/') is blocked by default — use the allow list " +
+				"above to permit a specific subtree. A more-specific allow entry takes precedence " +
+				"(most-specific prefix wins).",
 			key: "mcpPathBlocklist",
 			validator: isValidPathPrefixList,
 			placeholder: "private/,secrets/",
+			onChange: () => void this.plugin.restartMcpIfRunning(),
+		});
+
+		this.addToggleSetting(el, {
+			name: "Allowlist mode",
+			desc:
+				"When on, paths not matching the allow list above are denied. " +
+				"When off, the allow list only overrides block entries — all other paths are accessible.",
+			key: "mcpDefaultDeny",
 			onChange: () => void this.plugin.restartMcpIfRunning(),
 		});
 

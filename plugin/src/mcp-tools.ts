@@ -167,21 +167,25 @@ function formatTags(cache: CachedMetadata | null): string[] {
 export interface PathFilter {
 	allowlist: string[];
 	blocklist: string[];
-	/** When provided, paths inside this directory always bypass the
-	 *  allow/block filter entirely — the filter governs only paths
-	 *  outside the agent's write workspace. */
+	/** Paths inside this directory bypass the filter; it governs only outside paths. */
 	getWriteDir?: () => string;
+	/** When true, paths matching neither list are denied. Default: false (allow). */
+	defaultDeny?: boolean;
 }
 
 /** True when `pathFilter` admits `path` (or no filter is configured).
  *
- * Paths inside the write workspace (per `pathFilter.getWriteDir`) always
- * pass — the filter governs outside-workspace paths only (#123). */
+ * Paths inside the vault write directory always pass. */
 export function isPathAllowedByFilter(path: string, pathFilter: PathFilter | undefined): boolean {
 	if (!pathFilter) return true;
 	const writeDir = pathFilter.getWriteDir?.();
 	if (writeDir && isPathWithinDir(path, writeDir)) return true;
-	return isPathAllowed(path, pathFilter.allowlist, pathFilter.blocklist);
+	return isPathAllowed(
+		path,
+		pathFilter.allowlist,
+		pathFilter.blocklist,
+		pathFilter.defaultDeny ?? false,
+	);
 }
 
 function resolveFile(

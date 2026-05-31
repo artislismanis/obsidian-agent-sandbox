@@ -1808,7 +1808,7 @@ describe("MCP tool handlers", () => {
 			filteredTools = buildTools({
 				app: localApp as never,
 				getWriteDir: () => "agent-workspace",
-				pathFilter: { allowlist: ["notes/"], blocklist: [] },
+				pathFilter: { allowlist: ["notes/"], blocklist: [], defaultDeny: true },
 			});
 		});
 
@@ -2172,11 +2172,12 @@ describe("isPathAllowedByFilter — workspace-bypass and filter logic", () => {
 		expect(isPathAllowedByFilter("notes/hello.md", filter)).toBe(true);
 	});
 
-	it("path outside writeDir not in allowlist is blocked when allowlist is non-empty", () => {
+	it("path outside writeDir not in allowlist is blocked when defaultDeny is true", () => {
 		const filter: PathFilter = {
 			allowlist: ["notes/"],
 			blocklist: [],
 			getWriteDir: () => "agent-workspace",
+			defaultDeny: true,
 		};
 		expect(isPathAllowedByFilter("other/file.md", filter)).toBe(false);
 	});
