@@ -6,6 +6,7 @@ set -euo pipefail
 # Usage: /usr/local/bin/init-firewall.sh [--disable|--status|--list-sources]
 
 SOURCES_FILE="/etc/oas/firewall-sources.tsv"
+BASELINE_FILE="/etc/oas/firewall-baseline.txt"
 EXTRAS_FILE="/etc/oas/firewall-extras.txt"
 LOCK_FILE="/var/lock/oas-firewall.lock"
 
@@ -55,38 +56,6 @@ case "${1:-}" in
     ;;
 esac
 
-BASELINE_DOMAINS=(
-  # Anthropic
-  api.anthropic.com
-  sentry.io
-
-  # npm
-  registry.npmjs.org
-  registry.yarnpkg.com
-
-  # GitHub
-  github.com
-  api.github.com
-  raw.githubusercontent.com
-  objects.githubusercontent.com
-  github-releases.githubusercontent.com
-  cli.github.com
-
-  # PyPI
-  pypi.org
-  files.pythonhosted.org
-
-  # CDNs
-  cdn.jsdelivr.net
-  cdnjs.cloudflare.com
-  unpkg.com
-
-  # Ubuntu apt mirrors — for narrow sudo apt-get usage (see README)
-  archive.ubuntu.com
-  security.ubuntu.com
-  ports.ubuntu.com
-  keyserver.ubuntu.com
-)
 
 # Assemble the effective allowlist from three sources. Record each
 # entry's origin for later inspection via --list-sources.
@@ -96,6 +65,7 @@ mkdir -p "$(dirname "$SOURCES_FILE")"
 
 declare -A SEEN
 declare -a ALLOWED_DOMAINS=()
+declare -a BASELINE_ENTRIES=()
 
 _trim() {
   local s="$1"
@@ -154,10 +124,34 @@ add_entry() {
   printf '%s\t%s\n' "$tag" "$entry" >> "$SOURCES_FILE"
 }
 
-# Baseline
-for d in "${BASELINE_DOMAINS[@]}"; do
-  add_entry baseline "$d"
-done
+# Baseline — read from host-managed file (mounted ro at BASELINE_FILE).
+# The file is also baked into the image as a fallback so the container
+# works if the host mount is absent. Both the directory-shadow case and
+# the missing-file case are hard errors: the baseline is required for
+# normal Claude Code operation and its absence indicates a configuration
+# problem that must not be silently papered over.
+if [ -d "$BASELINE_FILE" ]; then
+  echo "init-firewall: ERROR: $BASELINE_FILE is a directory (host file missing — Docker auto-created the mount target). Baseline domains cannot be loaded. Restore container/firewall-baseline.txt on the host and 'docker compose down && up -d' to re-bind." >&2
+  exit 1
+elif [ ! -f "$BASELINE_FILE" ]; then
+  echo "init-firewall: ERROR: $BASELINE_FILE not found. The baseline allowlist is required — ensure the image was built with the file baked in." >&2
+  exit 1
+else
+  first_line=1
+  while IFS= read -r line || [ -n "$line" ]; do
+    # Strip UTF-8 BOM on the first line (Windows editors may insert one).
+    if [ "$first_line" = "1" ]; then
+      line="${line#$'\xEF\xBB\xBF'}"
+      first_line=0
+    fi
+    # Strip comments and trim
+    line="${line%%#*}"
+    entry="$(_trim "$line")"
+    [ -z "$entry" ] && continue
+    BASELINE_ENTRIES+=("$entry")
+    add_entry baseline "$entry"
+  done < "$BASELINE_FILE"
+fi
 
 # Plugin-supplied (comma-separated env var). Strip `#` comments so a user
 # who put a comment in the env var doesn't end up trying to resolve a domain
@@ -217,7 +211,7 @@ echo "Resolving domains..."
 # Plugin/file-supplied entries can fail safely with a warning — the user
 # may have typo'd a domain or be working offline.
 declare -A IS_BASELINE
-for d in "${BASELINE_DOMAINS[@]}"; do IS_BASELINE[$d]=1; done
+for d in "${BASELINE_ENTRIES[@]}"; do IS_BASELINE[$d]=1; done
 
 # Resolve a single domain with up to N retries. Baseline domains retry so
 # transient resolver glitches don't brick the firewall apply. Optional
