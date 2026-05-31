@@ -89,18 +89,15 @@ export function resolveTtydBrowserUrl(port: number, bindAddress: string | undefi
 	return `http://${host}:${port}`;
 }
 
-// ttyd INPUT frame command byte ('0' = 0x30). Clients prefix every user-input
-// payload with this byte before writing to the PTY.
+// '0' in ASCII — prefixed to every client→PTY INPUT frame.
 const INPUT_CMD = 0x30;
 
 /**
  * Encode `text` as one or more ttyd INPUT frames, each at most `chunkBytes`
- * payload bytes (default 16 KiB). Chunking prevents oversized WebSocket frames
- * from triggering a `message-too-big` (1009) disconnect on large pastes.
+ * payload bytes (default 16 KiB). Chunking prevents `message-too-big` (1009)
+ * disconnects on large pastes.
  *
- * Always returns at least one frame — an empty string produces a single frame
- * containing only the command byte, identical to the previous single-frame
- * behaviour. Frames are ordered; the receiver sees bytes in input order.
+ * Always returns at least one frame. Frames preserve byte order.
  */
 export function encodeInputFrames(text: string, chunkBytes = 16 * 1024): Uint8Array[] {
 	const bytes = new TextEncoder().encode(text);

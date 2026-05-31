@@ -145,9 +145,8 @@ export class TerminalView extends ItemView {
 	private resizeRafId: number | null = null;
 	private termDisposables: { dispose(): void }[] = [];
 	private wsDispose: (() => void) | null = null;
-	// Set when scheduleFit() runs while the pane is hidden (zero-size, e.g. on an
-	// inactive tab). On the next real-size fit we know we're returning from a
-	// hide and must resync xterm's stale viewport geometry — see resyncViewport.
+	// Set when scheduleFit() fires on a zero-size (hidden) pane.
+	// Cleared after the next visible fit triggers a scroll-area resync — see resyncViewport.
 	private wasHidden = false;
 
 	// Lifecycle stats — reset per WS attach. Used for close diagnostics.
@@ -317,8 +316,7 @@ export class TerminalView extends ItemView {
 			if (!this.fitAddon || !this.term) return;
 			const el = this.contentEl.querySelector(".sandbox-terminal-container");
 			if (!el || el.clientWidth < 10 || el.clientHeight < 10) {
-				// Pane is hidden (inactive tab → display:none → zero size).
-				// Remember it so the next real-size fit knows to resync.
+				// Zero-size pane — hidden inactive tab (display:none).
 				this.wasHidden = true;
 				return;
 			}
@@ -335,21 +333,17 @@ export class TerminalView extends ItemView {
 	}
 
 	/**
-	 * Fix the xterm scroll-area height after the pane returns from being hidden.
+	 * Correct the xterm scroll-area height after a hide/show cycle.
 	 *
-	 * While an Obsidian tab is inactive the pane is `display:none`, so the xterm
-	 * viewport element has `offsetHeight === 0`. Any output that streams in while
-	 * hidden triggers xterm's Viewport._innerRefresh via RAF, which caches that
-	 * zero and sets `.xterm-scroll-area` too short — the mouse wheel then can't
-	 * reach the true bottom (a keypress still works because scrollToBottom()
-	 * bypasses the scrollbar geometry entirely).
+	 * Inactive tabs are `display:none`, so xterm's Viewport RAF fires with
+	 * `offsetHeight=0` and sizes `.xterm-scroll-area` too short. The mouse wheel
+	 * can't reach the true bottom; `scrollToBottom()` (keypress) bypasses the
+	 * scrollbar geometry.
 	 *
-	 * The fix replicates the exact formula from Viewport._innerRefresh and writes
-	 * the correct height directly to `.xterm-scroll-area`. This is pure DOM: no
-	 * PTY resize (which would send SIGWINCH and cause Claude Code to repaint the
-	 * entire screen, duplicating visible output on every tab-switch), no xterm
-	 * internals, no scroll position change. When xterm's own _innerRefresh next
-	 * fires it reads the now-real offsetHeight and overwrites with the same value.
+	 * Replicates `Viewport._innerRefresh`'s formula and writes the result directly
+	 * to `.xterm-scroll-area` — pure DOM, no PTY resize. A PTY resize sends
+	 * SIGWINCH and causes the TUI to duplicate output on each tab-switch. xterm's
+	 * own `_innerRefresh` overwrites with the same value when it next fires.
 	 */
 	private resyncViewport(el: Element): void {
 		const term = this.term;
@@ -573,11 +567,10 @@ export class TerminalView extends ItemView {
 				term.clearSelection();
 				return false;
 			}
-			// Ctrl+V and Ctrl+Shift+V both paste. Call preventDefault() to
-			// suppress xterm's native textarea paste handler — without it,
-			// attachCustomKeyEventHandler's `return false` exits _keyDown
-			// without calling preventDefault, so the browser fires its own
-			// paste on top of our term.paste() → double paste.
+			// preventDefault() is required: returning false from
+			// attachCustomKeyEventHandler exits xterm's _keyDown without
+			// suppressing the event, letting the browser fire a native paste
+			// alongside term.paste().
 			if (
 				event.type === "keydown" &&
 				event.ctrlKey &&

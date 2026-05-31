@@ -90,9 +90,7 @@ describe("encodeInputFrames", () => {
 		const text = "abcdefgh"; // 8 bytes → 2 chunks
 		const frames = encodeInputFrames(text, chunkBytes);
 		expect(frames).toHaveLength(2);
-		// Every frame starts with the command byte.
 		for (const frame of frames) expect(frame[0]).toBe(INPUT_CMD);
-		// Concatenated payloads equal the full UTF-8 encoding.
 		const payload = new Uint8Array([...frames[0].subarray(1), ...frames[1].subarray(1)]);
 		expect(payload).toEqual(new TextEncoder().encode(text));
 	});
