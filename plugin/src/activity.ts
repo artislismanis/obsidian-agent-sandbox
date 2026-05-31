@@ -16,6 +16,9 @@ import type { ActivityEntry } from "./mcp-server";
 import type { StatusBarManager } from "./status-bar";
 import type { ActivityPrefix, TerminalView } from "./terminal-view";
 import { VIEW_TYPE_TERMINAL } from "./view-types";
+import type { AgentStatus } from "./mcp-tools";
+import { DEFAULT_SESSION_KEY } from "./mcp-tools";
+import { isPathWithinDir } from "./validation";
 
 /**
  * Structural-typed guard that doesn't import the TerminalView class — that
@@ -37,10 +40,6 @@ function isTerminalViewLike(leafView: unknown): leafView is TerminalView {
 		typeof v.setActivityPrefix === "function"
 	);
 }
-import type { AgentStatus } from "./mcp-tools";
-import { isPathWithinDir } from "./validation";
-
-import { DEFAULT_SESSION_KEY } from "./mcp-tools";
 
 const STATUS_TO_PREFIX: Record<AgentStatus, ActivityPrefix> = {
 	working: "working",
@@ -146,9 +145,6 @@ export class ActivityUi {
 	}
 }
 
-/** Kept for migration only — maps old enum to new per-event booleans. */
-export type AgentOutputMode = "new" | "new_or_modified" | "off";
-
 interface BufferedEntry {
 	kind: "created" | "modified" | "deleted" | "renamed";
 	path: string;
@@ -240,11 +236,8 @@ export class AgentOutputNotifier {
 	}
 
 	private pathInScope(path: string): boolean {
-		// When vault-wide is on, every path passes.
 		if (this.getVaultWide()) return true;
-		// Mirror the writeScoped MCP gate: when `vaultWriteDir` is cleared,
-		// it fail-closes, so no path counts as inside and notifications
-		// stay silent rather than firing for a fallback path.
+		// Empty vaultWriteDir fails closed — no path is considered in scope.
 		return isPathWithinDir(path, this.getWriteDir());
 	}
 
