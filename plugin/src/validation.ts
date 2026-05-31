@@ -189,20 +189,18 @@ export function isValidPort(value: string): boolean {
 }
 
 /**
- * Checks whether a path is allowed by the allowlist/blocklist rules using
- * most-specific-prefix-wins semantics.
+ * Checks whether a path is allowed under most-specific-prefix-wins rules.
  *
- * Find the longest matching allow-prefix and the longest matching block-prefix.
- * The longer one wins. On a tie (same prefix length) the block wins — this
- * preserves security defaults while letting users add a more-specific allow
- * entry (e.g. `.obsidian/plugins/x/`) to override a default block (e.g.
- * `.obsidian/`).
- *
- * When neither list matches: if allowlist is non-empty the path is implicitly
- * blocked (not on the allowlist); if allowlist is empty the path is allowed.
+ * The longest matching allow-prefix and block-prefix are compared; the longer
+ * wins. Ties go to block. When neither list matches, `defaultDeny` controls
+ * the outcome.
  */
-export function isPathAllowed(filePath: string, allowlist: string[], blocklist: string[]): boolean {
-	// Length of the longest prefix from `prefixes` that matches filePath (-1 if none).
+export function isPathAllowed(
+	filePath: string,
+	allowlist: string[],
+	blocklist: string[],
+	defaultDeny = false,
+): boolean {
 	const longestMatch = (prefixes: string[]): number => {
 		let best = -1;
 		for (const p of prefixes) {
@@ -216,10 +214,10 @@ export function isPathAllowed(filePath: string, allowlist: string[], blocklist: 
 	const aLen = longestMatch(allowlist);
 	const bLen = longestMatch(blocklist);
 
-	if (aLen >= 0 && bLen >= 0) return aLen > bLen; // tie → block (false)
+	if (aLen >= 0 && bLen >= 0) return aLen > bLen; // tie → block
 	if (aLen >= 0) return true;
 	if (bLen >= 0) return false;
-	return allowlist.length === 0; // neither matched: block if allowlist is non-empty
+	return !defaultDeny;
 }
 
 /**

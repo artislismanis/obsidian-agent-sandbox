@@ -66,6 +66,7 @@ interface CapturedMcpConfig {
 		allowlist: string[];
 		blocklist: string[];
 		getWriteDir?: () => string;
+		defaultDeny?: boolean;
 	};
 	port?: number;
 }
@@ -138,6 +139,20 @@ describe("McpLifecycle.startServer — pathFilter wiring", () => {
 		await lifecycle.applyEnabled(true);
 		const config = capturedConfig as CapturedMcpConfig;
 		expect(config.pathFilter?.allowlist).toEqual(["notes/", "archive/"]);
+	});
+
+	it("defaultDeny is false when mcpDefaultDeny is false", async () => {
+		const { lifecycle } = makeLifecycle({ mcpDefaultDeny: false });
+		await lifecycle.applyEnabled(true);
+		const config = capturedConfig as CapturedMcpConfig;
+		expect(config.pathFilter?.defaultDeny).toBe(false);
+	});
+
+	it("defaultDeny is true when mcpDefaultDeny is true", async () => {
+		const { lifecycle } = makeLifecycle({ mcpDefaultDeny: true });
+		await lifecycle.applyEnabled(true);
+		const config = capturedConfig as CapturedMcpConfig;
+		expect(config.pathFilter?.defaultDeny).toBe(true);
 	});
 
 	it("pathFilter.getWriteDir returns the current vaultWriteDir setting", async () => {

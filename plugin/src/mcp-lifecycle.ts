@@ -108,11 +108,6 @@ export class McpLifecycle {
 				);
 			}
 			const allowlist = splitCsv(settings.mcpPathAllowlist);
-			// configDir (.obsidian/) is prepended by default (#124) unless the
-			// user has explicitly disabled the block via mcpBlockConfigDir.
-			// Users can also override a specific subtree with a more-specific
-			// allow entry (e.g. ".obsidian/plugins/my-plugin/") while keeping
-			// the rest blocked — most-specific-prefix wins in isPathAllowed.
 			const configDir = this.app.vault.configDir;
 			const effectiveBlocklist = [
 				...(settings.mcpBlockConfigDir !== false ? [configDir] : []),
@@ -128,6 +123,7 @@ export class McpLifecycle {
 					allowlist,
 					blocklist: effectiveBlocklist,
 					getWriteDir: () => this.getSettings().vaultWriteDir,
+					defaultDeny: settings.mcpDefaultDeny === true,
 				},
 				hooks: {
 					review: reviewsRequired(settings.mcpVaultWrites)

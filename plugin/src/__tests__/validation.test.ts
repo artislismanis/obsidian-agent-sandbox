@@ -256,9 +256,16 @@ describe("isPathAllowed", () => {
 		expect(isPathAllowed("notes/secret.md", [], [])).toBe(true);
 	});
 
-	it("allowlist restricts to matching prefixes", () => {
+	it("allowlist entry allows matching path", () => {
 		expect(isPathAllowed("notes/file.md", ["notes/"], [])).toBe(true);
-		expect(isPathAllowed("private/file.md", ["notes/"], [])).toBe(false);
+	});
+
+	it("allowlist entry alone does not block non-matching paths (default-allow)", () => {
+		expect(isPathAllowed("private/file.md", ["notes/"], [])).toBe(true);
+	});
+
+	it("allowlist restricts non-matching paths when defaultDeny=true", () => {
+		expect(isPathAllowed("private/file.md", ["notes/"], [], true)).toBe(false);
 	});
 
 	it("blocklist denies matching paths", () => {
@@ -275,8 +282,8 @@ describe("isPathAllowed", () => {
 		expect(isPathAllowed("notes/sub/deep/file.md", ["notes/"], [])).toBe(true);
 	});
 
-	it("rejects path-prefix attacks", () => {
-		expect(isPathAllowed("notes-evil/file.md", ["notes/"], [])).toBe(false);
+	it("allowlist does not match paths with a similar but distinct prefix", () => {
+		expect(isPathAllowed("notes-evil/file.md", ["notes/"], [], true)).toBe(false);
 	});
 
 	// Most-specific-prefix-wins tests
@@ -297,12 +304,20 @@ describe("isPathAllowed", () => {
 		expect(isPathAllowed("a/b.md", ["a"], ["a"])).toBe(false);
 	});
 
-	it("path matching neither list is blocked when allowlist is non-empty", () => {
-		expect(isPathAllowed("other/file.md", ["notes/"], [])).toBe(false);
+	it("path matching neither list is allowed by default (defaultDeny=false)", () => {
+		expect(isPathAllowed("other/file.md", ["notes/"], [])).toBe(true);
+	});
+
+	it("path matching neither list is blocked when defaultDeny=true", () => {
+		expect(isPathAllowed("other/file.md", ["notes/"], [], true)).toBe(false);
 	});
 
 	it("path matching neither list is allowed when both lists are empty", () => {
 		expect(isPathAllowed("anything/file.md", [], [])).toBe(true);
+	});
+
+	it("path matching neither list is blocked when both lists are empty and defaultDeny=true", () => {
+		expect(isPathAllowed("anything/file.md", [], [], true)).toBe(false);
 	});
 });
 
