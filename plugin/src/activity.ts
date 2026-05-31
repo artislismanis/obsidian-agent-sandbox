@@ -146,10 +146,11 @@ export class ActivityUi {
 	}
 }
 
+/** Kept for migration only — maps old enum to new per-event booleans. */
 export type AgentOutputMode = "new" | "new_or_modified" | "off";
 
 interface BufferedEntry {
-	kind: "created" | "modified";
+	kind: "created" | "modified" | "deleted" | "renamed";
 	path: string;
 }
 
@@ -168,7 +169,11 @@ export class AgentOutputNotifier {
 	private recentMcpWrites = new Map<string, number>();
 
 	constructor(
-		private getMode: () => AgentOutputMode,
+		private getNotifyCreated: () => boolean,
+		private getNotifyEdited: () => boolean,
+		private getNotifyDeleted: () => boolean,
+		private getNotifyRenamed: () => boolean,
+		private getVaultWide: () => boolean,
 		private getWriteDir: () => string,
 	) {}
 
@@ -182,18 +187,35 @@ export class AgentOutputNotifier {
 
 	/** Feed `vault.on("create")` events. */
 	onCreate(path: string): void {
-		if (this.getMode() === "off") return;
-		if (!this.pathInsideWriteDir(path)) return;
+		if (!this.getNotifyCreated()) return;
+		if (!this.pathInScope(path)) return;
 		if (!this.isRecentMcpWrite(path)) return;
 		this.enqueue({ kind: "created", path });
 	}
 
-	/** Feed `vault.on("modify")` events (only fires notices in "new_or_modified" mode). */
+	/** Feed `vault.on("modify")` events. */
 	onModify(path: string): void {
-		if (this.getMode() !== "new_or_modified") return;
-		if (!this.pathInsideWriteDir(path)) return;
+		if (!this.getNotifyEdited()) return;
+		if (!this.pathInScope(path)) return;
 		if (!this.isRecentMcpWrite(path)) return;
 		this.enqueue({ kind: "modified", path });
+	}
+
+	/** Feed `vault.on("delete")` events. */
+	onDelete(path: string): void {
+		if (!this.getNotifyDeleted()) return;
+		if (!this.pathInScope(path)) return;
+		if (!this.isRecentMcpWrite(path)) return;
+		this.enqueue({ kind: "deleted", path });
+	}
+
+	/** Feed `vault.on("rename")` events. */
+	onRename(newPath: string, oldPath: string): void {
+		if (!this.getNotifyRenamed()) return;
+		// Check old path for scope — that's where the file lived.
+		if (!this.pathInScope(oldPath)) return;
+		if (!this.isRecentMcpWrite(oldPath)) return;
+		this.enqueue({ kind: "renamed", path: `${oldPath} → ${newPath}` });
 	}
 
 	/** Cancel any pending debounce; call from plugin onunload. */
@@ -217,7 +239,9 @@ export class AgentOutputNotifier {
 		return true;
 	}
 
-	private pathInsideWriteDir(path: string): boolean {
+	private pathInScope(path: string): boolean {
+		// When vault-wide is on, every path passes.
+		if (this.getVaultWide()) return true;
 		// Mirror the writeScoped MCP gate: when `vaultWriteDir` is cleared,
 		// it fail-closes, so no path counts as inside and notifications
 		// stay silent rather than firing for a fallback path.
@@ -281,11 +305,13 @@ export class AgentOutputNotifier {
 			new Notice(`Agent ${buf[0].kind} ${buf[0].path}`, 5000);
 			return;
 		}
-		const createdCount = buf.filter((e) => e.kind === "created").length;
-		const modifiedCount = buf.length - createdCount;
+		const counts: Partial<Record<BufferedEntry["kind"], number>> = {};
+		for (const e of buf) counts[e.kind] = (counts[e.kind] ?? 0) + 1;
 		const parts: string[] = [];
-		if (createdCount > 0) parts.push(`${createdCount} created`);
-		if (modifiedCount > 0) parts.push(`${modifiedCount} modified`);
+		if (counts.created) parts.push(`${counts.created} created`);
+		if (counts.modified) parts.push(`${counts.modified} modified`);
+		if (counts.deleted) parts.push(`${counts.deleted} deleted`);
+		if (counts.renamed) parts.push(`${counts.renamed} renamed`);
 		new Notice(`Agent output: ${parts.join(", ")}`, 5000);
 	}
 }

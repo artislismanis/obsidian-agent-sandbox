@@ -2131,7 +2131,12 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					enabledTiers,
 					review: reviewFn,
 					affectedLinks: collectBacklinks(f.path),
-					apply: () => app.fileManager.renameFile(f, newPath),
+					apply: () => {
+						// Mark both old and new paths so vault rename event can be identified.
+						onMcpWrite?.(f.path);
+						onMcpWrite?.(newPath);
+						return app.fileManager.renameFile(f, newPath);
+					},
 					successMsg: `Renamed to ${newPath}`,
 				});
 			},
@@ -2192,7 +2197,12 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					enabledTiers,
 					review: reviewFn,
 					affectedLinks: collectBacklinks(f.path),
-					apply: () => app.fileManager.renameFile(f, newPath),
+					apply: () => {
+						// Mark both old and new paths so vault rename event can be identified.
+						onMcpWrite?.(f.path);
+						onMcpWrite?.(newPath);
+						return app.fileManager.renameFile(f, newPath);
+					},
 					successMsg: `Moved to ${newPath}`,
 				});
 			},
@@ -2238,7 +2248,11 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					review: reviewFn,
 					// Folders carry no link metadata of their own.
 					affectedLinks: isFolder ? undefined : collectBacklinks(target.path),
-					apply: () => app.vault.trash(target, true),
+					apply: () => {
+						// Mark path before delete so vault delete event can be identified.
+						onMcpWrite?.(target.path);
+						return app.vault.trash(target, true);
+					},
 					successMsg: isFolder
 						? `Deleted folder ${target.path}`
 						: `Deleted ${target.path}`,

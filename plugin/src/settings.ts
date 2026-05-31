@@ -56,7 +56,11 @@ export interface AgentSandboxSettings {
 	mcpTierExtensions: boolean;
 	mcpPathAllowlist: string;
 	mcpPathBlocklist: string;
-	agentOutputNotify: "new" | "new_or_modified" | "off";
+	notifyCreated: boolean;
+	notifyEdited: boolean;
+	notifyDeleted: boolean;
+	notifyRenamed: boolean;
+	notifyVaultWide: boolean;
 	logLevel: "debug" | "info" | "warn" | "error";
 	mcpToolTimeout: number;
 	mcpReviewTimeout: number;
@@ -133,7 +137,11 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	mcpTierExtensions: false,
 	mcpPathAllowlist: "",
 	mcpPathBlocklist: "",
-	agentOutputNotify: "new",
+	notifyCreated: true,
+	notifyEdited: false,
+	notifyDeleted: true,
+	notifyRenamed: true,
+	notifyVaultWide: false,
 	logLevel: "warn",
 	mcpToolTimeout: 10,
 	mcpReviewTimeout: 180,
@@ -571,25 +579,37 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			key: "autoStopContainer",
 		});
 
-		new Setting(el)
-			.setName("Notify on agent output")
-			.setDesc(
-				"Show a non-intrusive Notice when the agent writes files under the vault write directory. 'New' only fires on file creation; 'New or modified' also fires on edits (noisier during long edit sessions).",
-			)
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("new", "New files only (default)")
-					.addOption("new_or_modified", "New or modified files")
-					.addOption("off", "Off")
-					.setValue(this.plugin.settings.agentOutputNotify)
-					.onChange(async (value) => {
-						this.plugin.settings.agentOutputNotify = value as
-							| "new"
-							| "new_or_modified"
-							| "off";
-						this.plugin.saveSettings();
-					}),
-			);
+		new Setting(el).setName("Agent output notifications").setHeading();
+
+		this.addToggleSetting(el, {
+			name: "Notify on file created",
+			desc: "Show a notice when the agent creates a file under the write directory (or vault-wide if enabled below).",
+			key: "notifyCreated",
+		});
+
+		this.addToggleSetting(el, {
+			name: "Notify on file edited",
+			desc: "Show a notice when the agent modifies an existing file. Can be noisy during long edit sessions.",
+			key: "notifyEdited",
+		});
+
+		this.addToggleSetting(el, {
+			name: "Notify on file deleted",
+			desc: "Show a notice when the agent deletes a file.",
+			key: "notifyDeleted",
+		});
+
+		this.addToggleSetting(el, {
+			name: "Notify on file renamed/moved",
+			desc: "Show a notice when the agent renames or moves a file.",
+			key: "notifyRenamed",
+		});
+
+		this.addToggleSetting(el, {
+			name: "Vault-wide scope",
+			desc: "When off (default), notifications only fire for files inside the vault write directory. When on, notifications fire for any file the agent touches anywhere in the vault.",
+			key: "notifyVaultWide",
+		});
 	}
 
 	private renderTerminal(el: HTMLElement): void {
