@@ -1,5 +1,5 @@
 import type { App } from "obsidian";
-import { PluginSettingTab, Setting } from "obsidian";
+import { Notice, PluginSettingTab, Setting } from "obsidian";
 import { confirmModal } from "./modals";
 import type AgentSandboxPlugin from "./main";
 import { setLogLevel, errMsg } from "./logger";
@@ -60,6 +60,7 @@ export interface AgentSandboxSettings {
 	logLevel: "debug" | "info" | "warn" | "error";
 	mcpToolTimeout: number;
 	mcpReviewTimeout: number;
+	pendingRestartMarker: boolean;
 }
 
 /**
@@ -136,16 +137,34 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	logLevel: "warn",
 	mcpToolTimeout: 10,
 	mcpReviewTimeout: 180,
+	pendingRestartMarker: false,
 };
 
 const RESTART_CONTAINER_SUFFIX = " Requires container restart.";
+
+/** Settings keys whose values must match the snapshot to skip a restart prompt. */
+const RESTART_REQUIRED_KEYS: ReadonlyArray<keyof AgentSandboxSettings> = [
+	"dockerMode",
+	"dockerComposeFilePath",
+	"wslDistroName",
+	"vaultWriteDir",
+	"memoryFileName",
+	"ttydPort",
+	"ttydBindAddress",
+	"mcpPort",
+	"containerMemory",
+	"containerCpus",
+	"allowedPrivateHosts",
+	"additionalFirewallDomains",
+];
 
 type TabId = "general" | "terminal" | "advanced" | "mcp";
 
 export class AgentSandboxSettingTab extends PluginSettingTab {
 	plugin: AgentSandboxPlugin;
 	private activeTab: TabId = "general";
-	private restartNeeded = false;
+	private restartSnapshot: Partial<AgentSandboxSettings> = {};
+	private restartDirectlyMarked = false;
 	// Cache of compose-file-existence checks keyed by path, populated async
 	// to avoid blocking the renderer with sync `existsSync`. Values:
 	// true=found, false=missing, undefined=not yet checked. Re-renders when
@@ -158,22 +177,47 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	}
 
 	hide(): void {
-		if (!this.restartNeeded) return;
-		this.restartNeeded = false;
-		if (!this.plugin.isContainerRunning()) return;
-		void confirmModal(this.app, {
-			title: "Restart Container?",
-			message:
-				"You changed settings that require a container restart. Restart now? This will stop all active terminal sessions.",
-			ctaLabel: "Restart",
-			cancelLabel: "Later",
-		}).then((ok) => {
-			if (ok) void this.plugin.restartContainer();
-		});
+		const dirty = this.needsRestart();
+		this.restartSnapshot = {};
+		this.restartDirectlyMarked = false;
+		if (!dirty) return;
+		if (this.plugin.isContainerRunning()) {
+			void confirmModal(this.app, {
+				title: "Restart Container?",
+				message:
+					"You changed settings that require a container restart. Restart now? This will stop all active terminal sessions.",
+				ctaLabel: "Restart",
+				cancelLabel: "Later",
+			}).then((ok) => {
+				if (ok) void this.plugin.restartContainer();
+			});
+		} else {
+			this.plugin.settings.pendingRestartMarker = true;
+			void this.plugin.saveSettings();
+			new Notice("Settings saved — restart the container to apply changes.", 5000);
+		}
 	}
 
 	private markRestart(): void {
-		this.restartNeeded = true;
+		this.restartDirectlyMarked = true;
+	}
+
+	private needsRestart(): boolean {
+		return (
+			this.restartDirectlyMarked ||
+			(Object.keys(this.restartSnapshot).length > 0 &&
+				RESTART_REQUIRED_KEYS.some(
+					(k) => this.plugin.settings[k] !== this.restartSnapshot[k],
+				))
+		);
+	}
+
+	/** Returns RESTART_CONTAINER_SUFFIX plus a pending-restart badge if the field value has diverged from the snapshot. */
+	private restartSuffix(key: keyof AgentSandboxSettings): string {
+		const pending =
+			Object.keys(this.restartSnapshot).length > 0 &&
+			this.plugin.settings[key] !== this.restartSnapshot[key];
+		return RESTART_CONTAINER_SUFFIX + (pending ? " ↺ Pending restart" : "");
 	}
 
 	/**
@@ -196,7 +240,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	): void {
 		new Setting(el)
 			.setName(opts.name)
-			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
+			.setDesc(opts.requiresRestart ? opts.desc + this.restartSuffix(opts.key) : opts.desc)
 			.addText((text) => {
 				if (opts.placeholder) text.setPlaceholder(opts.placeholder);
 				text.setValue(String(this.plugin.settings[opts.key])).onChange(async (value) => {
@@ -204,7 +248,6 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					if (!isNaN(n) && n >= opts.min && n <= opts.max) {
 						(this.plugin.settings[opts.key] as number) = n;
 						this.plugin.saveSettings();
-						if (opts.requiresRestart) this.markRestart();
 						text.inputEl.removeClass("sandbox-input-error");
 						opts.onChange?.();
 					} else {
@@ -228,14 +271,13 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	): void {
 		new Setting(el)
 			.setName(opts.name)
-			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
+			.setDesc(opts.requiresRestart ? opts.desc + this.restartSuffix(opts.key) : opts.desc)
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings[opts.key] as boolean)
 					.onChange(async (value) => {
 						(this.plugin.settings[opts.key] as boolean) = value;
 						this.plugin.saveSettings();
-						if (opts.requiresRestart) this.markRestart();
 						await opts.onChange?.(value);
 					}),
 			);
@@ -259,7 +301,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	): void {
 		new Setting(el)
 			.setName(opts.name)
-			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
+			.setDesc(opts.requiresRestart ? opts.desc + this.restartSuffix(opts.key) : opts.desc)
 			.addText((text) => {
 				if (opts.placeholder) text.setPlaceholder(opts.placeholder);
 				const initial = String(this.plugin.settings[opts.key]);
@@ -271,7 +313,6 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					if (!opts.validator || opts.validator(value)) {
 						(this.plugin.settings[opts.key] as string) = value;
 						this.plugin.saveSettings();
-						if (opts.requiresRestart) this.markRestart();
 						text.inputEl.removeClass("sandbox-input-error");
 						opts.onChange?.();
 					} else {
@@ -282,6 +323,11 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
+		if (Object.keys(this.restartSnapshot).length === 0) {
+			this.restartSnapshot = Object.fromEntries(
+				RESTART_REQUIRED_KEYS.map((k) => [k, this.plugin.settings[k]]),
+			) as Partial<AgentSandboxSettings>;
+		}
 		const { containerEl } = this;
 		containerEl.empty();
 		containerEl.addClass("sandbox-settings");
@@ -335,7 +381,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.setDesc(
 				"How Docker is accessed. WSL runs commands via wsl.exe. " +
 					"Local runs docker compose directly on the host." +
-					RESTART_CONTAINER_SUFFIX,
+					this.restartSuffix("dockerMode"),
 			)
 			.addDropdown((dropdown) =>
 				dropdown
@@ -345,7 +391,6 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.dockerMode = value as DockerMode;
 						this.plugin.saveSettings();
-						this.markRestart();
 						this.display();
 					}),
 			);
@@ -354,9 +399,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 
 		const composeDesc = isWsl
 			? "Absolute WSL path to the directory containing docker-compose.yml." +
-				RESTART_CONTAINER_SUFFIX
+				this.restartSuffix("dockerComposeFilePath")
 			: "Absolute path to the directory containing docker-compose.yml." +
-				RESTART_CONTAINER_SUFFIX;
+				this.restartSuffix("dockerComposeFilePath");
 
 		const composeSetting = new Setting(el).setName("Docker Compose path").setDesc(composeDesc);
 
@@ -399,7 +444,6 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.dockerComposeFilePath = value;
 					this.plugin.saveSettings();
-					this.markRestart();
 				}),
 		);
 
@@ -489,7 +533,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.setName("Bind address")
 			.setDesc(
 				"IP address ttyd binds to on the host. Default 127.0.0.1 (localhost only)." +
-					RESTART_CONTAINER_SUFFIX,
+					this.restartSuffix("ttydBindAddress"),
 			)
 			.addText((text) => {
 				text.setPlaceholder("127.0.0.1")
@@ -498,7 +542,6 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						if (isValidBindAddress(value)) {
 							this.plugin.settings.ttydBindAddress = value;
 							this.plugin.saveSettings();
-							this.markRestart();
 							text.inputEl.removeClass("sandbox-input-error");
 							ttydBindWarning.style.display = value === "0.0.0.0" ? "" : "none";
 						} else {

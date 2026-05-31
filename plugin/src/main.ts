@@ -644,6 +644,11 @@ export default class AgentSandboxPlugin extends Plugin {
 	}
 
 	private async postStartTasks(): Promise<void> {
+		if (this.settings.pendingRestartMarker) {
+			this.settings.pendingRestartMarker = false;
+			void this.saveSettings();
+			new Notice("Container restarted with updated settings.", 5000);
+		}
 		try {
 			this.lastKnownContainerId = await this.docker.getContainerId();
 		} catch (err) {
@@ -910,6 +915,7 @@ export default class AgentSandboxPlugin extends Plugin {
 				port: this.settings.mcpPort,
 				toolCount: this.mcpLifecycle.getToolCount(),
 			},
+			pendingRestart: this.settings.pendingRestartMarker,
 		});
 	}
 
