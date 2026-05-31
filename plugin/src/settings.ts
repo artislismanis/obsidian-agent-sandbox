@@ -865,11 +865,23 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			});
 		}
 
-		new Setting(el).setName("Path restrictions").setHeading();
+		new Setting(el)
+			.setName("Path restrictions")
+			.setDesc(
+				"These restrictions apply only to vault paths outside the vault write directory " +
+					"(configured in General settings). Paths inside the vault write directory are " +
+					"always writable by the agent regardless of what is set here.",
+			)
+			.setHeading();
 
 		this.addValidatedTextSetting(el, {
 			name: "Allowed paths",
-			desc: "Comma-separated folder prefixes. If set, only these paths are accessible. Empty = all paths.",
+			desc:
+				"Comma-separated vault path prefixes the agent may access outside the vault write " +
+				"directory. If set, only these paths are accessible; empty = all non-blocked paths. " +
+				"A more-specific allow entry overrides a block entry — e.g. add " +
+				"'.obsidian/plugins/my-plugin/' to permit that plugin's data while the rest of the " +
+				"vault config folder stays blocked.",
 			key: "mcpPathAllowlist",
 			validator: isValidPathPrefixList,
 			placeholder: "notes/,projects/",
@@ -878,7 +890,12 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 
 		this.addValidatedTextSetting(el, {
 			name: "Blocked paths",
-			desc: "Comma-separated folder prefixes. These paths are always denied, even if allowed above.",
+			desc:
+				"Comma-separated vault path prefixes that are denied outside the vault write directory. " +
+				"The vault config folder ('.obsidian/') is always blocked by default to prevent " +
+				"settings tampering — use the allow list above to permit a specific subtree " +
+				"(e.g. '.obsidian/plugins/my-plugin/'). A more-specific allow entry takes precedence " +
+				"over a block entry (most-specific prefix wins).",
 			key: "mcpPathBlocklist",
 			validator: isValidPathPrefixList,
 			placeholder: "private/,secrets/",
