@@ -192,6 +192,17 @@ export default class AgentSandboxPlugin extends Plugin {
 			void this.backgroundStartup();
 		});
 
+		// Correct xterm's scroll-area height when a terminal tab becomes active.
+		// display:none on inactive tabs causes the Viewport RAF to cache
+		// offsetHeight=0; onBecomeVisible() nudges xterm into recomputing it.
+		this.registerEvent(
+			this.app.workspace.on("active-leaf-change", (leaf) => {
+				if (leaf?.view instanceof TerminalView) {
+					leaf.view.onBecomeVisible();
+				}
+			}),
+		);
+
 		// "box" represents the sandbox concept; the terminal tab and
 		// command-palette entry use TerminalView.getIcon()'s "terminal" glyph
 		// for the action itself.

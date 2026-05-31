@@ -145,9 +145,6 @@ export class TerminalView extends ItemView {
 	private resizeRafId: number | null = null;
 	private termDisposables: { dispose(): void }[] = [];
 	private wsDispose: (() => void) | null = null;
-	// Set when scheduleFit() fires on a zero-size (hidden) pane.
-	// Cleared after the next visible fit triggers a scroll-area resync — see resyncViewport.
-	private wasHidden = false;
 
 	// Lifecycle stats — reset per WS attach. Used for close diagnostics.
 	private wsConnectStartedAt = 0;
@@ -200,6 +197,28 @@ export class TerminalView extends ItemView {
 	 */
 	queueInitialPrompt(prompt: string): void {
 		this.initialPrompt = prompt;
+	}
+
+	/**
+	 * Call when this view becomes the active leaf (tab-switch back to terminal).
+	 * Triggers xterm's scroll-area height recompute via `_onScroll`, correcting
+	 * the stale zero height cached while the pane was `display:none`.
+	 */
+	onBecomeVisible(): void {
+		const term = this.term;
+		if (!term) return;
+		const buf = term.buffer.active;
+		if (buf.baseY === 0) return; // no scrollback — no stale height possible
+		// scrollLines fires _onScroll → viewport.syncScrollArea() detects the
+		// stale _lastRecordedViewportHeight and queues a corrective RAF.
+		// Both calls happen before any RAF, so net ydisp change is zero.
+		if (buf.viewportY > 0) {
+			term.scrollLines(-1);
+			term.scrollLines(1);
+		} else {
+			term.scrollLines(1);
+			term.scrollLines(-1);
+		}
 	}
 
 	/** Append a connection event with `at`/`instanceId` filled in. */
@@ -315,62 +334,13 @@ export class TerminalView extends ItemView {
 			this.resizeRafId = null;
 			if (!this.fitAddon || !this.term) return;
 			const el = this.contentEl.querySelector(".sandbox-terminal-container");
-			if (!el || el.clientWidth < 10 || el.clientHeight < 10) {
-				// Zero-size pane — hidden inactive tab (display:none).
-				this.wasHidden = true;
-				return;
-			}
+			if (!el || el.clientWidth < 10 || el.clientHeight < 10) return;
 			try {
 				this.fitAddon.fit();
 			} catch {
 				/* pane not visible */
 			}
-			if (this.wasHidden) {
-				this.wasHidden = false;
-				this.resyncViewport(el);
-			}
 		});
-	}
-
-	/**
-	 * Correct the xterm scroll-area height after a hide/show cycle.
-	 *
-	 * Inactive tabs are `display:none`, so xterm's Viewport RAF fires with
-	 * `offsetHeight=0` and sizes `.xterm-scroll-area` too short. The mouse wheel
-	 * can't reach the true bottom; `scrollToBottom()` (keypress) bypasses the
-	 * scrollbar geometry.
-	 *
-	 * Replicates `Viewport._innerRefresh`'s formula and writes the result directly
-	 * to `.xterm-scroll-area` — pure DOM, no PTY resize. A PTY resize sends
-	 * SIGWINCH and causes the TUI to duplicate output on each tab-switch. xterm's
-	 * own `_innerRefresh` overwrites with the same value when it next fires.
-	 */
-	private resyncViewport(el: Element): void {
-		const term = this.term;
-		if (!term || term.rows === 0) return;
-		const viewport = el.querySelector(".xterm-viewport");
-		const canvas = el.querySelector(".xterm-screen canvas");
-		const scrollArea = el.querySelector(".xterm-scroll-area");
-		if (
-			!(viewport instanceof HTMLElement) ||
-			!(canvas instanceof HTMLElement) ||
-			!(scrollArea instanceof HTMLElement)
-		)
-			return;
-		const viewportH = viewport.offsetHeight;
-		const canvasH = canvas.offsetHeight;
-		if (viewportH === 0 || canvasH === 0) return;
-		// Viewport._innerRefresh formula:
-		//   height = round(rowH * bufferLength) + (viewportH - canvasH)
-		const rowH = canvasH / term.rows;
-		const bufLen = term.buffer.active.length; // IBuffer.length — public API
-		const h = Math.round(rowH * bufLen) + (viewportH - canvasH);
-		if (h <= 0) return;
-		scrollArea.style.height = `${h}px`;
-		logger.debug(
-			"Terminal",
-			`Resynced scroll area after reveal (instance ${this.instanceId}, viewportH=${viewportH} canvasH=${canvasH} rows=${term.rows} bufLen=${bufLen} h=${h})`,
-		);
 	}
 
 	private async connect(): Promise<void> {
