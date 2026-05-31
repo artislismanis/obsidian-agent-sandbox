@@ -12,6 +12,7 @@ export interface RunningTooltipContext {
 	port: number;
 	firewall: FirewallState;
 	mcp: { running: boolean; port: number; toolCount: number };
+	pendingRestart?: boolean;
 }
 
 export class StatusBarManager {
@@ -74,20 +75,19 @@ export class StatusBarManager {
 			);
 			return;
 		}
-		const { port, firewall, mcp } = this.runningCtx;
+		const { port, firewall, mcp, pendingRestart } = this.runningCtx;
 		const fwLabel =
 			firewall === "enabled" ? "enabled" : firewall === "disabled" ? "disabled" : "n/a";
 		const mcpLabel = mcp.running ? `port ${mcp.port}, ${mcp.toolCount} tools` : "off";
-		this.setDetails(
-			[
-				"Container: running",
-				`Port: ${port}`,
-				`Firewall: ${fwLabel}`,
-				`MCP: ${mcpLabel}`,
-				"",
-				"Click for options",
-			].join("\n"),
-		);
+		const lines = [
+			"Container: running",
+			`Port: ${port}`,
+			`Firewall: ${fwLabel}`,
+			`MCP: ${mcpLabel}`,
+		];
+		if (pendingRestart) lines.push("↺ Settings restart pending");
+		lines.push("", "Click for options");
+		this.setDetails(lines.join("\n"));
 	}
 
 	private render(): void {
