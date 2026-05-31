@@ -18,7 +18,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
  * `ttydBindAddress` controls where ttyd listens inside the container; the
  * plugin needs a reachable address to connect back to it.
  *
- * - `127.0.0.1` (default) and `0.0.0.0` both map to literal `127.0.0.1` —
+ * - `127.0.0.1` (default) and `0.0.0.0` both map to literal `127.0.0.1` -
  *   prefer the literal over `localhost` to avoid IPv6 resolution surprises
  *   (`::1` vs `127.0.0.1`) on IPv4-only hosts.
  * - Any other address (e.g. a LAN IP) is used verbatim.
@@ -57,7 +57,7 @@ export async function pollUntilReady(
 
 		if (isAborted()) return false;
 
-		// Skip the wait after the final attempt — no next iteration would see it.
+		// Skip the wait after the final attempt - no next iteration would see it.
 		if (i === maxRetries - 1) break;
 		const waitMs = typeof backoff === "number" ? backoff : backoff(i);
 		onAttempt?.(i, waitMs);
@@ -89,7 +89,7 @@ export function resolveTtydBrowserUrl(port: number, bindAddress: string | undefi
 	return `http://${host}:${port}`;
 }
 
-// '0' in ASCII — prefixed to every client→PTY INPUT frame.
+// '0' in ASCII - prefixed to every client→PTY INPUT frame.
 const INPUT_CMD = 0x30;
 
 /**

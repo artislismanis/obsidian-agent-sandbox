@@ -55,7 +55,7 @@ describe("isWriteDirInsideVault", () => {
 describe("isValidSessionName", () => {
 	// Used in two places: direct tmux exec (kill/rename) and the `session <name>\n`
 	// command injected over the ttyd WebSocket on attach. Both reach a bash shell,
-	// so rejecting metacharacters here is load-bearing — a hand-edited persisted
+	// so rejecting metacharacters here is load-bearing - a hand-edited persisted
 	// view-state could otherwise inject arbitrary commands on every Obsidian start.
 	it("accepts simple ASCII names", () => expect(isValidSessionName("work")).toBe(true));
 	it("accepts digits", () => expect(isValidSessionName("session-1")).toBe(true));
@@ -195,7 +195,7 @@ describe("DockerManager.isBusy()", () => {
 
 describe("isPathWithinDir", () => {
 	// isPathWithinDir is the sole gate keeping writeScoped MCP tools inside
-	// the configured write directory — see the function comment for the
+	// the configured write directory - see the function comment for the
 	// fail-closed rationale on empty dir.
 	it("returns false for empty dir (fail-closed)", () => {
 		expect(isPathWithinDir("anything", "")).toBe(false);
@@ -288,19 +288,19 @@ describe("isPathAllowed", () => {
 
 	// Most-specific-prefix-wins tests
 	it("longer allow beats shorter block", () => {
-		// block: .obsidian/ — allow: .obsidian/plugins/x/ — allow wins
+		// block: .obsidian/ - allow: .obsidian/plugins/x/ - allow wins
 		expect(
 			isPathAllowed(".obsidian/plugins/x/data.json", [".obsidian/plugins/x/"], [".obsidian"]),
 		).toBe(true);
 	});
 
 	it("longer block beats shorter allow", () => {
-		// allow: notes/ — block: notes/secret/ — block wins
+		// allow: notes/ - block: notes/secret/ - block wins
 		expect(isPathAllowed("notes/secret/key.md", ["notes"], ["notes/secret"])).toBe(false);
 	});
 
 	it("exact tie goes to block", () => {
-		// Same prefix length — block wins.
+		// Same prefix length - block wins.
 		expect(isPathAllowed("a/b.md", ["a"], ["a"])).toBe(false);
 	});
 

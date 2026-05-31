@@ -99,7 +99,7 @@ describe("DockerManager", () => {
 	describe("envSpec validators (hand-edited data.json defense)", () => {
 		// Settings UI validates each field at save time, but hand-edited
 		// data.json can carry invalid values through. The envSpec validators
-		// in docker.ts are the second line of defense — `start()`'s run()
+		// in docker.ts are the second line of defense - `start()`'s run()
 		// pipeline throws before any subprocess is spawned.
 
 		it("start() throws on invalid memoryFileName (path-traversal)", async () => {

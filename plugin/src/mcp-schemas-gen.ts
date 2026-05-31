@@ -1,6 +1,6 @@
 /**
  * Generate a human-readable reference doc for every MCP tool the plugin
- * registers. The source of truth is `buildTools()` itself — instantiate it
+ * registers. The source of truth is `buildTools()` itself - instantiate it
  * with a minimal mock App, walk the returned tool defs, and emit markdown
  * tables of params (name, type, required, describe-text).
  *
@@ -27,7 +27,7 @@ interface ToolDoc {
 }
 
 /** Mock App with all plugin-availability guards satisfied so `buildTools`
- *  registers every extension tool. Methods are no-ops — the generator only
+ *  registers every extension tool. Methods are no-ops - the generator only
  *  inspects schemas, never invokes handlers. */
 function mockAppForGeneration(): unknown {
 	const stub = async () => {};
@@ -194,7 +194,7 @@ const TIER_ORDER = [
 	"agent",
 ] as const;
 
-/** Render the full markdown doc. Deterministic — sorts tools alphabetically
+/** Render the full markdown doc. Deterministic - sorts tools alphabetically
  *  within each tier so re-runs only diff when the schema actually changes. */
 export function renderMcpSchemasMarkdown(docs: ToolDoc[]): string {
 	const byTier = new Map<string, ToolDoc[]>();
@@ -211,7 +211,7 @@ export function renderMcpSchemasMarkdown(docs: ToolDoc[]): string {
 	lines.push("# MCP Tool Schema Reference");
 	lines.push("");
 	lines.push(
-		"> Generated from `buildTools()` in `plugin/src/mcp-tools.ts`. Do not edit by hand — run `npm run docs:gen` (or `UPDATE_SCHEMAS=1 npm run test`) to regenerate.",
+		"> Generated from `buildTools()` in `plugin/src/mcp-tools.ts`. Do not edit by hand - run `npm run docs:gen` (or `UPDATE_SCHEMAS=1 npm run test`) to regenerate.",
 	);
 	lines.push("");
 	lines.push(
@@ -223,7 +223,7 @@ export function renderMcpSchemasMarkdown(docs: ToolDoc[]): string {
 		const list = byTier.get(tier) ?? [];
 		if (list.length === 0) continue;
 		tableOfContents.push(
-			`- [${tier}](#${tier.toLowerCase()}) — ${list.map((t) => `\`${t.name}\``).join(", ")}`,
+			`- [${tier}](#${tier.toLowerCase()}) - ${list.map((t) => `\`${t.name}\``).join(", ")}`,
 		);
 	}
 	tableOfContents.push("");
@@ -247,7 +247,7 @@ export function renderMcpSchemasMarkdown(docs: ToolDoc[]): string {
 				lines.push("|-------|------|----------|-------------|");
 				for (const p of tool.params) {
 					lines.push(
-						`| \`${p.name}\` | \`${p.type}\` | ${p.required ? "yes" : "no"} | ${p.description || "—"} |`,
+						`| \`${p.name}\` | \`${p.type}\` | ${p.required ? "yes" : "no"} | ${p.description || "-"} |`,
 					);
 				}
 			}

@@ -205,7 +205,7 @@ describe("AgentOutputNotifier", () => {
 		(Notice as NoticeMock).lastMessage = "";
 		n.onCreate("agent-workspace/b.md");
 		n.onCreate("agent-workspace/c.md");
-		// Debounce fires inside the rate-limit window — should NOT emit yet.
+		// Debounce fires inside the rate-limit window - should NOT emit yet.
 		vi.advanceTimersByTime(2000);
 		expect((Notice as NoticeMock).lastMessage).toBe("");
 		// Rate-limit window elapses and the re-armed timer fires.
@@ -215,7 +215,7 @@ describe("AgentOutputNotifier", () => {
 
 	it("second burst after rate-limit window starts fresh (no cross-burst leakage)", () => {
 		const n = notifier();
-		// First burst — 3 files
+		// First burst - 3 files
 		n.onCreate("agent-workspace/a.md");
 		n.onCreate("agent-workspace/b.md");
 		n.onCreate("agent-workspace/c.md");

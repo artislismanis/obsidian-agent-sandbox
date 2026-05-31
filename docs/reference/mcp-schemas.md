@@ -1,19 +1,19 @@
 # MCP Tool Schema Reference
 
-> Generated from `buildTools()` in `plugin/src/mcp-tools.ts`. Do not edit by hand — run `npm run docs:gen` (or `UPDATE_SCHEMAS=1 npm run test`) to regenerate.
+> Generated from `buildTools()` in `plugin/src/mcp-tools.ts`. Do not edit by hand - run `npm run docs:gen` (or `UPDATE_SCHEMAS=1 npm run test`) to regenerate.
 
 Canonical reference for every MCP tool the plugin exposes: parameter names, types, and descriptions. Test scripts, skills, and docs that mention a tool's params should copy from here rather than from memory.
 
 ## Tools by tier
 
-- [read](#read) — `vault_backlinks`, `vault_context`, `vault_file_info`, `vault_frontmatter`, `vault_graph_clusters`, `vault_graph_neighborhood`, `vault_graph_path`, `vault_headings`, `vault_links`, `vault_list`, `vault_orphans`, `vault_properties`, `vault_read`, `vault_recent`, `vault_search`, `vault_search_fuzzy`, `vault_suggest_links`, `vault_tags`, `vault_unresolved`
-- [writeScoped](#writescoped) — `vault_append`, `vault_create`, `vault_frontmatter_delete`, `vault_frontmatter_set`, `vault_modify`, `vault_patch`, `vault_prepend`, `vault_search_replace`
-- [writeReviewed](#writereviewed) — `vault_append_reviewed`, `vault_create_reviewed`, `vault_frontmatter_delete_reviewed`, `vault_frontmatter_set_reviewed`, `vault_modify_reviewed`, `vault_patch_reviewed`, `vault_prepend_reviewed`, `vault_search_replace_reviewed`
-- [writeVault](#writevault) — `vault_append_anywhere`, `vault_create_anywhere`, `vault_frontmatter_delete_anywhere`, `vault_frontmatter_set_anywhere`, `vault_modify_anywhere`, `vault_patch_anywhere`, `vault_prepend_anywhere`, `vault_search_replace_anywhere`
-- [navigate](#navigate) — `vault_open`
-- [manage](#manage) — `vault_batch_frontmatter`, `vault_create_folder`, `vault_delete`, `vault_move`, `vault_rename`
-- [extensions](#extensions) — `plugin_extensions_list`, `vault_canvas_modify`, `vault_canvas_read`, `vault_dataview_query`, `vault_periodic_note`, `vault_tasks_query`, `vault_tasks_toggle`, `vault_templater_create`
-- [agent](#agent) — `agent_status_set`, `agent_time`
+- [read](#read) - `vault_backlinks`, `vault_context`, `vault_file_info`, `vault_frontmatter`, `vault_graph_clusters`, `vault_graph_neighborhood`, `vault_graph_path`, `vault_headings`, `vault_links`, `vault_list`, `vault_orphans`, `vault_properties`, `vault_read`, `vault_recent`, `vault_search`, `vault_search_fuzzy`, `vault_suggest_links`, `vault_tags`, `vault_unresolved`
+- [writeScoped](#writescoped) - `vault_append`, `vault_create`, `vault_frontmatter_delete`, `vault_frontmatter_set`, `vault_modify`, `vault_patch`, `vault_prepend`, `vault_search_replace`
+- [writeReviewed](#writereviewed) - `vault_append_reviewed`, `vault_create_reviewed`, `vault_frontmatter_delete_reviewed`, `vault_frontmatter_set_reviewed`, `vault_modify_reviewed`, `vault_patch_reviewed`, `vault_prepend_reviewed`, `vault_search_replace_reviewed`
+- [writeVault](#writevault) - `vault_append_anywhere`, `vault_create_anywhere`, `vault_frontmatter_delete_anywhere`, `vault_frontmatter_set_anywhere`, `vault_modify_anywhere`, `vault_patch_anywhere`, `vault_prepend_anywhere`, `vault_search_replace_anywhere`
+- [navigate](#navigate) - `vault_open`
+- [manage](#manage) - `vault_batch_frontmatter`, `vault_create_folder`, `vault_delete`, `vault_move`, `vault_rename`
+- [extensions](#extensions) - `plugin_extensions_list`, `vault_canvas_modify`, `vault_canvas_read`, `vault_dataview_query`, `vault_periodic_note`, `vault_tasks_query`, `vault_tasks_toggle`, `vault_templater_create`
+- [agent](#agent) - `agent_status_set`, `agent_time`
 
 ## read
 
@@ -186,7 +186,7 @@ Search for text across all markdown files in the vault. Returns matching file pa
 
 **Title:** Fuzzy search vault
 
-Fuzzy full-text search across all markdown files — matches note content, not file names. Tolerates typos and approximate matches. Results are score-sorted.
+Fuzzy full-text search across all markdown files - matches note content, not file names. Tolerates typos and approximate matches. Results are score-sorted.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -230,7 +230,7 @@ _No parameters._
 
 **Title:** Append to file (within write directory)
 
-Append content to the end of a file (within write directory). Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Append content to the end of a file (within write directory). Restricted to the configured write directory - paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -242,7 +242,7 @@ Append content to the end of a file (within write directory). Restricted to the 
 
 **Title:** Create file (within write directory)
 
-Create a new file (within write directory). Intermediate parent folders are created automatically. Paths whose final component starts with '.' (dotfiles) are rejected. Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Create a new file (within write directory). Intermediate parent folders are created automatically. Paths whose final component starts with '.' (dotfiles) are rejected. Restricted to the configured write directory - paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -253,7 +253,7 @@ Create a new file (within write directory). Intermediate parent folders are crea
 
 **Title:** Delete frontmatter property (within write directory)
 
-Remove a YAML frontmatter property from a file (within write directory). Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Remove a YAML frontmatter property from a file (within write directory). Restricted to the configured write directory - paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -265,21 +265,21 @@ Remove a YAML frontmatter property from a file (within write directory). Restric
 
 **Title:** Set frontmatter (within write directory)
 
-Set a YAML frontmatter property on a file (within write directory). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading `#` is stripped from tag values automatically — pass `"tag"` or `"#tag"` interchangeably. JSON-encoded string arrays (e.g. `'["a","b"]'`) are coerced to real arrays. Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Set a YAML frontmatter property on a file (within write directory). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading `#` is stripped from tag values automatically - pass `"tag"` or `"#tag"` interchangeably. JSON-encoded string arrays (e.g. `'["a","b"]'`) are coerced to real arrays. Restricted to the configured write directory - paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | `file` | `string` | no | File name |
 | `path` | `string` | no | Exact path from vault root |
 | `property` | `string` | yes | Property name |
-| `value` | `any` | yes | Property value — string, number, boolean, array, or object |
+| `value` | `any` | yes | Property value - string, number, boolean, array, or object |
 | `append` | `boolean` | no | Add to existing array instead of replacing it (default false). When the current value is not an array it is wrapped in one first. |
 
 ### `vault_modify`
 
 **Title:** Modify file (within write directory)
 
-Replace the full contents of a file (within write directory). Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Replace the full contents of a file (within write directory). Restricted to the configured write directory - paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -291,7 +291,7 @@ Replace the full contents of a file (within write directory). Restricted to the 
 
 **Title:** Patch file (within write directory)
 
-Insert or replace content at a specific location in a file (within write directory). Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Insert or replace content at a specific location in a file (within write directory). Restricted to the configured write directory - paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -306,7 +306,7 @@ Insert or replace content at a specific location in a file (within write directo
 
 **Title:** Prepend to file (within write directory)
 
-Insert content at the top of a file (within write directory), after frontmatter if present. Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Insert content at the top of a file (within write directory), after frontmatter if present. Restricted to the configured write directory - paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -318,7 +318,7 @@ Insert content at the top of a file (within write directory), after frontmatter 
 
 **Title:** Search and replace (within write directory)
 
-Find and replace text within a file (within write directory). Restricted to the configured write directory — paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
+Find and replace text within a file (within write directory). Restricted to the configured write directory - paths outside will be rejected synchronously. To edit elsewhere ask the user to enable the Write (reviewed) or Write (vault-wide) tier. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -370,14 +370,14 @@ Remove a YAML frontmatter property from a file (reviewed). Each write prompts th
 
 **Title:** Set frontmatter (reviewed)
 
-Set a YAML frontmatter property on a file (reviewed). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading `#` is stripped from tag values automatically — pass `"tag"` or `"#tag"` interchangeably. JSON-encoded string arrays (e.g. `'["a","b"]'`) are coerced to real arrays. Each write prompts the user for approval via a diff modal before applying. Call mcp_capabilities to see the current write directory and enabled tiers.
+Set a YAML frontmatter property on a file (reviewed). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading `#` is stripped from tag values automatically - pass `"tag"` or `"#tag"` interchangeably. JSON-encoded string arrays (e.g. `'["a","b"]'`) are coerced to real arrays. Each write prompts the user for approval via a diff modal before applying. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | `file` | `string` | no | File name |
 | `path` | `string` | no | Exact path from vault root |
 | `property` | `string` | yes | Property name |
-| `value` | `any` | yes | Property value — string, number, boolean, array, or object |
+| `value` | `any` | yes | Property value - string, number, boolean, array, or object |
 | `append` | `boolean` | no | Add to existing array instead of replacing it (default false). When the current value is not an array it is wrapped in one first. |
 
 ### `vault_modify_reviewed`
@@ -440,7 +440,7 @@ Find and replace text within a file (reviewed). Each write prompts the user for 
 
 **Title:** Append to file (vault-wide)
 
-Append content to the end of a file (vault-wide). Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Append content to the end of a file (vault-wide). Unrestricted - writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -452,7 +452,7 @@ Append content to the end of a file (vault-wide). Unrestricted — writes anywhe
 
 **Title:** Create file (vault-wide)
 
-Create a new file (vault-wide). Intermediate parent folders are created automatically. Paths whose final component starts with '.' (dotfiles) are rejected. Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Create a new file (vault-wide). Intermediate parent folders are created automatically. Paths whose final component starts with '.' (dotfiles) are rejected. Unrestricted - writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -463,7 +463,7 @@ Create a new file (vault-wide). Intermediate parent folders are created automati
 
 **Title:** Delete frontmatter property (vault-wide)
 
-Remove a YAML frontmatter property from a file (vault-wide). Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Remove a YAML frontmatter property from a file (vault-wide). Unrestricted - writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -475,21 +475,21 @@ Remove a YAML frontmatter property from a file (vault-wide). Unrestricted — wr
 
 **Title:** Set frontmatter (vault-wide)
 
-Set a YAML frontmatter property on a file (vault-wide). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading `#` is stripped from tag values automatically — pass `"tag"` or `"#tag"` interchangeably. JSON-encoded string arrays (e.g. `'["a","b"]'`) are coerced to real arrays. Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Set a YAML frontmatter property on a file (vault-wide). Pass `append: true` to merge elements into an existing array rather than replacing it; if the current value is not an array it is wrapped in one first. Leading `#` is stripped from tag values automatically - pass `"tag"` or `"#tag"` interchangeably. JSON-encoded string arrays (e.g. `'["a","b"]'`) are coerced to real arrays. Unrestricted - writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | `file` | `string` | no | File name |
 | `path` | `string` | no | Exact path from vault root |
 | `property` | `string` | yes | Property name |
-| `value` | `any` | yes | Property value — string, number, boolean, array, or object |
+| `value` | `any` | yes | Property value - string, number, boolean, array, or object |
 | `append` | `boolean` | no | Add to existing array instead of replacing it (default false). When the current value is not an array it is wrapped in one first. |
 
 ### `vault_modify_anywhere`
 
 **Title:** Modify file (vault-wide)
 
-Replace the full contents of a file (vault-wide). Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Replace the full contents of a file (vault-wide). Unrestricted - writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -501,7 +501,7 @@ Replace the full contents of a file (vault-wide). Unrestricted — writes anywhe
 
 **Title:** Patch file (vault-wide)
 
-Insert or replace content at a specific location in a file (vault-wide). Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Insert or replace content at a specific location in a file (vault-wide). Unrestricted - writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -516,7 +516,7 @@ Insert or replace content at a specific location in a file (vault-wide). Unrestr
 
 **Title:** Prepend to file (vault-wide)
 
-Insert content at the top of a file (vault-wide), after frontmatter if present. Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Insert content at the top of a file (vault-wide), after frontmatter if present. Unrestricted - writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -528,7 +528,7 @@ Insert content at the top of a file (vault-wide), after frontmatter if present. 
 
 **Title:** Search and replace (vault-wide)
 
-Find and replace text within a file (vault-wide). Unrestricted — writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
+Find and replace text within a file (vault-wide). Unrestricted - writes anywhere in the vault without review. Call mcp_capabilities to see the current write directory and enabled tiers.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -566,7 +566,7 @@ Set or delete a frontmatter property across files matching a folder prefix and/o
 | `query` | `string` | no | Full-text content search to match files. Optional when `folder` is supplied. |
 | `folder` | `string` | no | Vault path prefix to restrict matches. Optional when `query` is supplied. |
 | `property` | `string` | yes | Frontmatter property name |
-| `value` | `any` | no | Value to set — string, number, boolean, array, or object. Omit to delete. |
+| `value` | `any` | no | Value to set - string, number, boolean, array, or object. Omit to delete. |
 | `dryRun` | `boolean` | no | Preview only, no changes (default true) |
 
 ### `vault_create_folder`
@@ -583,7 +583,7 @@ Create a new folder in the vault. No-op if the folder already exists; errors if 
 
 **Title:** Delete file or folder
 
-Move a file or folder to trash. Folder deletion is recursive — children are trashed with the parent.
+Move a file or folder to trash. Folder deletion is recursive - children are trashed with the parent.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -628,7 +628,7 @@ _No parameters._
 
 **Title:** Modify canvas
 
-Apply changes to a .canvas file. Supports adding or removing nodes and edges. The `changes` parameter must be a JSON-encoded STRING (not a plain object) — e.g. `{"addNodes":[{"id":"1","type":"text","x":0,"y":0}]}`. Set `create: true` to materialise the canvas (with the requested nodes/edges) when it doesn't yet exist.
+Apply changes to a .canvas file. Supports adding or removing nodes and edges. The `changes` parameter must be a JSON-encoded STRING (not a plain object) - e.g. `{"addNodes":[{"id":"1","type":"text","x":0,"y":0}]}`. Set `create: true` to materialise the canvas (with the requested nodes/edges) when it doesn't yet exist.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -640,7 +640,7 @@ Apply changes to a .canvas file. Supports adding or removing nodes and edges. Th
 
 **Title:** Read canvas
 
-Read a .canvas file and return its JSON structure: nodes (text/file/link/group) and edges. Works without any target plugin — `.canvas` is Obsidian's native format.
+Read a .canvas file and return its JSON structure: nodes (text/file/link/group) and edges. Works without any target plugin - `.canvas` is Obsidian's native format.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -660,7 +660,7 @@ Run a Dataview Query Language (DQL) query against the vault. Requires the Datavi
 
 **Title:** Periodic note access
 
-Locate (and optionally create) a periodic note — daily/weekly/monthly/quarterly/yearly. Requires the Periodic Notes plugin. Returns the file path; if `create` is true and the note doesn't exist, an empty file is created in the plugin-configured folder.
+Locate (and optionally create) a periodic note - daily/weekly/monthly/quarterly/yearly. Requires the Periodic Notes plugin. Returns the file path; if `create` is true and the note doesn't exist, an empty file is created in the plugin-configured folder.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -724,7 +724,7 @@ Report the current agent lifecycle state so the plugin can show which sessions a
 
 **Title:** Host clock
 
-Return the current date/time as seen by the Obsidian host process (not the container). Date-sensitive tools (e.g. vault_periodic_note) resolve relative dates using this host clock. Call this when you need to know the host date or detect the UTC offset between container and host — if they differ, pass an explicit `date` param derived from `localIso` rather than relying on your own clock.
+Return the current date/time as seen by the Obsidian host process (not the container). Date-sensitive tools (e.g. vault_periodic_note) resolve relative dates using this host clock. Call this when you need to know the host date or detect the UTC offset between container and host - if they differ, pass an explicit `date` param derived from `localIso` rather than relying on your own clock.
 
 _No parameters._
 

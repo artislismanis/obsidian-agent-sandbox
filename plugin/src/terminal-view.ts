@@ -16,11 +16,11 @@ const MAX_RETRIES = 15;
 // Auto-reconnect on abnormal close. The container is almost always still
 // running; the WebSocket dropped from Obsidian sleep or a network hiccup.
 // More patient than the initial connect because reconnects happen during
-// active use — a mid-session "could not reconnect" error is much more
+// active use - a mid-session "could not reconnect" error is much more
 // disruptive than a slow first connect.
 const RECONNECT_BACKOFF_MS = [500, 1000, 2000, 4000, 8000, 8000, 8000, 8000];
 
-// ttyd wire protocol — single-byte command prefix. Each direction reuses the
+// ttyd wire protocol - single-byte command prefix. Each direction reuses the
 // same ASCII codes with different meanings; only OUTPUT is consumed inbound.
 const SERVER_MSG = { OUTPUT: 0x30 } as const;
 const CLIENT_MSG = { INPUT: "0", RESIZE: "1" } as const;
@@ -146,7 +146,7 @@ export class TerminalView extends ItemView {
 	private termDisposables: { dispose(): void }[] = [];
 	private wsDispose: (() => void) | null = null;
 
-	// Lifecycle stats — reset per WS attach. Used for close diagnostics.
+	// Lifecycle stats - reset per WS attach. Used for close diagnostics.
 	private wsConnectStartedAt = 0;
 	private wsOpenedAt = 0;
 	private wsLastRxAt = 0;
@@ -162,7 +162,7 @@ export class TerminalView extends ItemView {
 	private injectionTimers: number[] = [];
 
 	// Promise-returning so the "Rename Session" menu item can attach a
-	// `.catch` — a typed `() => void` would silently drop a setViewState
+	// `.catch` - a typed `() => void` would silently drop a setViewState
 	// rejection that follows a successful tmux rename.
 	onRenameSession: (() => Promise<void>) | null = null;
 	private initialPrompt: string | null = null;
@@ -208,7 +208,7 @@ export class TerminalView extends ItemView {
 		const term = this.term;
 		if (!term) return;
 		const buf = term.buffer.active;
-		if (buf.baseY === 0) return; // no scrollback — no stale height possible
+		if (buf.baseY === 0) return; // no scrollback - no stale height possible
 		// scrollLines fires _onScroll → viewport.syncScrollArea() detects the
 		// stale _lastRecordedViewportHeight and queues a corrective RAF.
 		// Both calls happen before any RAF, so net ydisp change is zero.
@@ -320,7 +320,7 @@ export class TerminalView extends ItemView {
 
 	onResize(): void {
 		this.scheduleFit();
-		// No focus call here — stealing focus on every resize (which fires when
+		// No focus call here - stealing focus on every resize (which fires when
 		// other panes change layout, not just user interaction) is disruptive.
 		// xterm focuses naturally on click/hotkey.
 	}
@@ -519,7 +519,7 @@ export class TerminalView extends ItemView {
 
 		term.attachCustomKeyEventHandler((event) => {
 			// Ctrl+C with an active selection copies (like Terminal.app/iTerm2),
-			// but only when auto-copy is off — if auto-copy is on the selection
+			// but only when auto-copy is off - if auto-copy is on the selection
 			// is already in the clipboard, so Ctrl+C should keep its SIGINT meaning.
 			if (
 				event.type === "keydown" &&
@@ -640,7 +640,7 @@ export class TerminalView extends ItemView {
 			const handshake = textEncoder.encode(msg);
 			this.wsTxBytes += handshake.length;
 			ws.send(handshake);
-			// Focus only on the initial attach, not on reconnect — reconnects
+			// Focus only on the initial attach, not on reconnect - reconnects
 			// happen unattended and stealing focus interrupts whatever the user
 			// has switched to.
 			if (!isReconnect) term.focus();
@@ -671,7 +671,7 @@ export class TerminalView extends ItemView {
 			} else if (this.sessionName) {
 				logger.warn(
 					"Terminal",
-					`Skipping session attach for invalid name '${this.sessionName}' — letters/digits/_/./-only.`,
+					`Skipping session attach for invalid name '${this.sessionName}' - letters/digits/_/./-only.`,
 				);
 			}
 
@@ -705,7 +705,7 @@ export class TerminalView extends ItemView {
 							this.initialPrompt = null;
 						}
 					} finally {
-						// Re-enable input only on the still-current term — a fast
+						// Re-enable input only on the still-current term - a fast
 						// view close that swapped this.term must leave it alone.
 						// Wrap the setter: dispose() races this timer and can
 						// null `term.options` mid-call, throwing TypeError out
@@ -728,7 +728,7 @@ export class TerminalView extends ItemView {
 			this.wsLastRxAt = Date.now();
 			this.wsRxBytes += rawData.byteLength;
 			this.wsRxMsgs++;
-			// Guard against empty frames before peeking at byte 0 — some
+			// Guard against empty frames before peeking at byte 0 - some
 			// proxies and ttyd debug builds emit zero-length data frames, and
 			// `new Uint8Array(rawData, 0, 1)` throws RangeError on those.
 			if (rawData.byteLength === 0) return;
@@ -751,7 +751,7 @@ export class TerminalView extends ItemView {
 			const sessionMs = opened ? now - this.wsOpenedAt : now - this.wsConnectStartedAt;
 			const idleMs = this.wsLastRxAt > 0 ? now - this.wsLastRxAt : -1;
 			const codeName = CLOSE_CODE_NAMES[event.code] ?? `code-${event.code}`;
-			// ttyd close.reason can contain quotes/control chars — JSON-encode so
+			// ttyd close.reason can contain quotes/control chars - JSON-encode so
 			// the surrounding log line isn't truncated by an embedded `"`.
 			const reasonField = JSON.stringify(event.reason || "");
 			const detail =
@@ -761,14 +761,14 @@ export class TerminalView extends ItemView {
 				`gen=${gen} instance=${this.instanceId}`;
 			// 1000 = normal closure, 1001 = going away. 1005 ("no status
 			// received") is commonly emitted on abrupt drops (Wi-Fi switch,
-			// container kill -9) and must reconnect — treating it as normal
+			// container kill -9) and must reconnect - treating it as normal
 			// would strand recoverable drops behind a "container may have
 			// stopped" banner with no reconnect attempt.
 			const normal = event.code === 1000 || event.code === 1001;
 			if (normal) {
-				logger.debug("Terminal", `WebSocket closed cleanly — ${detail}`);
+				logger.debug("Terminal", `WebSocket closed cleanly - ${detail}`);
 			} else {
-				logger.warn("Terminal", `WebSocket dropped — ${detail}`);
+				logger.warn("Terminal", `WebSocket dropped - ${detail}`);
 			}
 			this.logEvent(gen, "close", {
 				at: now,
@@ -790,7 +790,7 @@ export class TerminalView extends ItemView {
 				return;
 			}
 
-			// Abnormal close — try to reconnect a few times before surfacing error.
+			// Abnormal close - try to reconnect a few times before surfacing error.
 			this.scheduleReconnect(container, gen);
 		};
 
@@ -823,14 +823,14 @@ export class TerminalView extends ItemView {
 			);
 			this.showError(
 				container,
-				`Connection lost — could not reconnect after ${this.reconnectAttempt} attempts.`,
+				`Connection lost - could not reconnect after ${this.reconnectAttempt} attempts.`,
 			);
 			return;
 		}
 		const waitMs = RECONNECT_BACKOFF_MS[this.reconnectAttempt];
 		this.reconnectAttempt++;
 		this.showStatusBanner(
-			`Connection dropped — reconnecting (attempt ${this.reconnectAttempt}/${RECONNECT_BACKOFF_MS.length}, in ${Math.round(waitMs / 100) / 10}s)…`,
+			`Connection dropped - reconnecting (attempt ${this.reconnectAttempt}/${RECONNECT_BACKOFF_MS.length}, in ${Math.round(waitMs / 100) / 10}s)…`,
 		);
 		this.logEvent(gen, "reconnect", { attempt: this.reconnectAttempt });
 		this.reconnectTimer = window.setTimeout(() => {

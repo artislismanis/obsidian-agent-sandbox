@@ -1,5 +1,5 @@
 /**
- * Plugin API integrations — MCP tools that delegate to other installed
+ * Plugin API integrations - MCP tools that delegate to other installed
  * Obsidian plugins. Each integration registers its tools only when its
  * target plugin is loaded; missing plugins mean the tool is absent from
  * the tool list, not present-but-erroring.
@@ -47,7 +47,7 @@ function gateAllowsPath(gate: WriteGate, vaultPath: string): boolean {
 	return isPathAllowedByFilter(vaultPath, gate.pathFilter);
 }
 
-/** Tagged result so callers can surface a distinct message per failure mode —
+/** Tagged result so callers can surface a distinct message per failure mode -
  *  collapsing all four reasons into `null` misleads agents who hit a symlink
  *  or filter block. */
 type CanvasResolve =
@@ -183,7 +183,7 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 			tier: "extensions",
 			title: "Read canvas",
 			description:
-				"Read a .canvas file and return its JSON structure: nodes (text/file/link/group) and edges. Works without any target plugin — `.canvas` is Obsidian's native format.",
+				"Read a .canvas file and return its JSON structure: nodes (text/file/link/group) and edges. Works without any target plugin - `.canvas` is Obsidian's native format.",
 			inputSchema: {
 				path: z.string().describe("Canvas file path from vault root (.canvas extension)"),
 			},
@@ -205,7 +205,7 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 			tier: "extensions",
 			title: "Modify canvas",
 			description:
-				'Apply changes to a .canvas file. Supports adding or removing nodes and edges. The `changes` parameter must be a JSON-encoded STRING (not a plain object) — e.g. `{"addNodes":[{"id":"1","type":"text","x":0,"y":0}]}`. Set `create: true` to materialise the canvas (with the requested nodes/edges) when it doesn\'t yet exist.',
+				'Apply changes to a .canvas file. Supports adding or removing nodes and edges. The `changes` parameter must be a JSON-encoded STRING (not a plain object) - e.g. `{"addNodes":[{"id":"1","type":"text","x":0,"y":0}]}`. Set `create: true` to materialise the canvas (with the requested nodes/edges) when it doesn\'t yet exist.',
 			inputSchema: {
 				path: z.string().describe("Canvas file path from vault root"),
 				changes: z
@@ -282,7 +282,7 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 						// CAS recheck against editor edits during a long-running
 						// review. The other single-file write tools use runWrite's
 						// recheckFile option; canvas takes gateVaultWrite which has
-						// no equivalent — so re-read here and abort if the canvas
+						// no equivalent - so re-read here and abort if the canvas
 						// changed between review and apply. Without this, an
 						// approved reviewed-tier canvas edit would silently clobber
 						// the user's concurrent edits in the canvas UI.
@@ -342,7 +342,7 @@ export function registerDataviewTools(app: App, push: ToolPusher, gate: WriteGat
 				// shapes. DQL can also synthesize paths into strings via
 				// expressions. Under `mcpPathAllowlist`/`mcpPathBlocklist`,
 				// refuse the query rather than risk leaking through the
-				// result tree — other read tools enforce the filter and the
+				// result tree - other read tools enforce the filter and the
 				// safe fallback here is to disable.
 				if (gate.pathFilter) {
 					return error(
@@ -401,7 +401,7 @@ const PRIORITY_EMOJI: Record<NonNullable<TaskEntry["priority"]>, string> = {
 const DATE_EMOJI = ["📅", "⏳", "🛫", "📆"] as const;
 const PRIORITY_STRIP_RE = new RegExp(Object.values(PRIORITY_EMOJI).join("|"), "gu");
 // Match both emoji-prefix (📅 YYYY-MM-DD) and @field() (e.g. @due(YYYY-MM-DD))
-// forms — DATE_FIELDS accepts both for extraction; the strip must too,
+// forms - DATE_FIELDS accepts both for extraction; the strip must too,
 // otherwise `Do thing @due(2024-01-01)` would yield text containing the raw
 // `@due(...)` even after stripping.
 const DATE_STRIP_RE = new RegExp(
@@ -590,7 +590,7 @@ export function registerTasksTools(app: App, push: ToolPusher, gate: WriteGate):
 					return error(`Tasks plugin threw: ${errMsg(e)}`);
 				}
 				// Gate the write through the same boundary as every other vault
-				// write — calling app.vault.modify directly would let an
+				// write - calling app.vault.modify directly would let an
 				// `extensions`-only agent rewrite any markdown file containing
 				// a checklist item.
 				return gateVaultWrite({
@@ -607,7 +607,7 @@ export function registerTasksTools(app: App, push: ToolPusher, gate: WriteGate):
 					// editor edit at the same line (toggle is line-specific
 					// and `content` is the snapshot at preview time). Sibling
 					// vault_modify routes through runWrite which already does
-					// this — toggling went through gateVaultWrite, which
+					// this - toggling went through gateVaultWrite, which
 					// didn't, until the CAS option was added here.
 					app,
 					recheckFile: f,
@@ -643,7 +643,7 @@ function getTemplater(app: App): TemplaterApi | null {
 }
 
 /** True if the candidate path is inside Templater's configured templates folder.
- *  When the folder isn't configured (rare), refuse all paths — Templater itself
+ *  When the folder isn't configured (rare), refuse all paths - Templater itself
  *  refuses too without a templates folder, so failing closed matches its UX. */
 function isInsideTemplatesFolder(plugin: TemplaterApi, templatePath: string): boolean {
 	const folder = plugin.settings?.templates_folder;
@@ -679,14 +679,14 @@ export function registerTemplaterTools(app: App, push: ToolPusher, gate: WriteGa
 				// tool to execute it (Templater runs templates in the renderer
 				// process, so this is arbitrary JS execution under the user's
 				// identity if the user has Templater's user-system-command toggle
-				// enabled). This restriction matches Templater's own UX — templates
+				// enabled). This restriction matches Templater's own UX - templates
 				// are expected to live in the templates folder.
 				if (!isInsideTemplatesFolder(plugin, templatePath))
 					return error(
 						`Template must live inside Templater's configured templates folder. Got '${templatePath}'.`,
 					);
 				// Templater's API treats a string `template` arg inconsistently across
-				// versions — in current builds it writes the string as literal content
+				// versions - in current builds it writes the string as literal content
 				// instead of resolving it as a template file. Resolve to a TFile ourselves.
 				const templateFile = app.vault.getAbstractFileByPath(templatePath);
 				if (!templateFile || !(templateFile instanceof TFileClass))
@@ -803,7 +803,7 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 			tier: "extensions",
 			title: "Periodic note access",
 			description:
-				"Locate (and optionally create) a periodic note — daily/weekly/monthly/quarterly/yearly. Requires the Periodic Notes plugin. Returns the file path; if `create` is true and the note doesn't exist, an empty file is created in the plugin-configured folder.",
+				"Locate (and optionally create) a periodic note - daily/weekly/monthly/quarterly/yearly. Requires the Periodic Notes plugin. Returns the file path; if `create` is true and the note doesn't exist, an empty file is created in the plugin-configured folder.",
 			inputSchema: {
 				periodicity: z
 					.enum(["daily", "weekly", "monthly", "quarterly", "yearly"])
@@ -840,7 +840,7 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 				// Parse via moment in strict mode so weekly/quarterly tokens that depend on
 				// the input date don't shift across local-TZ DST boundaries (which
 				// `new Date(dateArg + "T00:00:00")` does in non-UTC locales).
-				// Trim the input — moment strict mode treats " 2024-01-01" as invalid.
+				// Trim the input - moment strict mode treats " 2024-01-01" as invalid.
 				const m = dateArg ? moment(dateArg.trim(), "YYYY-MM-DD", true) : moment();
 				if (!m.isValid()) return error(`Invalid date: ${dateArg}`);
 
@@ -849,7 +849,7 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 				const path = folder ? `${folder}/${filename}.md` : `${filename}.md`;
 
 				// The format string is plugin-controlled but moment passes
-				// non-token characters through verbatim — including `/` and
+				// non-token characters through verbatim - including `/` and
 				// `..`. Reject paths whose realpath escapes the vault before
 				// touching the filesystem. Also reject `..` segments outright:
 				// `../sibling-folder/foo` stays inside the vault realpath but
@@ -874,7 +874,7 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 				if (existing) return text(`Exists: ${path}`);
 				if (!create) return error(`Not found: ${path}`);
 
-				// Use Templater's API if available — it processes tp.* variables.
+				// Use Templater's API if available - it processes tp.* variables.
 				// Falls back to raw template content if Templater isn't installed.
 				const templater = getTemplater(app);
 				const tmplPath = periodicSettings.template;
@@ -883,7 +883,7 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 				if (templater?.templater?.create_new_note_from_template && tmplFile) {
 					// Restrict template path to Templater's configured templates
 					// folder. Periodic Notes' `template` setting is plugin-
-					// controlled but a user can point it anywhere — including a
+					// controlled but a user can point it anywhere - including a
 					// vault-writable folder. If an agent has writeScoped, it
 					// could vault_create a malicious template there containing
 					// `<% tp.system.run_external_command(...) %>` and then
@@ -901,13 +901,13 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 					const noteFolder = folderParts.join("/") || "/";
 					// Read the raw template so the review modal shows the seed content
 					// the user is approving. Templater will additionally process tp.*
-					// tokens at apply time — that's a known difference noted in the
+					// tokens at apply time - that's a known difference noted in the
 					// description.
 					const rawSeed = await app.vault.cachedRead(tmplFile);
 					return gateVaultWrite({
 						destPath: path,
 						operation: "create",
-						description: `Create periodic note ${path} (via Templater — tp.* tokens applied at write time)`,
+						description: `Create periodic note ${path} (via Templater - tp.* tokens applied at write time)`,
 						writeDir: gate.getWriteDir(),
 						enabledTiers: gate.enabledTiers,
 						review: gate.review,
@@ -916,7 +916,7 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 							// Use Templater's returned TFile to detect tp.file.move
 							// relocations. The previous implementation fell back to
 							// `getMarkdownFiles().find(f => f.basename === noteName)`
-							// when the file wasn't at `path` — which (a) trashed
+							// when the file wasn't at `path` - which (a) trashed
 							// UNRELATED files sharing the basename, and (b) missed
 							// templates that also renamed via `tp.file.rename`.
 							// Trusting the API's return value avoids both bugs.

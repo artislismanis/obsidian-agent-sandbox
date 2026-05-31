@@ -31,7 +31,7 @@ export class AnalyseManager {
 	/**
 	 * Load prompt templates from `<vault>/.oas/prompts/*.md`. First non-empty
 	 * line before `---` is the label; body can contain `{{file}}` placeholders.
-	 * Result cached after first call — call {@link refreshTemplates} to
+	 * Result cached after first call - call {@link refreshTemplates} to
 	 * invalidate.
 	 */
 	async loadTemplates(): Promise<PromptTemplate[]> {
@@ -41,7 +41,7 @@ export class AnalyseManager {
 		return loaded;
 	}
 
-	/** Preload and cache templates — call at plugin init to remove the menu race. */
+	/** Preload and cache templates - call at plugin init to remove the menu race. */
 	async prewarm(): Promise<void> {
 		this.cachedTemplates = await this.readTemplatesFromDisk();
 	}
@@ -50,7 +50,7 @@ export class AnalyseManager {
 		const base = getVaultBasePath(this.host.app);
 		if (!base) return [];
 		const dir = pathJoin(base, ".oas", "prompts");
-		// Import via `fs.promises` (not the `fs/promises` subpath) — Obsidian's
+		// Import via `fs.promises` (not the `fs/promises` subpath) - Obsidian's
 		// renderer cannot resolve the bare subpath specifier.
 		let entries: string[];
 		try {
@@ -95,7 +95,7 @@ export class AnalyseManager {
 		}
 		const body = await inputModal(this.host.app, {
 			title: "Analyse in Sandbox",
-			message: `Prompt for ${vaultPath} — @${vaultPath} will be appended automatically.`,
+			message: `Prompt for ${vaultPath} - @${vaultPath} will be appended automatically.`,
 			placeholder: "e.g. Summarise this note in 3 bullet points",
 			ctaLabel: "Run",
 		});
@@ -107,7 +107,7 @@ export class AnalyseManager {
 	/**
 	 * Append an "Analyse in Sandbox" submenu to an Obsidian file menu.
 	 * Uses the cached template list (pre-populated by {@link prewarm}) to
-	 * build submenu items synchronously — no async race against menu render.
+	 * build submenu items synchronously - no async race against menu render.
 	 * Kicks off a refresh in the background so subsequent menu opens reflect
 	 * new / removed templates.
 	 */

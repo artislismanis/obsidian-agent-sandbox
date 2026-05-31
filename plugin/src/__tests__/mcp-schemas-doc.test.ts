@@ -27,7 +27,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const DOC_PATH = resolve(HERE, "../../../docs/reference/mcp-schemas.md");
 
 describe("MCP schema reference doc", () => {
-	it("stays in sync with buildTools() — run `npm run docs:gen` to update", () => {
+	it("stays in sync with buildTools() - run `npm run docs:gen` to update", () => {
 		const generated = renderMcpSchemasMarkdown(collectToolDocs());
 
 		if (process.env.UPDATE_SCHEMAS === "1") {

@@ -70,7 +70,7 @@ describe("isRealPathWithinBase", () => {
 	});
 
 	it("does not match a prefix that isn't a path boundary", () => {
-		// /vault vs /vault-other — same prefix, different directories
+		// /vault vs /vault-other - same prefix, different directories
 		const realpath = (p: string) => {
 			if (p === "/vault") return "/vault";
 			if (p === "/vault-other/file") return "/vault-other/file";

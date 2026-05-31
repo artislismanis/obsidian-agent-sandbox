@@ -556,7 +556,7 @@ describe("MCP tool handlers", () => {
 			expect(settings.trigger_on_file_creation).toBe(true);
 		});
 
-		it("surfaces an error when write_template_to_file throws — the on-disk file is empty but the reviewed body didn't land", async () => {
+		it("surfaces an error when write_template_to_file throws - the on-disk file is empty but the reviewed body didn't land", async () => {
 			const tplFile = makeTFile("Templates/Daily.md");
 			installTemplater({
 				folderTemplates: [{ folder: "agent-workspace", template: "Templates/Daily.md" }],
@@ -1596,7 +1596,7 @@ describe("MCP tool handlers", () => {
 		});
 
 		it("end_of_block on a single-section file (last heading) inserts at document end", async () => {
-			// Single section: heading is the last one — endLine falls back to lines.length
+			// Single section: heading is the last one - endLine falls back to lines.length
 			app.vault.read.mockResolvedValueOnce("## Only\nContent");
 			app.metadataCache.getFileCache.mockReturnValueOnce({
 				headings: [{ heading: "Only", level: 2, position: { start: { line: 0 } } }],
@@ -1694,7 +1694,7 @@ describe("MCP tool handlers", () => {
 			);
 			expect(r.isError).toBe(false);
 			expect(r.text.split("\n")).toHaveLength(5);
-			// chunk size is 20 — with limit 5 every file matches (mocked), so
+			// chunk size is 20 - with limit 5 every file matches (mocked), so
 			// one chunk is enough. We should not have read the full 100.
 			expect(localApp.vault.cachedRead.mock.calls.length).toBeLessThanOrEqual(20);
 		});
@@ -1759,7 +1759,7 @@ describe("MCP tool handlers", () => {
 
 	describe("tier filtering contract", () => {
 		it("only builds tools registered across tiers; filtering is the server's job", () => {
-			// buildTools does not filter — writeVault/manage/reviewed variants
+			// buildTools does not filter - writeVault/manage/reviewed variants
 			// exist in the raw list. The server filter at mcp-server.ts:210
 			// gates them.
 			const names = tools.map((t) => t.name);
@@ -1879,7 +1879,7 @@ describe("MCP tool handlers", () => {
 	describe("vault_move destination gating (writeDir escape boundary)", () => {
 		// vault_move must gate the DESTINATION through gateVaultWrite, not the
 		// source. A writeScoped+manage agent could otherwise lift a file from
-		// inside writeDir to anywhere — pathFilter only enforces allow/block,
+		// inside writeDir to anywhere - pathFilter only enforces allow/block,
 		// not writeDir scoping.
 
 		it("scoped-only mode rejects moves whose destination escapes writeDir", async () => {
@@ -2068,7 +2068,7 @@ describe("MCP tool handlers", () => {
 	});
 });
 
-describe("previewTemplaterFolderTemplate — no-match and no-plugin paths", () => {
+describe("previewTemplaterFolderTemplate - no-match and no-plugin paths", () => {
 	it("returns null when Templater plugin is not installed", async () => {
 		const mockApp = createMockApp([]);
 		// No plugins property → getInstalledPlugin returns null.
@@ -2130,7 +2130,7 @@ describe("previewTemplaterFolderTemplate — no-match and no-plugin paths", () =
 	});
 });
 
-describe("isPathAllowedByFilter — workspace-bypass and filter logic", () => {
+describe("isPathAllowedByFilter - workspace-bypass and filter logic", () => {
 	it("returns true when no pathFilter is provided", () => {
 		expect(isPathAllowedByFilter("any/path.md", undefined)).toBe(true);
 	});

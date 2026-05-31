@@ -7,7 +7,7 @@ import type * as EventsModule from "events";
 
 // Mutable state for mocked modules. Must be declared before vi.mock factories
 // (vi.mock is hoisted, so factories need access via getters, not closures over
-// values that might not be initialised yet — hence the wrapper objects).
+// values that might not be initialised yet - hence the wrapper objects).
 const osState: { interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> } = {
 	interfaces: {},
 };
@@ -54,7 +54,7 @@ vi.mock("child_process", async () => {
 				else resolve({ stdout, stderr });
 			});
 		});
-	// spawn() shim — produces an EventEmitter-shaped child whose stdout
+	// spawn() shim - produces an EventEmitter-shaped child whose stdout
 	// emits chunks from execState.impl (or 'error' if it returned an Error).
 	// Lets tests written against execState exercise both exec- and
 	// spawn-based codepaths via a single mock surface.

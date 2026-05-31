@@ -70,7 +70,7 @@ export interface AgentSandboxSettings {
 }
 
 /**
- * Gated MCP tiers — user must opt in because each escalates beyond the
+ * Gated MCP tiers - user must opt in because each escalates beyond the
  * filesystem access Claude already has (RO vault, RW workspace). The "read"
  * and "writeScoped" tiers are not listed: they're always enabled when MCP is
  * on because disabling them wouldn't deny access, only remove convenience.
@@ -85,7 +85,7 @@ export function enabledTiersFromSettings(settings: AgentSandboxSettings): Set<Pe
 	const tiers = new Set<PermissionTier>(ALWAYS_ON_TIERS);
 	for (const def of GATED_TIERS) {
 		// Strict boolean check. A hand-edited `data.json` could put a string
-		// (e.g. `"false"`) in the slot — that's truthy, so a plain `if (...)`
+		// (e.g. `"false"`) in the slot - that's truthy, so a plain `if (...)`
 		// would incorrectly enable the tier. Treat anything other than the
 		// literal `true` as off.
 		if (settings[def.settingKey] === true) tiers.add(def.tier);
@@ -127,7 +127,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	autoEnableFirewall: true,
 	mcpEnabled: true,
 	mcpPort: 28080,
-	// Default 127.0.0.1 — host-only. The container reaches the host MCP server
+	// Default 127.0.0.1 - host-only. The container reaches the host MCP server
 	// via host.docker.internal, which resolves to a non-loopback IP, so
 	// container access requires an explicit opt-in (set 0.0.0.0 or the docker
 	// bridge gateway). This default keeps the vault tool surface off the LAN.
@@ -207,7 +207,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		} else {
 			this.plugin.settings.pendingRestartMarker = true;
 			void this.plugin.saveSettings();
-			new Notice("Settings saved — restart the container to apply changes.", 5000);
+			new Notice("Settings saved - restart the container to apply changes.", 5000);
 		}
 	}
 
@@ -516,7 +516,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						this.display();
 					}),
 			);
-		// dockerMode re-renders via display() on change — badge is correct at render time.
+		// dockerMode re-renders via display() on change - badge is correct at render time.
 		this.restartIndicator(dockerModeSetting, this.isRestartDirty("dockerMode"));
 
 		const isWsl = this.plugin.settings.dockerMode === "wsl";
@@ -529,7 +529,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.setName("Docker Compose path")
 			.setDesc(composeDesc + RESTART_CONTAINER_SUFFIX);
 
-		// Compose-file existence is computed off the event loop — the settings
+		// Compose-file existence is computed off the event loop - the settings
 		// tab re-renders on every keystroke (onChange → display()), so a sync
 		// stat per render adds up. The cache short-circuits repeats; the
 		// async miss path triggers a one-shot re-render when the answer lands.
@@ -545,7 +545,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				});
 			} else if (cached === undefined) {
 				// Kick off the probe; re-render the panel once the answer
-				// lands, but only if the general tab is still active —
+				// lands, but only if the general tab is still active -
 				// switching tabs mid-probe is fine since the answer is cached.
 				const activeAtProbe = this.activeTab;
 				fsp.access(yml)
@@ -591,7 +591,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		this.addValidatedTextSetting(el, {
 			name: "Vault write directory",
 			desc:
-				"Folder inside the vault where the container can write — nested paths like " +
+				"Folder inside the vault where the container can write - nested paths like " +
 				"@Inbox/agent-workspace are supported. The rest of the vault is mounted read-only. " +
 				"Created automatically on start.",
 			key: "vaultWriteDir",
@@ -615,7 +615,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			name: "Auto-start on load",
 			desc:
 				"Start the container when the plugin loads. If the container is " +
-				"already running from a previous session, this is a fast no-op — compose reuses it.",
+				"already running from a previous session, this is a fast no-op - compose reuses it.",
 			key: "autoStartContainer",
 		});
 
@@ -828,37 +828,35 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 					this.display();
 				}),
 			);
-		// mcpToken re-renders via display() on Regenerate — badge is correct at render time.
+		// mcpToken re-renders via display() on Regenerate - badge is correct at render time.
 		this.restartIndicator(mcpTokenSetting, this.isRestartDirty("mcpToken"));
 
-		new Setting(el).setName("Always enabled").setHeading();
-
-		const alwaysBox = el.createDiv({
-			cls: "setting-item-description sandbox-settings-section-margin",
-		});
-		alwaysBox.createEl("p", {
-			text: "These MCP tools are always available when MCP is enabled. They don't grant access beyond what Claude already has via the filesystem (RO vault, RW workspace) — they just offer a more ergonomic interface via Obsidian's metadata.",
-		});
-		// Don't burn the writeDir value into the blurb — the MCP server reads it
+		const alwaysEnabled = new Setting(el)
+			.setName("Always enabled")
+			.setDesc(
+				"These MCP tools are always available when MCP is enabled. They don't grant access " +
+					"beyond what Claude already has via the filesystem (RO vault, RW workspace) - " +
+					"they just offer a more ergonomic interface via Obsidian's metadata.",
+			)
+			.setHeading();
+		// Don't burn the writeDir value into the blurb - the MCP server reads it
 		// live (via getWriteDir), but the settings UI only re-renders on full
 		// tab re-render, so a stale snapshot would confuse users. Refer the
 		// reader to the "Vault write directory" setting instead.
-		const list = alwaysBox.createEl("ul", { cls: "sandbox-settings-info-list" });
+		const list = alwaysEnabled.descEl.createEl("ul", { cls: "sandbox-settings-info-list" });
 		list.createEl("li", {
-			text: "Read — search, read files, query metadata, tags, links, backlinks, frontmatter.",
+			text: "Read: search, read files, query metadata, tags, links, backlinks, frontmatter.",
 		});
 		list.createEl("li", {
-			text: "Write (scoped) — create and modify files within the configured vault write directory only (see General settings).",
+			text: "Write (scoped): create and modify files within the configured vault write directory only (see General settings).",
 		});
 
-		new Setting(el).setName("Escalations").setHeading();
-
-		const escDesc = el.createDiv({
-			cls: "setting-item-description sandbox-settings-section-margin",
-		});
-		escDesc.setText(
-			"These tiers grant Claude capabilities beyond its filesystem access. Enable only what you need.",
-		);
+		new Setting(el)
+			.setName("Escalations")
+			.setDesc(
+				"These tiers grant Claude capabilities beyond its filesystem access. Enable only what you need.",
+			)
+			.setHeading();
 
 		new Setting(el)
 			.setName("Vault-wide writes")
@@ -900,7 +898,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			name: "Allowed paths",
 			desc:
 				"Comma-separated vault path prefixes the agent may access outside the vault write " +
-				"directory. A more-specific allow entry overrides a block entry — e.g. add " +
+				"directory. A more-specific allow entry overrides a block entry - e.g. add " +
 				"'.obsidian/plugins/my-plugin/' to permit that plugin's data while the rest of " +
 				"the vault config folder stays blocked. Without 'Allowlist mode' below, allow " +
 				"entries only matter when they override a block.",
@@ -914,7 +912,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			name: "Allowlist mode",
 			desc:
 				"When on, paths not matching the allow list above are denied. " +
-				"When off, the allow list only overrides block entries — all other paths are accessible.",
+				"When off, the allow list only overrides block entries - all other paths are accessible.",
 			key: "mcpDefaultDeny",
 			onChange: () => void this.plugin.restartMcpIfRunning(),
 		});
@@ -923,9 +921,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			name: "Blocked paths",
 			desc:
 				"Comma-separated vault path prefixes denied outside the vault write directory. " +
-				"The vault config folder ('.obsidian/') is always blocked — use the allow list " +
-				"above to permit a specific subtree. A more-specific allow entry takes precedence " +
-				"(most-specific prefix wins).",
+				"Use the allow list above to permit a specific subtree; a more-specific allow entry " +
+				"takes precedence (most-specific prefix wins). " +
+				"The vault config folder ('.obsidian/') is always blocked.",
 			key: "mcpPathBlocklist",
 			validator: isValidPathPrefixList,
 			placeholder: "private/,secrets/",
@@ -1037,7 +1035,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			name: "Additional firewall domains",
 			desc:
 				"Domains to add to the firewall allowlist. " +
-				"Adds to — never overrides — the built-in baseline. For host-managed rules Claude cannot see, " +
+				"Adds to - never overrides - the built-in baseline. For host-managed rules Claude cannot see, " +
 				"edit container/firewall-extras.txt instead.",
 			key: "additionalFirewallDomains",
 			validator: isValidDomainList,

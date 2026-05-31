@@ -7,7 +7,7 @@
  * MAINTENANCE: when bumping @xterm/xterm in package.json, sync this
  * block from node_modules/@xterm/xterm/css/xterm.css to keep visual
  * behaviour aligned with the bundled JS. We embed rather than `@import`
- * because Obsidian doesn't bundle CSS imports for plugins — styles.css
+ * because Obsidian doesn't bundle CSS imports for plugins - styles.css
  * must be self-contained.
  * ============================================================ */
 
@@ -464,10 +464,6 @@
 }
 
 /* ── Settings blocks ───────────────────────────────── */
-
-.sandbox-settings-section-margin {
-	margin-bottom: 12px;
-}
 
 .sandbox-settings-info-list {
 	margin: 4px 0 0 16px;

@@ -41,7 +41,7 @@ export class StatusBarManager {
 		return this.state;
 	}
 
-	/** Imperative tooltip override — used for non-running states (Starting…, Stopped, Error). */
+	/** Imperative tooltip override - used for non-running states (Starting…, Stopped, Error). */
 	setDetails(details: string): void {
 		if (this.details === details) return;
 		this.details = details;
@@ -131,8 +131,8 @@ export class FirewallStatusBar {
 		this.el.setAttribute(
 			"aria-label",
 			this.state === "enabled"
-				? "Firewall active — click to disable"
-				: "Firewall inactive — click to enable",
+				? "Firewall active - click to disable"
+				: "Firewall inactive - click to enable",
 		);
 	}
 
