@@ -266,7 +266,8 @@ describe("isPathAllowed", () => {
 		expect(isPathAllowed("notes/file.md", [], ["private/"])).toBe(true);
 	});
 
-	it("blocklist overrides allowlist", () => {
+	it("blocklist overrides allowlist when same prefix length (tie → block)", () => {
+		// Same-length prefix: .obsidian is both blocked and allowed at the same depth → block wins.
 		expect(isPathAllowed("notes/private/x.md", ["notes/"], ["notes/private/"])).toBe(false);
 	});
 
@@ -276,6 +277,32 @@ describe("isPathAllowed", () => {
 
 	it("rejects path-prefix attacks", () => {
 		expect(isPathAllowed("notes-evil/file.md", ["notes/"], [])).toBe(false);
+	});
+
+	// Most-specific-prefix-wins tests
+	it("longer allow beats shorter block", () => {
+		// block: .obsidian/ — allow: .obsidian/plugins/x/ — allow wins
+		expect(
+			isPathAllowed(".obsidian/plugins/x/data.json", [".obsidian/plugins/x/"], [".obsidian"]),
+		).toBe(true);
+	});
+
+	it("longer block beats shorter allow", () => {
+		// allow: notes/ — block: notes/secret/ — block wins
+		expect(isPathAllowed("notes/secret/key.md", ["notes"], ["notes/secret"])).toBe(false);
+	});
+
+	it("exact tie goes to block", () => {
+		// Same prefix length — block wins.
+		expect(isPathAllowed("a/b.md", ["a"], ["a"])).toBe(false);
+	});
+
+	it("path matching neither list is blocked when allowlist is non-empty", () => {
+		expect(isPathAllowed("other/file.md", ["notes/"], [])).toBe(false);
+	});
+
+	it("path matching neither list is allowed when both lists are empty", () => {
+		expect(isPathAllowed("anything/file.md", [], [])).toBe(true);
 	});
 });
 

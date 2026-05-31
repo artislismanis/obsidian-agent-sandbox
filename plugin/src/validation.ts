@@ -189,17 +189,37 @@ export function isValidPort(value: string): boolean {
 }
 
 /**
- * Checks whether a path is allowed by the allowlist/blocklist rules.
- * - If allowlist is non-empty, the path must match at least one allowlist prefix.
- * - Blocklist entries are always denied, even if they match the allowlist.
- * - Empty lists = no restriction.
+ * Checks whether a path is allowed by the allowlist/blocklist rules using
+ * most-specific-prefix-wins semantics.
+ *
+ * Find the longest matching allow-prefix and the longest matching block-prefix.
+ * The longer one wins. On a tie (same prefix length) the block wins — this
+ * preserves security defaults while letting users add a more-specific allow
+ * entry (e.g. `.obsidian/plugins/x/`) to override a default block (e.g.
+ * `.obsidian/`).
+ *
+ * When neither list matches: if allowlist is non-empty the path is implicitly
+ * blocked (not on the allowlist); if allowlist is empty the path is allowed.
  */
 export function isPathAllowed(filePath: string, allowlist: string[], blocklist: string[]): boolean {
-	const matchesAnyPrefix = (prefixes: string[]): boolean =>
-		prefixes.some((p) => isPathWithinDir(filePath, p));
-	if (matchesAnyPrefix(blocklist)) return false;
-	if (allowlist.length === 0) return true;
-	return matchesAnyPrefix(allowlist);
+	// Length of the longest prefix from `prefixes` that matches filePath (-1 if none).
+	const longestMatch = (prefixes: string[]): number => {
+		let best = -1;
+		for (const p of prefixes) {
+			if (isPathWithinDir(filePath, p)) {
+				best = Math.max(best, normaliseVaultPath(p).length);
+			}
+		}
+		return best;
+	};
+
+	const aLen = longestMatch(allowlist);
+	const bLen = longestMatch(blocklist);
+
+	if (aLen >= 0 && bLen >= 0) return aLen > bLen; // tie → block (false)
+	if (aLen >= 0) return true;
+	if (bLen >= 0) return false;
+	return allowlist.length === 0; // neither matched: block if allowlist is non-empty
 }
 
 /**

@@ -167,11 +167,20 @@ function formatTags(cache: CachedMetadata | null): string[] {
 export interface PathFilter {
 	allowlist: string[];
 	blocklist: string[];
+	/** When provided, paths inside this directory always bypass the
+	 *  allow/block filter entirely — the filter governs only paths
+	 *  outside the agent's write workspace. */
+	getWriteDir?: () => string;
 }
 
-/** True when `pathFilter` admits `path` (or no filter is configured). */
+/** True when `pathFilter` admits `path` (or no filter is configured).
+ *
+ * Paths inside the write workspace (per `pathFilter.getWriteDir`) always
+ * pass — the filter governs outside-workspace paths only (#123). */
 export function isPathAllowedByFilter(path: string, pathFilter: PathFilter | undefined): boolean {
 	if (!pathFilter) return true;
+	const writeDir = pathFilter.getWriteDir?.();
+	if (writeDir && isPathWithinDir(path, writeDir)) return true;
 	return isPathAllowed(path, pathFilter.allowlist, pathFilter.blocklist);
 }
 

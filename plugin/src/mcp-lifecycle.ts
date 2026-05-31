@@ -108,17 +108,23 @@ export class McpLifecycle {
 				);
 			}
 			const allowlist = splitCsv(settings.mcpPathAllowlist);
-			const blocklist = splitCsv(settings.mcpPathBlocklist);
+			// configDir (.obsidian/) is prepended so it's blocked by default
+			// (#124). Users can override with a more-specific allow entry
+			// (e.g. ".obsidian/plugins/my-plugin/") — most-specific-prefix
+			// wins in isPathAllowed.
+			const configDir = this.app.vault.configDir;
+			const effectiveBlocklist = [configDir, ...splitCsv(settings.mcpPathBlocklist)];
 			this.server = new ObsidianMcpServer(this.app, {
 				port: settings.mcpPort,
 				bindAddress: settings.mcpBindAddress,
 				token: settings.mcpToken,
 				enabledTiers: enabledTiersFromSettings(settings),
 				getWriteDir: () => this.getSettings().vaultWriteDir,
-				pathFilter:
-					allowlist.length > 0 || blocklist.length > 0
-						? { allowlist, blocklist }
-						: undefined,
+				pathFilter: {
+					allowlist,
+					blocklist: effectiveBlocklist,
+					getWriteDir: () => this.getSettings().vaultWriteDir,
+				},
 				hooks: {
 					review: reviewsRequired(settings.mcpVaultWrites)
 						? async (req) => new DiffReviewModal(this.app, req).review()
