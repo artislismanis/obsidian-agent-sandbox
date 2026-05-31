@@ -220,12 +220,16 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		);
 	}
 
+	private isRestartDirty(key: keyof AgentSandboxSettings): boolean {
+		return (
+			Object.keys(this.restartSnapshot).length > 0 &&
+			this.plugin.settings[key] !== this.restartSnapshot[key]
+		);
+	}
+
 	/** Returns RESTART_CONTAINER_SUFFIX plus a pending-restart badge if the field value has diverged from the snapshot. */
 	private restartSuffix(key: keyof AgentSandboxSettings): string {
-		const pending =
-			Object.keys(this.restartSnapshot).length > 0 &&
-			this.plugin.settings[key] !== this.restartSnapshot[key];
-		return RESTART_CONTAINER_SUFFIX + (pending ? " ↺ Pending restart" : "");
+		return RESTART_CONTAINER_SUFFIX + (this.isRestartDirty(key) ? " ↺ Pending restart" : "");
 	}
 
 	/**
@@ -246,9 +250,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			onChange?: () => void;
 		},
 	): void {
-		new Setting(el)
+		const s = new Setting(el)
 			.setName(opts.name)
-			.setDesc(opts.requiresRestart ? opts.desc + this.restartSuffix(opts.key) : opts.desc)
+			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
 			.addText((text) => {
 				if (opts.placeholder) text.setPlaceholder(opts.placeholder);
 				text.setValue(String(this.plugin.settings[opts.key])).onChange(async (value) => {
@@ -257,6 +261,8 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						(this.plugin.settings[opts.key] as number) = n;
 						this.plugin.saveSettings();
 						text.inputEl.removeClass("sandbox-input-error");
+						if (opts.requiresRestart)
+							indicator.style.display = this.isRestartDirty(opts.key) ? "" : "none";
 						opts.onChange?.();
 					} else {
 						text.inputEl.addClass("sandbox-input-error");
@@ -264,6 +270,12 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				});
 				if (opts.narrow) text.inputEl.addClass("sandbox-settings-narrow-input");
 			});
+		const indicator = s.descEl.createEl("span", {
+			cls: "sandbox-settings-restart-indicator",
+			text: " ↺ Pending restart",
+		});
+		indicator.style.display =
+			opts.requiresRestart && this.isRestartDirty(opts.key) ? "" : "none";
 	}
 
 	/** Add a boolean Setting backed by a toggle. */
@@ -277,18 +289,26 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			onChange?: (value: boolean) => void | Promise<void>;
 		},
 	): void {
-		new Setting(el)
+		const s = new Setting(el)
 			.setName(opts.name)
-			.setDesc(opts.requiresRestart ? opts.desc + this.restartSuffix(opts.key) : opts.desc)
+			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings[opts.key] as boolean)
 					.onChange(async (value) => {
 						(this.plugin.settings[opts.key] as boolean) = value;
 						this.plugin.saveSettings();
+						if (opts.requiresRestart)
+							indicator.style.display = this.isRestartDirty(opts.key) ? "" : "none";
 						await opts.onChange?.(value);
 					}),
 			);
+		const indicator = s.descEl.createEl("span", {
+			cls: "sandbox-settings-restart-indicator",
+			text: " ↺ Pending restart",
+		});
+		indicator.style.display =
+			opts.requiresRestart && this.isRestartDirty(opts.key) ? "" : "none";
 	}
 
 	/**
@@ -307,9 +327,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			onChange?: () => void;
 		},
 	): void {
-		new Setting(el)
+		const s = new Setting(el)
 			.setName(opts.name)
-			.setDesc(opts.requiresRestart ? opts.desc + this.restartSuffix(opts.key) : opts.desc)
+			.setDesc(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc)
 			.addText((text) => {
 				if (opts.placeholder) text.setPlaceholder(opts.placeholder);
 				const initial = String(this.plugin.settings[opts.key]);
@@ -322,12 +342,20 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 						(this.plugin.settings[opts.key] as string) = value;
 						this.plugin.saveSettings();
 						text.inputEl.removeClass("sandbox-input-error");
+						if (opts.requiresRestart)
+							indicator.style.display = this.isRestartDirty(opts.key) ? "" : "none";
 						opts.onChange?.();
 					} else {
 						text.inputEl.addClass("sandbox-input-error");
 					}
 				});
 			});
+		const indicator = s.descEl.createEl("span", {
+			cls: "sandbox-settings-restart-indicator",
+			text: " ↺ Pending restart",
+		});
+		indicator.style.display =
+			opts.requiresRestart && this.isRestartDirty(opts.key) ? "" : "none";
 	}
 
 	/**
@@ -626,7 +654,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.setName("Bind address")
 			.setDesc(
 				"IP address ttyd binds to on the host. Default 127.0.0.1 (localhost only)." +
-					this.restartSuffix("ttydBindAddress"),
+					RESTART_CONTAINER_SUFFIX,
 			)
 			.addText((text) => {
 				text.setPlaceholder("127.0.0.1")
@@ -637,6 +665,9 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 							this.plugin.saveSettings();
 							text.inputEl.removeClass("sandbox-input-error");
 							ttydBindWarning.style.display = value === "0.0.0.0" ? "" : "none";
+							ttydBindIndicator.style.display = this.isRestartDirty("ttydBindAddress")
+								? ""
+								: "none";
 						} else {
 							text.inputEl.addClass("sandbox-input-error");
 						}
@@ -648,6 +679,11 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		});
 		ttydBindWarning.style.display =
 			this.plugin.settings.ttydBindAddress === "0.0.0.0" ? "" : "none";
+		const ttydBindIndicator = ttydBindSetting.descEl.createEl("span", {
+			cls: "sandbox-settings-restart-indicator",
+			text: " ↺ Pending restart",
+		});
+		ttydBindIndicator.style.display = this.isRestartDirty("ttydBindAddress") ? "" : "none";
 
 		new Setting(el).setName("Appearance").setHeading();
 
