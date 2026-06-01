@@ -15,6 +15,7 @@ vi.mock("obsidian", () => {
 import { Notice } from "obsidian";
 import { ActivityUi, AgentOutputNotifier } from "../activity";
 import type { ActivityEntry } from "../mcp-server";
+import { VIEW_TYPE_TERMINAL } from "../view-types";
 
 type NoticeMock = typeof Notice & { lastMessage: string; lastTimeout: number | undefined };
 
@@ -319,5 +320,102 @@ describe("ActivityUi attention propagation", () => {
 
 		ui.clear();
 		expect(setAttention).toHaveBeenLastCalledWith(0);
+	});
+});
+
+describe("ActivityUi per-tab routing", () => {
+	/** Build a live-leaf stub satisfying isTerminalViewLike. */
+	function makeLeaf(routingKey: string, sessionName: string | null = null) {
+		const setActivityPrefix = vi.fn();
+		const view = {
+			getViewType: () => VIEW_TYPE_TERMINAL,
+			getSessionName: () => sessionName,
+			getRoutingKey: () => routingKey,
+			setActivityPrefix,
+		};
+		return { leaf: { view }, setActivityPrefix };
+	}
+
+	function fixtureWithLeaves(leaves: { leaf: { view: unknown } }[]) {
+		const setAttention = vi.fn();
+		const statusBar = { setAttention, setDetails: vi.fn(), getState: () => "running" };
+		const activity = new Map<string, ActivityEntry>();
+		const app = {
+			workspace: {
+				getLeavesOfType: () => leaves.map((l) => l.leaf),
+				on: vi.fn(() => ({})),
+				offref: vi.fn(),
+			},
+		};
+		const ui = new ActivityUi(app as never, statusBar as never, () => activity);
+		return { ui, activity, setAttention };
+	}
+
+	it("routes to the matching unnamed tab only, not its sibling", () => {
+		const tab1 = makeLeaf("oas-tab-1");
+		const tab2 = makeLeaf("oas-tab-2");
+		const { ui } = fixtureWithLeaves([tab1, tab2]);
+
+		ui.route({ sessionName: "oas-tab-1", status: "working" });
+
+		expect(tab1.setActivityPrefix).toHaveBeenCalledWith("working");
+		expect(tab2.setActivityPrefix).not.toHaveBeenCalled();
+	});
+
+	it("routes to the correct tab when the other tab fires", () => {
+		const tab1 = makeLeaf("oas-tab-1");
+		const tab2 = makeLeaf("oas-tab-2");
+		const { ui } = fixtureWithLeaves([tab1, tab2]);
+
+		ui.route({ sessionName: "oas-tab-2", status: "awaiting_input" });
+
+		expect(tab2.setActivityPrefix).toHaveBeenCalledWith("awaiting_input");
+		expect(tab1.setActivityPrefix).not.toHaveBeenCalled();
+	});
+
+	it("routes named tab by sessionName", () => {
+		const named = makeLeaf("work", "work");
+		const unnamed = makeLeaf("oas-tab-3");
+		const { ui } = fixtureWithLeaves([named, unnamed]);
+
+		ui.route({ sessionName: "work", status: "idle" });
+
+		expect(named.setActivityPrefix).toHaveBeenCalledWith("idle");
+		expect(unnamed.setActivityPrefix).not.toHaveBeenCalled();
+	});
+
+	it("orphaned per-tab activity entries don't inflate the attention badge", () => {
+		// tab is open — oas-tab-1 should count
+		const tab1 = makeLeaf("oas-tab-1");
+		const { ui, activity, setAttention } = fixtureWithLeaves([tab1]);
+
+		// oas-tab-99 is a closed tab that was left in the activity map
+		activity.set("oas-tab-1", { status: "awaiting_input", updatedAt: Date.now() });
+		activity.set("oas-tab-99", { status: "awaiting_input", updatedAt: Date.now() });
+
+		ui.route({ sessionName: "oas-tab-1", status: "awaiting_input" });
+
+		// Only the live tab's entry should count
+		expect(setAttention).toHaveBeenLastCalledWith(1, ["(unnamed)"]);
+	});
+
+	it("named session entries always count regardless of open leaves", () => {
+		// No leaves open at all
+		const { ui, activity, setAttention } = fixtureWithLeaves([]);
+
+		activity.set("work", { status: "awaiting_input", updatedAt: Date.now() });
+		ui.route({ sessionName: "other", status: "idle" });
+
+		expect(setAttention).toHaveBeenLastCalledWith(1, ["work"]);
+	});
+
+	it("per-tab keys render as '(unnamed)' in attention names", () => {
+		const tab1 = makeLeaf("oas-tab-5");
+		const { ui, activity, setAttention } = fixtureWithLeaves([tab1]);
+
+		activity.set("oas-tab-5", { status: "awaiting_input", updatedAt: Date.now() });
+		ui.route({ sessionName: "oas-tab-5", status: "awaiting_input" });
+
+		expect(setAttention).toHaveBeenLastCalledWith(1, ["(unnamed)"]);
 	});
 });

@@ -12,6 +12,8 @@ import {
 	isValidSessionName,
 	isPathAllowed,
 	isPathWithinDir,
+	tabKey,
+	isValidTabId,
 } from "../validation";
 import { DockerManager } from "../docker";
 
@@ -357,4 +359,27 @@ describe("isValidPathPrefixList", () => {
 		expect(isValidPathPrefixList("notes/, ../escape")).toBe(false));
 	it("rejects leading slash", () => expect(isValidPathPrefixList("/abs")).toBe(false));
 	it("rejects backslashes", () => expect(isValidPathPrefixList("a\\b")).toBe(false));
+});
+
+describe("tabKey / isValidTabId", () => {
+	it("tabKey produces expected format", () => {
+		expect(tabKey(1)).toBe("oas-tab-1");
+		expect(tabKey(42)).toBe("oas-tab-42");
+	});
+	it("isValidTabId accepts valid tab keys", () => {
+		expect(isValidTabId("oas-tab-1")).toBe(true);
+		expect(isValidTabId("oas-tab-99")).toBe(true);
+		expect(isValidTabId("my-key")).toBe(true);
+	});
+	it("isValidTabId rejects values with spaces or special chars", () => {
+		expect(isValidTabId("")).toBe(false);
+		expect(isValidTabId("has space")).toBe(false);
+		expect(isValidTabId("has/slash")).toBe(false);
+		expect(isValidTabId("has'quote")).toBe(false);
+	});
+	it("tabKey output always passes isValidTabId", () => {
+		for (const id of [1, 2, 100, 9999]) {
+			expect(isValidTabId(tabKey(id))).toBe(true);
+		}
+	});
 });

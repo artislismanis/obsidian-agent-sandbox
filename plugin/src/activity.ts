@@ -32,12 +32,14 @@ function isTerminalViewLike(leafView: unknown): leafView is TerminalView {
 	const v = leafView as {
 		getViewType?: () => string;
 		getSessionName?: unknown;
+		getRoutingKey?: unknown;
 		setActivityPrefix?: unknown;
 	};
 	return (
 		typeof v.getViewType === "function" &&
 		v.getViewType() === VIEW_TYPE_TERMINAL &&
 		typeof v.getSessionName === "function" &&
+		typeof v.getRoutingKey === "function" &&
 		typeof v.setActivityPrefix === "function"
 	);
 }
@@ -147,7 +149,11 @@ export class ActivityUi {
 			if (isTerminalViewLike(leaf.view)) {
 				// Live view: use the view's own prefix setter (updates activityPrefix
 				// field + triggers a tab-header repaint via refreshLeafHeader).
-				const sessionKey = leaf.view.getSessionName() ?? DEFAULT_SESSION_KEY;
+				// getRoutingKey() returns the sessionName for named tabs (so
+				// multi-client tmux sharing keeps working) and the per-tab
+				// oas-tab-<id> key for unnamed tabs (so each tab only lights up
+				// for its own Claude process).
+				const sessionKey = leaf.view.getRoutingKey();
 				if (sessionKey === update.sessionName) {
 					leaf.view.setActivityPrefix(prefix);
 				}
@@ -178,7 +184,7 @@ export class ActivityUi {
 		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
 			if (isTerminalViewLike(leaf.view)) {
 				// Live view path.
-				const key = leaf.view.getSessionName() ?? DEFAULT_SESSION_KEY;
+				const key = leaf.view.getRoutingKey();
 				const entry = activity.get(key);
 				leaf.view.setActivityPrefix(entry ? STATUS_TO_PREFIX[entry.status] : null);
 			} else if (isDeferredTerminalLeaf(leaf)) {
@@ -215,11 +221,30 @@ export class ActivityUi {
 	private computeWaiting(): { count: number; names: string[] } {
 		const activity = this.getActivity();
 		if (!activity) return { count: 0, names: [] };
-		const names: string[] = [];
-		for (const [name, entry] of activity) {
-			if (entry.status === "awaiting_input") {
-				names.push(name === DEFAULT_SESSION_KEY ? "(unnamed)" : name);
+
+		// Build the set of routing keys currently backed by an open live leaf.
+		// Activity entries for closed tabs (per-tab keys like oas-tab-N) would
+		// otherwise persist in the LRU map and keep inflating the badge after
+		// the tab is gone. Named-session entries are always counted regardless
+		// of open leaves — a named session in tmux outlives the tab.
+		const liveKeys = new Set<string>();
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
+			if (isTerminalViewLike(leaf.view)) {
+				liveKeys.add(leaf.view.getRoutingKey());
 			}
+		}
+
+		const names: string[] = [];
+		for (const [key, entry] of activity) {
+			if (entry.status !== "awaiting_input") continue;
+			// Per-tab keys (oas-tab-*) are only counted when the tab is still open.
+			// Named-session keys and DEFAULT_SESSION_KEY are always counted.
+			const isPerTab = key.startsWith("oas-tab-");
+			if (isPerTab && !liveKeys.has(key)) continue;
+			// Humanise: DEFAULT_SESSION_KEY → "(unnamed)", per-tab → "(unnamed)",
+			// named sessions → their name.
+			const display = key === DEFAULT_SESSION_KEY || isPerTab ? "(unnamed)" : key;
+			names.push(display);
 		}
 		return { count: names.length, names };
 	}

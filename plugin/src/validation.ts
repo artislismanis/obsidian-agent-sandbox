@@ -53,6 +53,22 @@ export function isWriteDirInsideVault(vaultPath: string, writeDir: string): bool
 	return resolved === vaultPath || resolved.startsWith(base);
 }
 
+/**
+ * Build a per-tab routing key from the TerminalView instance id.
+ * Stable for the lifetime of a tab; injected into the shell env as
+ * OAS_TAB_ID so the notify-status hook can route status updates to the
+ * correct individual tab rather than the shared DEFAULT_SESSION_KEY bucket.
+ */
+export function tabKey(instanceId: number): string {
+	return `oas-tab-${instanceId}`;
+}
+
+/** Validate a tab-key value received from the shell environment. */
+const VALID_TAB_ID = /^[A-Za-z0-9_-]+$/;
+export function isValidTabId(id: string): boolean {
+	return VALID_TAB_ID.test(id);
+}
+
 const VALID_SESSION_NAME = /^[\w.-]+$/;
 
 /**

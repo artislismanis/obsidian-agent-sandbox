@@ -291,6 +291,17 @@ async function handleMessage(msg) {
 		return;
 	}
 
+	// Hold id-bearing requests until any in-flight initialize has established
+	// the session id. Claude Code awaits the initialize response before sending
+	// tool calls, but a batched-stdin client (notify-status.sh pipes initialize
+	// + tools/call back-to-back) does not — and a stateful upstream rejects a
+	// non-initialize POST that lacks Mcp-Session-Id (HTTP 400, -32600). Mirrors
+	// the notification gate above; the method check stops initialize awaiting
+	// itself.
+	if (msg.method !== "initialize" && pendingInitialize) {
+		await pendingInitialize;
+	}
+
 	// If a session-recovery replay is in progress, wait for it before sending —
 	// sessionId is null during replay and would cause the server to allocate an
 	// unwanted new session for this request.

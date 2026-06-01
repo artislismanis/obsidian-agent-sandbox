@@ -46,13 +46,31 @@ if [ -z "$token" ]; then
   exit 0
 fi
 
-# Only report a session name when actually attached to tmux ($TMUX is set by
-# tmux for all child processes). Without this guard, tmux display-message can
-# return the most-recently-active session name from a tmux server that is
-# running in another tab, causing the prefix to be routed to the wrong tab.
+# Resolve the routing identity in precedence order:
+#
+# 1. tmux #S  — when $TMUX is set the hook is running inside a named tmux
+#    session. The plugin injected `session <name>` to create/attach that
+#    session, so #S equals the tab's persisted sessionName. Named sessions are
+#    intentionally shared: multiple tabs attached to the same session should
+#    all light up together, so #S-first preserves that behaviour. Without the
+#    $TMUX guard, tmux display-message can return the most-recently-active
+#    session from another tab's tmux server and misroute the prefix.
+#
+# 2. OAS_TAB_ID — for unnamed ("Sandbox Terminal") tabs the plugin injects
+#    `export OAS_TAB_ID='oas-tab-<N>'` into the shell on initial attach. This
+#    key is used only when the tab is NOT inside tmux, routing the update
+#    exclusively to this tab rather than the shared DEFAULT_SESSION_KEY bucket.
+#    Not read inside tmux: the tmux server seeds its global env from whichever
+#    tab first ran `session <name>`, so OAS_TAB_ID would be stale for all
+#    subsequent sessions; #S-first sidesteps that env propagation issue.
+#
+# 3. Omit — if neither is available, the plugin falls back to DEFAULT_SESSION_KEY
+#    and all unnamed tabs light up (pre-per-tab-routing behaviour).
 session=""
 if [ -n "${TMUX:-}" ]; then
   session="$(tmux display-message -p '#S' 2>/dev/null || true)"
+elif [ -n "${OAS_TAB_ID:-}" ]; then
+  session="${OAS_TAB_ID}"
 fi
 
 # jq is installed in the sandbox image (container/Dockerfile); this hook
