@@ -22,6 +22,7 @@
 const http = require("http");
 const net = require("net");
 const readline = require("readline");
+const { execFileSync } = require("child_process");
 
 // Guard parseInt against non-numeric env values. Without the finite-check, a
 // typo like OAS_MCP_PORT=foo collapses to NaN and flows into
@@ -33,6 +34,30 @@ function envInt(name, fallback) {
 	const n = parseInt(raw, 10);
 	return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
+
+// Resolve the routing key once at startup: this proxy lives for one in-container
+// session, so tmux #S / OAS_TAB_ID are stable for its lifetime. Mirrors the
+// precedence in notify-status.sh so hook calls and direct agent calls always land
+// on the same activity-map key — preventing __default__ orphans that the
+// session-specific Stop hook can't reset.
+function resolveSessionKey() {
+	if (process.env.TMUX) {
+		// Inside tmux: use the session name. OAS_TAB_ID in the tmux server's env is
+		// stale (set by whichever tab first ran `session <name>`), so #S-first
+		// matches the hook's reasoning.
+		try {
+			return execFileSync("tmux", ["display-message", "-p", "#S"], {
+				encoding: "utf8",
+				timeout: 1000,
+			}).trim();
+		} catch {
+			return "";
+		}
+	}
+	// Unnamed tab: use the per-tab id injected by the plugin on initial attach.
+	return process.env.OAS_TAB_ID || "";
+}
+const RESOLVED_SESSION_KEY = resolveSessionKey();
 
 const PORT = envInt("OAS_MCP_PORT", 28080);
 const TOKEN = process.env.OAS_MCP_TOKEN || "";
@@ -248,6 +273,20 @@ function unavailableResult(id, method) {
 }
 
 async function handleMessage(msg) {
+	// Stamp the session routing key on agent_status_set calls before dispatch.
+	// Overrides any agent-supplied value so every status write from this
+	// in-container session lands on the same activity-map key as the lifecycle
+	// hooks, preventing __default__ orphans that the Stop hook can't reset.
+	// Falls through unchanged when RESOLVED_SESSION_KEY is empty (neither tmux
+	// nor OAS_TAB_ID resolved), preserving the hook's explicit value if present.
+	if (
+		RESOLVED_SESSION_KEY &&
+		msg.method === "tools/call" &&
+		msg.params?.name === "agent_status_set"
+	) {
+		msg.params.arguments = { ...(msg.params.arguments ?? {}), sessionName: RESOLVED_SESSION_KEY };
+	}
+
 	// Set pendingInitialize SYNCHRONOUSLY before any await so a notification
 	// arriving on the very next stdin tick can't observe `pendingInitialize ===
 	// null` while the initialize handler is still in `await isAvailable()`.

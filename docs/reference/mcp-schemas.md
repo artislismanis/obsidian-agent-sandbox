@@ -717,7 +717,7 @@ Report the current agent lifecycle state so the plugin can show which sessions a
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | `status` | `"idle" \| "working" \| "awaiting_input"` | yes | Current agent state |
-| `sessionName` | `string` | no | tmux session name if running inside one (e.g. $(tmux display-message -p '#S')). Omit for an unnamed session. Max 128 chars. |
+| `sessionName` | `string` | no | Session routing key. When running inside the Obsidian Agent Sandbox, omit this — the proxy stamps the correct key automatically. Max 128 chars. |
 | `detail` | `string` | no | Short human-readable context (e.g. tool name, question). Max 1024 chars. |
 
 ### `agent_time`
