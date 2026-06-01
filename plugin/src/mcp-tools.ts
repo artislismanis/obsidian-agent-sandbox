@@ -2504,7 +2504,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					.max(128)
 					.optional()
 					.describe(
-						"tmux session name if running inside one (e.g. $(tmux display-message -p '#S')). Omit for an unnamed session. Max 128 chars.",
+						"Session routing key. When running inside the Obsidian Agent Sandbox, omit this — the proxy stamps the correct key automatically. Max 128 chars.",
 					),
 				detail: z
 					.string()
