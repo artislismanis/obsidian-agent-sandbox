@@ -6,7 +6,7 @@ import type { TerminalSettings, TerminalThemeMode } from "./settings";
 import { logger, errMsg } from "./logger";
 import { refreshLeafHeader } from "./obsidian-internals";
 import { pollUntilReady, buildWsUrl, exponentialBackoff, encodeInputFrames } from "./ttyd-client";
-import { isValidSessionName } from "./validation";
+import { isValidSessionName, tabKey } from "./validation";
 
 import { VIEW_TYPE_TERMINAL } from "./view-types";
 export { VIEW_TYPE_TERMINAL };
@@ -188,6 +188,17 @@ export class TerminalView extends ItemView {
 
 	getSessionName(): string | null {
 		return this.sessionName;
+	}
+
+	/**
+	 * Routing key for activity-prefix updates. Named tabs use their session
+	 * name so that multiple clients attached to the same tmux session all
+	 * light up together (documented behaviour). Unnamed tabs use a per-tab
+	 * key derived from the instance id so each "Sandbox Terminal" tab only
+	 * reflects its own Claude process.
+	 */
+	getRoutingKey(): string {
+		return this.sessionName ?? tabKey(this.instanceId);
 	}
 
 	/**
@@ -653,6 +664,21 @@ export class TerminalView extends ItemView {
 				term.writeln("\x1b[33m[agent-sandbox] terminal reconnected\x1b[0m");
 				return;
 			}
+
+			// Inject the per-tab identity into the shell environment so
+			// notify-status.sh can route status updates to this specific tab
+			// rather than the shared DEFAULT_SESSION_KEY bucket. The value is
+			// single-quoted (safe: tabKey only produces [A-Za-z0-9_-] chars).
+			// Injected only on the initial attach — placing it above the
+			// isReconnect return would risk typing `export ...` into a running
+			// claude process inside a tmux reconnect.
+			const tabExport = `export OAS_TAB_ID='${tabKey(this.instanceId)}'\n`;
+			const tabExportId = window.setTimeout(() => {
+				if (gen === this.generation) {
+					this.wsTxBytes += sendInputText(ws, tabExport);
+				}
+			}, 300);
+			this.injectionTimers.push(tabExportId);
 
 			// Inject `session <name>` to attach to a tmux session. The 300ms
 			// delay gives bash time to render the prompt.

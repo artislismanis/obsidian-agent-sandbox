@@ -639,6 +639,195 @@ function runProxyOnce(
 	});
 }
 
+describe("proxy handshake race — batched-stdin regression", () => {
+	// Simulates a stateful upstream MCP server: allocates a session on
+	// initialize, rejects non-initialize POSTs that lack Mcp-Session-Id, and
+	// serves a tools/call result once the session is established.
+	function statefulServer(req: IncomingMessage, res: ServerResponse) {
+		let body = "";
+		req.on("data", (c: Buffer) => (body += c.toString()));
+		req.on("end", () => {
+			let parsed: Record<string, unknown>;
+			try {
+				parsed = JSON.parse(body) as Record<string, unknown>;
+			} catch {
+				res.writeHead(400);
+				res.end("bad json");
+				return;
+			}
+
+			const incomingSession = req.headers["mcp-session-id"] as string | undefined;
+
+			if (parsed.method === "initialize") {
+				const sid = "test-session-123";
+				res.writeHead(200, {
+					"Content-Type": "application/json",
+					"Mcp-Session-Id": sid,
+				});
+				res.end(
+					JSON.stringify({
+						jsonrpc: "2.0",
+						id: parsed.id ?? 1,
+						result: {
+							protocolVersion: "2025-03-26",
+							capabilities: {},
+							serverInfo: { name: "fake-obsidian", version: "0.0.0" },
+						},
+					}),
+				);
+				return;
+			}
+
+			// notifications/initialized — no response needed
+			if (parsed.id === undefined) {
+				res.writeHead(202);
+				res.end();
+				return;
+			}
+
+			// Any other request without a session id → reject (the server-side
+			// check that the proxy race used to trigger).
+			if (!incomingSession) {
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(
+					JSON.stringify({
+						jsonrpc: "2.0",
+						id: parsed.id ?? null,
+						error: {
+							code: -32600,
+							message: "Missing Mcp-Session-Id; call initialize first",
+						},
+					}),
+				);
+				return;
+			}
+
+			// Session present — serve tools/call result
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					jsonrpc: "2.0",
+					id: parsed.id,
+					result: { content: [{ type: "text", text: "OK" }] },
+				}),
+			);
+		});
+	}
+
+	it(
+		"tools/call returns result (not error) when piped back-to-back with initialize",
+		async () => {
+			// This is the exact sequence notify-status.sh uses: initialize,
+			// notifications/initialized, and tools/call all piped without
+			// waiting for any response. Before the fix the tools/call posted
+			// with sessionId=null → 400 → -32600 error frame. After the fix
+			// the proxy awaits pendingInitialize before posting tools/call.
+			await new Promise<void>((resolveTest, rejectTest) => {
+				let settled = false;
+				function settle(err?: Error) {
+					if (settled) return;
+					settled = true;
+					try {
+						proc.kill();
+					} catch {
+						// kill() throws if the process already exited; ignore
+					}
+					server.close();
+					if (err) rejectTest(err);
+					else resolveTest();
+				}
+
+				const server = createServer(statefulServer);
+				server.on("error", (e) => settle(e));
+
+				server.listen(0, "127.0.0.1", () => {
+					const { port } = server.address() as AddressInfo;
+
+					const proc = spawn("node", [PROXY_SCRIPT], {
+						env: {
+							...process.env,
+							OAS_MCP_HOST: "127.0.0.1",
+							OAS_MCP_PORT: String(port),
+							OAS_MCP_TOKEN: "proxy-test-token",
+							OAS_MCP_TIMEOUT_MS: String(PROXY_TIMEOUT_MS),
+						},
+						stdio: ["pipe", "pipe", "pipe"],
+					});
+
+					proc.on("error", (e) => settle(e));
+
+					const INIT = JSON.stringify({
+						jsonrpc: "2.0",
+						id: 1,
+						method: "initialize",
+						params: {
+							protocolVersion: "2025-03-26",
+							capabilities: {},
+							clientInfo: { name: "race-test", version: "1.0" },
+						},
+					});
+					const NOTIF = JSON.stringify({
+						jsonrpc: "2.0",
+						method: "notifications/initialized",
+					});
+					const CALL = JSON.stringify({
+						jsonrpc: "2.0",
+						id: 2,
+						method: "tools/call",
+						params: {
+							name: "agent_status_set",
+							arguments: { status: "awaiting_input" },
+						},
+					});
+
+					// Write all three frames without waiting — the bug scenario
+					proc.stdin.write(INIT + "\n");
+					proc.stdin.write(NOTIF + "\n");
+					proc.stdin.write(CALL + "\n");
+					proc.stdin.end();
+
+					// Collect output and find the frame with id:2
+					let buf = "";
+					proc.stdout.on("data", (chunk: Buffer) => {
+						buf += chunk.toString();
+						const lines = buf.split("\n");
+						for (let i = 0; i < lines.length - 1; i++) {
+							const line = lines[i].trim();
+							if (!line) continue;
+							let frame: Record<string, unknown>;
+							try {
+								frame = JSON.parse(line) as Record<string, unknown>;
+							} catch {
+								continue;
+							}
+							if (frame.id === 2) {
+								try {
+									expect(
+										frame.error,
+										"id:2 must be a result, not an error",
+									).toBeUndefined();
+									expect(frame.result).toBeDefined();
+									settle();
+								} catch (e) {
+									settle(e instanceof Error ? e : new Error(String(e)));
+								}
+								return;
+							}
+						}
+						buf = lines[lines.length - 1];
+					});
+
+					setTimeout(
+						() => settle(new Error("proxy race test: no id:2 frame within budget")),
+						PROXY_TIMEOUT_MS + 8_000,
+					);
+				});
+			});
+		},
+		PROXY_TIMEOUT_MS + 10_000,
+	);
+});
+
 describe("proxy SSE keepalive — timeout regression", () => {
 	it(
 		"times out with an error frame when the upstream server sends no data",
