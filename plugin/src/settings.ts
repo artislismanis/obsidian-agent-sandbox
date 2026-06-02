@@ -813,7 +813,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			});
 		const mcpBindWarning = mcpBindSetting.descEl.createEl("div", {
 			cls: "sandbox-settings-field-warning",
-			text: "0.0.0.0 exposes MCP to your network. Bearer-token auth is the only line of defense.",
+			text: "0.0.0.0 exposes MCP to your network. Bearer-token auth is the only line of defence.",
 		});
 		mcpBindWarning.style.display =
 			this.plugin.settings.mcpBindAddress === "0.0.0.0" ? "" : "none";

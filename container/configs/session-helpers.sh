@@ -4,7 +4,7 @@
 # Wrap a bash in a tmux session so whatever runs inside survives
 # ttyd disconnects AND supports multiple simultaneous viewers
 # (e.g. Obsidian terminal + browser pointed at ttyd). Sessions
-# die on container restart/rebuild — matching the lifecycle
+# die on container restart/rebuild, matching the lifecycle
 # contract documented in README.
 #
 # Usage:
@@ -23,7 +23,7 @@ _list_sessions() {
 }
 
 session() {
-    # Use ${1:-} (default-empty) so this works under `set -u` — a user
+    # Use ${1:-} (default-empty) so this works under `set -u`. A user
     # interactive shell that later sources rc files setting -u would
     # otherwise bomb with "$1: unbound variable" instead of the usage
     # message. The function is sourced from .bashrc, so its compat with
@@ -37,12 +37,12 @@ session() {
     # Ensure the target session exists (no-op if already there).
     tmux has-session -t "$1" 2>/dev/null || tmux new-session -d -s "$1"
     if [ -n "$TMUX" ]; then
-        # Already inside tmux — tmux refuses to nest, so use
+        # Already inside tmux: tmux refuses to nest, so use
         # switch-client to swap sessions cleanly from the current
         # attached client. No "sessions should be nested" error.
         tmux switch-client -t "$1"
     else
-        # Not inside tmux — plain attach.
+        # Not inside tmux: plain attach.
         tmux attach-session -t "$1"
     fi
 }

@@ -96,7 +96,7 @@ let updateHeaderMissingWarned = false;
 /**
  * Trigger Obsidian's leaf-header refresh.
  *
- * Tries `updateHeader()` first — an internal that re-reads `getDisplayText()`
+ * Tries `updateHeader()` first, an internal that re-reads `getDisplayText()`
  * from the view and updates the DOM. Falls back to writing `leaf.getDisplayText()`
  * directly to `tabHeaderInnerTitleEl` if the method is absent (renamed/removed
  * in a newer Obsidian build). Logs once so the fallback is observable.
@@ -111,7 +111,7 @@ export function refreshLeafHeader(leaf: WorkspaceLeaf): void {
 		updateHeaderMissingWarned = true;
 		logger.warn(
 			"ActivityUi",
-			"`updateHeader` missing on WorkspaceLeaf — falling back to direct title write. Check for an Obsidian API change.",
+			"`updateHeader` missing on WorkspaceLeaf; falling back to direct title write. Check for an Obsidian API change.",
 		);
 	}
 	l.tabHeaderInnerTitleEl?.setText(leaf.getDisplayText());

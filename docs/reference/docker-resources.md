@@ -51,7 +51,7 @@ The read-only vault + rw write-dir is the core security invariant: the agent can
 
 `ttydBindAddress` can be set to `0.0.0.0` for LAN access (warning surfaced).
 
-The MCP HTTP server runs **on the host** inside the Obsidian plugin — it is not a port published by the container. The container reaches it via `host.docker.internal`, which is wired to the host gateway by `docker-compose.yml`'s `extra_hosts`. Default `mcpBindAddress=127.0.0.1` keeps MCP host-only; set it to the docker bridge gateway IP (or `0.0.0.0`) to let the container reach it. The container's outbound firewall already pinholes the MCP port to `host.docker.internal`, see `explanation/security-model.md`.
+The MCP HTTP server runs **on the host** inside the Obsidian plugin. It is not a port published by the container. The container reaches it via `host.docker.internal`, which is wired to the host gateway by `docker-compose.yml`'s `extra_hosts`. Default `mcpBindAddress=127.0.0.1` keeps MCP host-only; set it to the docker bridge gateway IP (or `0.0.0.0`) to let the container reach it. The container's outbound firewall pinholes the MCP port to `host.docker.internal`, see `explanation/security-model.md`.
 
 ## Environment variables
 
@@ -61,15 +61,15 @@ Injected into the container by the plugin at compose-up time (see `container/doc
 - `OAS_ALLOWED_PRIVATE_HOSTS`, `OAS_ALLOWED_DOMAINS`
 - `OAS_MCP_TOKEN`, `OAS_MCP_PORT`, `OAS_HOST_IP`
 - `OAS_TTYD_PORT`, `OAS_TTYD_DEBUG`, `OAS_SUDO_PASSWORD`, `TERM`
-- `MEMORY_FILE_PATH` — the env var the [memory MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/memory) reads. Not prefixed (external contract).
+- `MEMORY_FILE_PATH`: the env var the [memory MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/memory) reads. Not prefixed (external contract).
 
 Host-only (consumed by compose to shape the run, not visible inside the container):
 
-- `OAS_VAULT_HOST_PATH` — bind-mount source for the vault.
-- `OAS_TTYD_BIND` — host interface ttyd listens on (port mapping only).
-- `OAS_CONTAINER_MEMORY`, `OAS_CONTAINER_CPUS` — resource limits.
-- `OAS_IP_MASQ` — whether to enable NAT masquerading.
-- `CLAUDE_UID`, `CLAUDE_GID` — build-time UID/GID for the `claude` user.
+- `OAS_VAULT_HOST_PATH`: bind-mount source for the vault.
+- `OAS_TTYD_BIND`: host interface ttyd listens on (port mapping only).
+- `OAS_CONTAINER_MEMORY`, `OAS_CONTAINER_CPUS`: resource limits.
+- `OAS_IP_MASQ`: whether to enable NAT masquerading.
+- `CLAUDE_UID`, `CLAUDE_GID`: build-time UID/GID for the `claude` user.
 
 Use `verify.sh` from inside the container to see the full set of in-container values.
 

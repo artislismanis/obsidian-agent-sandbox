@@ -20,7 +20,7 @@ EOF
 # Cheap numeric check: returns 0 (true) if $1 is a non-empty decimal,
 # else 1. Guards against jq emitting non-numeric strings ("--", "n/a")
 # which would otherwise blow up printf '%.0f' with "invalid number" on
-# every status-line redraw — polluting the UI on every turn.
+# every status-line redraw, polluting the UI on every turn.
 is_numeric() {
     case "${1:-}" in
         ''|*[!0-9.]*|.|*..*) return 1 ;;

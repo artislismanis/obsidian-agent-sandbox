@@ -1,6 +1,6 @@
 # Agent Sandbox
 
-An Obsidian plugin and containerized sandbox for working with your vault through AI coding agents. Start/stop the sandbox, manage terminals, and let Claude Code (or any MCP-capable agent) read/write vault content with human-in-the-loop review — all without leaving Obsidian.
+An Obsidian plugin and containerised sandbox for working with your vault through AI coding agents. Start and stop the sandbox, manage terminals, and let Claude Code (or any MCP-capable agent) read and write vault content with human-in-the-loop review, without leaving Obsidian.
 
 ## What it does
 
@@ -8,7 +8,7 @@ An Obsidian plugin and containerized sandbox for working with your vault through
 - **Sandboxed agent.** The vault is mounted read-only except for one write directory. Outbound traffic is firewalled to a curated allowlist. The agent can't escape its cage.
 - **MCP integration.** A local HTTP MCP server exposes 30+ tools for searching, reading, writing, and navigating the vault with Obsidian-metadata awareness (tags, backlinks, frontmatter, the graph).
 - **Human-in-the-loop writes.** The **Vault-wide writes** dropdown (None / Reviewed / Full) controls writes outside the workspace dir; pick **Reviewed** and every such write pops an Obsidian modal with a diff, approve or reject per operation.
-- **Plugin API bridge.** Tools for Dataview, Tasks, Templater, Periodic Notes, and Canvas — delegated to the target plugin's own API when it's installed.
+- **Plugin API bridge.** Tools for Dataview, Tasks, Templater, Periodic Notes, and Canvas, delegated to the target plugin's own API when installed.
 - **Activity feedback.** Claude Code reports working/idle/awaiting-input state via MCP; the terminal tab prefix and status bar show which session needs your attention.
 
 ## Architecture in one picture
@@ -34,12 +34,12 @@ Container (oas-sandbox)
 
 The tutorials are the fastest way in:
 
-- [**Getting started**](docs/tutorials/getting-started.md) — first-time setup through running Claude.
-- [**First agent task**](docs/tutorials/first-agent-task.md) — walk through a real Claude + vault task, including the review flow.
+- [**Getting started**](docs/tutorials/getting-started.md): first-time setup through running Claude.
+- [**First agent task**](docs/tutorials/first-agent-task.md): walk through a real Claude and vault task, including the review flow.
 
 ## Documentation
 
-Organized per [Diátaxis](https://diataxis.fr/): four quadrants by purpose.
+Organised per [Diátaxis](https://diataxis.fr/): four quadrants by purpose.
 
 ### Tutorials (learning, practical)
 - [Getting started](docs/tutorials/getting-started.md)
@@ -51,17 +51,17 @@ Organized per [Diátaxis](https://diataxis.fr/): four quadrants by purpose.
 - [Keep sessions alive across restarts](docs/how-to/persistent-sessions.md)
 - [Use multiple terminals](docs/how-to/use-multiple-terminals.md)
 - [Add tools to the container](docs/how-to/add-tools-to-container.md)
-- [Customize the workspace](docs/how-to/customize-workspace.md)
+- [Customise the workspace](docs/how-to/customize-workspace.md)
 - [Update the plugin](docs/how-to/update-plugin.md)
 - [Troubleshoot terminal disconnects](docs/how-to/troubleshoot-terminal-disconnects.md)
-- [Release a new version](docs/how-to/release.md) — maintainers only
+- [Release a new version](docs/how-to/release.md): maintainers only
 
 ### Reference (working, theoretical)
 - [Commands](docs/reference/commands.md)
 - [Settings](docs/reference/settings.md)
 - [Keyboard shortcuts](docs/reference/keyboard-shortcuts.md)
 - [Docker resources](docs/reference/docker-resources.md)
-- [MCP tool schemas](docs/reference/mcp-schemas.md) — generated from `buildTools()`
+- [MCP tool schemas](docs/reference/mcp-schemas.md): generated from `buildTools()`
 - [Project structure](docs/reference/project-structure.md)
 
 ### Explanation (learning, theoretical)
@@ -72,16 +72,16 @@ Organized per [Diátaxis](https://diataxis.fr/): four quadrants by purpose.
 
 ### Project meta
 
-Outside the four Diátaxis quadrants — these are about the project itself rather than how to use, configure, or understand the sandbox.
+These sit outside the four Diátaxis quadrants. They cover the project itself, not how to use, configure, or understand the sandbox.
 
 - [Roadmap](docs/roadmap.md)
-- [Testing](docs/testing.md) — three automated layers (unit / integration / e2e)
+- [Testing](docs/testing.md): three automated layers (unit / integration / e2e)
 
 ## Requirements
 
 - Obsidian ≥ 1.5
 - Docker (Docker Desktop / Rancher Desktop / native)
-- Windows: WSL2 (if using rootless Docker inside WSL, enable `loginctl enable-linger` and `systemctl --user enable --now docker` — see [getting-started](docs/tutorials/getting-started.md#troubleshooting))
+- Windows: WSL2 (if using rootless Docker inside WSL, enable `loginctl enable-linger` and `systemctl --user enable --now docker`; see [getting-started](docs/tutorials/getting-started.md#troubleshooting))
 
 ## Releases
 
@@ -112,9 +112,9 @@ The pre-commit hook runs `lint-staged` on staged files. CI runs `check` on every
 
 ### Trust model
 
-The `claude` user inside the container has narrow sudo for `apt-get` / `apt` only, gated by a password set at container start from `OAS_SUDO_PASSWORD` (sourced from the plugin's "Sudo password" setting or `container/.env`). `entrypoint.sh` unsets the variable before dropping privileges, so the password is never visible inside session shells. The narrow sudo is a *human-intent gate* — it forces deliberate, password-typed installs in interactive sessions while preventing the agent from making unattended system changes. If a tool proves useful, promote it to `container/Dockerfile` in a reviewable PR rather than re-installing on every restart.
+The `claude` user inside the container has narrow sudo for `apt-get` / `apt` only, gated by a password set at container start from `OAS_SUDO_PASSWORD` (sourced from the plugin's "Sudo password" setting or `container/.env`). `entrypoint.sh` unsets the variable before dropping privileges, so the password is never visible inside session shells. The narrow sudo is a *human-intent gate*: it forces deliberate, password-typed installs in interactive sessions and prevents the agent from making unattended system changes. If a tool proves useful, promote it to `container/Dockerfile` in a reviewable PR rather than re-installing on every restart.
 
-`container/` is **not mounted into the container** — Dockerfile, compose config, scripts, and `firewall-extras.txt` are invisible from inside, so an agent session cannot mutate the build contract. The single exception is `verify.sh`, which is COPY'd into the image so Claude can introspect runtime state.
+`container/` is **not mounted into the container**: Dockerfile, compose config, scripts, and `firewall-extras.txt` are invisible from inside, so an agent session cannot mutate the build contract. The single exception is `verify.sh`, which is COPY'd into the image so Claude can introspect runtime state.
 
 Branch protection: never push infra changes (`container/`, `.github/workflows/`) directly to `main`. Open a PR.
 
@@ -122,6 +122,6 @@ Branch protection: never push infra changes (`container/`, `.github/workflows/`)
 
 Under active development, pre-1.0. Tagged releases are published via CI; community plugin submission follows beta stabilisation. See [roadmap](docs/roadmap.md).
 
-## License
+## Licence
 
 [MIT](LICENSE)

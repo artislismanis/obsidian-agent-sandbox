@@ -10,11 +10,11 @@ export default defineConfig({
 		// is fast and doesn't need Docker.
 		include: ["src/**/*.test.ts"],
 		coverage: {
-			// v8 provider — faster than istanbul, ships with Node, no babel.
+			// v8 provider: faster than istanbul, ships with Node, no babel.
 			provider: "v8",
 			reporter: ["text", "html", "json-summary"],
 			// Exclude Obsidian-API-bound modules that are exercised by e2e
-			// rather than unit tests (see plugin/CLAUDE.md "Testing" — these
+			// rather than unit tests (see plugin/CLAUDE.md "Testing"; these
 			// would require mocking Plugin/ItemView/WorkspaceLeaf).
 			exclude: [
 				"src/__tests__/**",

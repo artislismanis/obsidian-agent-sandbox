@@ -669,7 +669,7 @@ export class TerminalView extends ItemView {
 			// notify-status.sh can route status updates to this specific tab
 			// rather than the shared DEFAULT_SESSION_KEY bucket. The value is
 			// single-quoted (safe: tabKey only produces [A-Za-z0-9_-] chars).
-			// Injected only on the initial attach — placing it above the
+			// Injected only on the initial attach; placing it above the
 			// isReconnect return would risk typing `export ...` into a running
 			// claude process inside a tmux reconnect.
 			const tabExport = `export OAS_TAB_ID='${tabKey(this.instanceId)}'\n`;

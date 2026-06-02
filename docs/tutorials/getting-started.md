@@ -5,7 +5,7 @@ First-time setup through running Claude Code inside the sandbox. You'll install 
 ## Prerequisites
 
 - **Obsidian** ≥ 1.5.
-- **Docker** installed and running. On Windows we assume WSL2 + Docker Desktop (or Rancher Desktop in Docker-compat mode). On macOS / Linux, Docker Desktop or native. If you're using **rootless Docker inside WSL**, see the troubleshooting note at the bottom of this page — the daemon needs user-linger enabled to survive logout.
+- **Docker** installed and running. On Windows we assume WSL2 + Docker Desktop (or Rancher Desktop in Docker-compat mode). On macOS / Linux, Docker Desktop or native. If you're using **rootless Docker inside WSL**, see the troubleshooting note at the bottom of this page: the daemon needs user-linger enabled to survive logout.
 - **This repository cloned somewhere** outside your vault (e.g. `~/code/obsidian-agent-sandbox`). The container build happens from there.
 - A test vault. If you're nervous about this, create a fresh empty vault for your first run.
 
@@ -22,9 +22,9 @@ This produces `oas-sandbox:latest` (~800 MB). Takes a few minutes the first time
 
 Two options:
 
-**Option A — BRAT (recommended).** See [`how-to/install-via-brat.md`](../how-to/install-via-brat.md). BRAT downloads the latest GitHub Release and keeps the plugin updated automatically.
+**Option A, BRAT (recommended).** See [`how-to/install-via-brat.md`](../how-to/install-via-brat.md). BRAT downloads the latest GitHub Release and keeps the plugin updated.
 
-**Option B — build from source.**
+**Option B, build from source.**
 
 ```bash
 cd ~/code/obsidian-agent-sandbox/plugin
@@ -42,13 +42,13 @@ Either way: restart Obsidian → **Settings → Community plugins → Agent Sand
 
 - **Docker mode**: `WSL` (Windows) or `Local` (macOS/Linux).
 - **Docker Compose path**: the absolute path to `~/code/obsidian-agent-sandbox/container/`.
-- **WSL distro name**: only matters in WSL mode — default `Ubuntu`.
+- **WSL distro name**: matters in WSL mode only. Default `Ubuntu`.
 
-The settings tab validates the path on input — a green tick means Obsidian can see `docker-compose.yml`.
+The settings tab validates the path on input: a green tick means Obsidian can see `docker-compose.yml`.
 
 ## 4. Start the container
 
-Run the command **Sandbox: Start Container** from the command palette. (The ribbon's terminal icon — labelled **Open Sandbox Terminal** — opens a terminal once the container is up; if the container is stopped, it prompts you to start it.)
+Run the command **Sandbox: Start Container** from the command palette. (The ribbon's terminal icon, labelled **Open Sandbox Terminal**, opens a terminal once the container is up. If the container is stopped, it prompts you to start it.)
 
 The status bar cycles through:
 - `Sandbox: ⏳ Starting`
@@ -84,7 +84,7 @@ The plugin ships an MCP server at `localhost:28080` that Claude Code can call. A
 
 > Search my vault for notes about "project planning".
 
-You should see it use `vault_search` (via the MCP server) and return structured results with metadata, not just raw greps.
+You should see it use `vault_search` (via the MCP server) and return structured results with metadata, not raw greps.
 
 ## Troubleshooting
 
@@ -119,6 +119,6 @@ Apply before first `dockerd-rootless.sh` start, or restart the daemon afterwards
 
 ## What's next?
 
-- **Settings → Agent Sandbox → MCP** — opt into escalations as you get comfortable: `writeReviewed` for human-in-the-loop writes outside the workspace directory, `extensions` for Dataview/Templater/Tasks integration.
+- **Settings → Agent Sandbox → MCP**: opt into escalations as you get comfortable. `writeReviewed` for human-in-the-loop writes outside the workspace directory, `extensions` for Dataview/Templater/Tasks integration.
 - Read `tutorials/first-agent-task.md` for a walk-through on a real task.
 - Read `explanation/security-model.md` to understand what the sandbox does and doesn't protect against.

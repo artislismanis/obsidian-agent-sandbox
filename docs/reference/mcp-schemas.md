@@ -650,7 +650,7 @@ Read a .canvas file and return its JSON structure: nodes (text/file/link/group) 
 
 **Title:** Dataview query
 
-Run a Dataview Query Language (DQL) query against the vault. Requires the Dataview plugin to be installed and enabled. Returns the serialized result.
+Run a Dataview Query Language (DQL) query against the vault. Requires the Dataview plugin to be installed and enabled. Returns the serialised result.
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -717,7 +717,7 @@ Report the current agent lifecycle state so the plugin can show which sessions a
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | `status` | `"idle" \| "working" \| "awaiting_input"` | yes | Current agent state |
-| `sessionName` | `string` | no | Session routing key. When running inside the Obsidian Agent Sandbox, omit this — the proxy stamps the correct key automatically. Max 128 chars. |
+| `sessionName` | `string` | no | Session routing key. When running inside the Obsidian Agent Sandbox, omit this; the proxy stamps the correct key. Max 128 chars. |
 | `detail` | `string` | no | Short human-readable context (e.g. tool name, question). Max 1024 chars. |
 
 ### `agent_time`

@@ -16,26 +16,26 @@ services:
     container_name: oas-sandbox
     # Drop the full default cap set, then re-add only what we need.
     # Network:
-    #   NET_ADMIN     — iptables/ipset rules in init-firewall.sh
-    #   NET_RAW       — required by iptables to open raw sockets when
+    #   NET_ADMIN     : iptables/ipset rules in init-firewall.sh
+    #   NET_RAW       : required by iptables to open raw sockets when
     #                   loading the OUTPUT/filter chains; without it
     #                   `iptables -A OUTPUT` fails with "Permission
     #                   denied (you must be root)" even though uid 0
     #                   is in effect.
     # Entrypoint needs these to fix bind-mount ownership on first start
-    # when the host's vault subdir UID doesn't match CLAUDE_UID — and to
+    # when the host's vault subdir UID doesn't match CLAUDE_UID; and to
     # drop privileges from root to claude. Without them, root inside the
     # container is powerless to chown/install/setuid:
-    #   CHOWN         — chown -R on vault subdirs; install -o on memory.json
-    #   FOWNER        — chmod fallback on non-Linux-native mounts
-    #   DAC_OVERRIDE  — write to bind-mount dirs the runtime UID doesn't own
-    #   SETUID/SETGID — gosu drop-to-claude + entrypoint `sudo -u "#uid"`
+    #   CHOWN         : chown -R on vault subdirs; install -o on memory.json
+    #   FOWNER        : chmod fallback on non-Linux-native mounts
+    #   DAC_OVERRIDE  : write to bind-mount dirs the runtime UID doesn't own
+    #   SETUID/SETGID : gosu drop-to-claude + entrypoint `sudo -u "#uid"`
     #                   write-check (NB: `no-new-privileges:true` blocks
     #                   gain-of-privileges via setuid binaries; the syscall
     #                   itself still needs SETUID/SETGID caps to fire from
     #                   root, which is the legitimate priv-drop direction).
-    #   FSETID        — preserve setgid bit on dirs during chmod -R fallback
-    #   KILL          — tini (PID 1, uid 0) forwards SIGTERM to the gosu'd
+    #   FSETID        : preserve setgid bit on dirs during chmod -R fallback
+    #   KILL          : tini (PID 1, uid 0) forwards SIGTERM to the gosu'd
     #                   claude process (uid 1000). The Linux kill(2) check
     #                   requires KILL when real/effective uid differ from
     #                   target's real/saved-set uid; without this cap docker
@@ -55,7 +55,7 @@ services:
       - FSETID
       - KILL
     # Defence in depth: blocks setuid/setgid escalation after gosu drops to
-    # `claude` — which also blocks the password-gated sudoers entry. The plugin
+    # `claude`, which also blocks the password-gated sudoers entry. The plugin
     # lifts this restriction at runtime when a sudo password is configured (see
     # docker-compose.no-new-privileges-off.override.yml); direct CLI users keep
     # the restrictive default.
@@ -66,7 +66,7 @@ services:
     # 512-pid cap below.
     init: true
     # File-descriptor cap. (pids cap lives under deploy.resources.limits.pids
-    # below — compose v2 rejects setting both pids_limit and that key.)
+    # below; compose v2 rejects setting both pids_limit and that key.)
     ulimits:
       nofile:
         soft: 4096
@@ -85,21 +85,21 @@ services:
       # container (entrypoint.sh), so the container-side port also moves;
       # mapping host:OAS_TTYD_PORT to container:7681 would route to a closed
       # port while the healthcheck (which also probes OAS_TTYD_PORT inside)
-      # reports "healthy" — silent breakage.
+      # reports "healthy"; silent breakage.
       - "${OAS_TTYD_BIND:-127.0.0.1}:${OAS_TTYD_PORT:-7681}:${OAS_TTYD_PORT:-7681}"
     volumes:
-      # Claude's workspace — rw, becomes the in-container cwd
+      # Claude's workspace: rw, becomes the in-container cwd
       - ../workspace:/workspace:rw
-      # Vault — read-only overlay inside workspace
+      # Vault: read-only overlay inside workspace
       - ${OAS_VAULT_HOST_PATH:-./example-vault}:/workspace/vault:ro
-      # Writable vault subfolder — rw overlay
+      # Writable vault subfolder: rw overlay
       - ${OAS_VAULT_HOST_PATH:-./example-vault}/${OAS_VAULT_WRITE_DIR:-agent-workspace}:/workspace/vault/${OAS_VAULT_WRITE_DIR:-agent-workspace}:rw
-      # Vault infrastructure — rw overlay, independent of write directory
+      # Vault infrastructure: rw overlay, independent of write directory
       - ${OAS_VAULT_HOST_PATH:-./example-vault}/.oas:/workspace/vault/.oas:rw
-      # Project-maintained firewall baseline — read-only; overrides the
+      # Project-maintained firewall baseline: read-only; overrides the
       # baked-in image copy so the baseline can be updated without rebuilding.
       - ./firewall-baseline.txt:/etc/oas/firewall-baseline.txt:ro
-      # Host-managed firewall allowlist extras — read-only; Claude cannot
+      # Host-managed firewall allowlist extras: read-only; Claude cannot
       # see or modify this path. Mount target lives outside /workspace so
       # it's not reachable through the vault read tools either.
       - ./firewall-extras.txt:/etc/oas/firewall-extras.txt:ro
@@ -112,14 +112,14 @@ services:
       - OAS_VAULT_WRITE_DIR=${OAS_VAULT_WRITE_DIR:-agent-workspace}
       # OAS_MEMORY_FILE_NAME is internal config; MEMORY_FILE_PATH is the
       # external contract with @modelcontextprotocol/server-memory and
-      # MUST keep that exact name — that server reads MEMORY_FILE_PATH
+      # MUST keep that exact name; that server reads MEMORY_FILE_PATH
       # from its env. The OAS_-prefixed name and the legacy name share
       # the default so both can't drift apart.
       - OAS_MEMORY_FILE_NAME=${OAS_MEMORY_FILE_NAME:-memory.json}
       - MEMORY_FILE_PATH=/workspace/vault/.oas/${OAS_MEMORY_FILE_NAME:-memory.json}
       - OAS_SUDO_PASSWORD=${OAS_SUDO_PASSWORD:-}
       - OAS_TTYD_PORT=${OAS_TTYD_PORT:-7681}
-      # ttyd verbosity (1=err … 7=debug). Read by entrypoint.sh when
+      # ttyd verbosity (1=err ... 7=debug). Read by entrypoint.sh when
       # launching ttyd. Defaults to 6 (info) inside entrypoint when unset.
       - OAS_TTYD_DEBUG=${OAS_TTYD_DEBUG:-}
       - OAS_MCP_TOKEN=${OAS_MCP_TOKEN:-}
@@ -127,7 +127,7 @@ services:
       - OAS_HOST_IP=${OAS_HOST_IP:-}
       - OAS_ALLOWED_DOMAINS=${OAS_ALLOWED_DOMAINS:-}
     sysctls:
-      # IPv6 disabled — simplifies firewall (IPv4-only rules) and matches
+      # IPv6 disabled: simplifies firewall (IPv4-only rules) and matches
       # common local network configs. All allowlisted domains resolve A records.
       - net.ipv6.conf.all.disable_ipv6=1
     extra_hosts:
@@ -139,7 +139,7 @@ services:
       # $OAS_TTYD_PORT into the healthcheck shell, where it expands against
       # the container's env (set by the OAS_TTYD_PORT key above) instead of
       # the host shell. `-fL` follows redirects and treats any non-2xx
-      # (after redirect) as an error via curl's own exit code — tolerates
+      # (after redirect) as an error via curl's own exit code; tolerates
       # a future ttyd 301/302.
       test: ["CMD-SHELL", "curl -fsSL -o /dev/null \"http://localhost:$$OAS_TTYD_PORT/\""]
       interval: 30s
@@ -164,12 +164,12 @@ networks:
   default:
     driver: bridge
     driver_opts:
-      # Default true (Docker's normal behavior). Plugin sets OAS_IP_MASQ=false
+      # Default true (Docker's normal behaviour). Plugin sets OAS_IP_MASQ=false
       # in WSL mirrored mode so container source IPs reach Windows un-NAT'd
       # and match the Hyper-V firewall allowlist (172.16.0.0/12). In NAT mode
-      # leaving masquerade on is required — Windows has no return route to the
+      # leaving masquerade on is required; Windows has no return route to the
       # docker bridge subnets.
-      # NOTE: driver_opts only take effect on network creation — switching
+      # NOTE: driver_opts only take effect on network creation; switching
       # modes requires `docker compose down && docker compose up -d` so the
       # network is recreated with the new opt.
       com.docker.network.bridge.enable_ip_masquerade: "${OAS_IP_MASQ:-true}"

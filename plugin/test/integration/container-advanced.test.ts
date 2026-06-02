@@ -10,7 +10,7 @@ import {
 const SKIP = !isDockerAvailable() || !isImageBuilt();
 
 // Container lifecycle is managed by globalSetup.ts.
-describe.skipIf(SKIP)("Container — advanced (firewall, tmux, port remap)", () => {
+describe.skipIf(SKIP)("Container: advanced (firewall, tmux, port remap)", () => {
 	// ── tmux / persistent sessions ──
 	it("tmux is installed", () => {
 		expect(containerExec("tmux -V")).toMatch(/tmux/);

@@ -12,11 +12,11 @@ updates:
       include: scope
     # Route dependabot PRs to the maintainer so they don't sit unassigned
     # while the cooldown window elapses. Without this, the cooldown's
-    # supply-chain-risk justification is undercut — the PR may auto-pass
+    # supply-chain-risk justification is undercut; the PR may auto-pass
     # checks and merge timing depends entirely on incidental review.
     reviewers:
       - artislismanis
-    # Wait before opening a PR on a fresh release — buys time for the
+    # Wait before opening a PR on a fresh release; buys time for the
     # community to spot a compromised action republish (cf. tj-actions /
     # changed-files, July 2025). Patches still flow promptly.
     cooldown:
@@ -24,7 +24,7 @@ updates:
       semver-major-days: 7
     # Group all minor/patch action bumps into one weekly PR so reviewers
     # see a coherent bump set instead of one PR per action. Majors stay
-    # ungrouped — they may have breaking API or input changes that
+    # ungrouped; they may have breaking API or input changes that
     # deserve their own review path.
     groups:
       actions:
@@ -36,7 +36,7 @@ updates:
 
   - package-ecosystem: npm
     directory: "/plugin"
-    # Weekly batches with grouping — daily-per-dep churn was unreviewable.
+    # Weekly batches with grouping; daily-per-dep churn was unreviewable.
     schedule:
       interval: weekly
     labels:
@@ -68,11 +68,11 @@ updates:
       # typescript: TS 6.0 metapackage release (8.59.4 typescript-eslint
       # combo) has a peer-dep snarl that fails `npm install`. Wait for
       # typescript-eslint v9 GA before attempting. Minors/patches under 5.x
-      # still flow — the lockfile is currently stale at 5.3.3.
+      # still flow; the lockfile is currently stale at 5.3.3.
       - dependency-name: "typescript"
         update-types:
           - "version-update:semver-major"
-      # mocha: v11 changed module exports — our e2e specs do
+      # mocha: v11 changed module exports; our e2e specs do
       # `import { describe, it } from "mocha"` which returns undefined.
       # Lift when we either pin mocha differently in e2e or refactor the
       # imports to match v11's shape.
@@ -80,7 +80,7 @@ updates:
         update-types:
           - "version-update:semver-major"
       # @xterm/xterm: v6 has real breaking changes (overviewRulerWidth
-      # renamed, alt→ctrl+arrow mapping removed, canvas renderer dropped,
+      # renamed, alt-to-ctrl+arrow mapping removed, canvas renderer dropped,
       # windowsMode/fastScrollModifier removed). Our usage is light enough
       # to likely survive, but a deliberate migration PR (with manual
       # terminal smoke testing across platforms) is the safer path than
@@ -93,7 +93,7 @@ updates:
     # lockfile. Patterns are evaluated in order; first match wins.
     #
     # `update-types: [minor, patch]` on each named group keeps major
-    # bumps as separate PRs — a major usually has migration notes the
+    # bumps as separate PRs; a major usually has migration notes the
     # reviewer should read separately from a routine patch sweep.
     groups:
       typescript:

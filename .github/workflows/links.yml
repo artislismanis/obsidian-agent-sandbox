@@ -15,7 +15,7 @@ on:
       - "**.md"
       - ".github/workflows/links.yml"
   schedule:
-    # Weekly external-link sweep — catches upstream URL changes between
+    # Weekly external-link sweep; catches upstream URL changes between
     # commits. Staggered 5 minutes off codeql.yml's slot (which uses 06:00)
     # so both scheduled jobs don't contend for runners or hit GitHub's
     # scheduler with the same firing minute.
@@ -44,7 +44,7 @@ jobs:
           # Only exclude api.github.com (rate-limited) and a couple of
           # hosts that consistently fail lychee's anchor checks. Repo
           # links under github.com/<owner>/<repo> remain checkable so we
-          # catch the typical doc-drift bug. Drop 429 from --accept — a
+          # catch the typical doc-drift bug. Drop 429 from --accept: a
           # 429 means "couldn't tell", which silently passes broken
           # links if rate limits hit.
           args: >-

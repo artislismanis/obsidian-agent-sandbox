@@ -8,7 +8,7 @@
 
 ## Problem
 
-The "Notify on agent output" setting (`agentOutputNotify`, `plugin/src/settings.ts:60`) fires an in-app `Notice` when files are created or modified. Today it is gated to `vaultWriteDir` (`plugin/src/activity.ts:172,179`) — writes anywhere else in the vault are silently ignored. This misses writes made via MCP tools running in the `writeReviewed`/`writeVault` tiers, and any time the agent reorganises files across folders.
+The "Notify on agent output" setting (`agentOutputNotify`, `plugin/src/settings.ts:60`) fires an in-app `Notice` when files are created or modified. It is gated to `vaultWriteDir` (`plugin/src/activity.ts:172,179`): writes anywhere else in the vault are ignored. This misses writes made via MCP tools running in the `writeReviewed`/`writeVault` tiers, and any time the agent reorganises files across folders.
 
 Two additional coverage gaps surfaced:
 - `vault.on('delete')` and `vault.on('rename')` are not subscribed (`plugin/src/main.ts:352-360`), so destructive operations produce no notification at all.
@@ -36,7 +36,7 @@ agentOutputNotify: {
 agentOutputNotifyScope: "writeDir" | "vaultWide";  // default "writeDir"
 ```
 
-**Migration in `loadSettings`** when the stored value is the legacy string enum — map and write back so the key disappears on next save:
+**Migration in `loadSettings`** when the stored value is the legacy string enum: map and write back so the key disappears on next save:
 
 | Legacy value | Migrated to |
 |---|---|
@@ -53,14 +53,14 @@ Scope description: *"Whether notifications fire only for writes inside the confi
 ### `plugin/src/activity.ts`
 
 - `AgentOutputNotifier` constructor adds getters for the events object and the scope alongside the existing `vaultWriteDir` getter.
-- Rename `pathInsideWriteDir` → `shouldNotifyForPath`. Returns `true` unconditionally when scope is `"vaultWide"`; otherwise delegates to `isPathWithinDir(path, this.getWriteDir())` — preserving the fail-closed behaviour for empty `writeDir`.
+- Rename `pathInsideWriteDir` → `shouldNotifyForPath`. Returns `true` when scope is `"vaultWide"`; otherwise delegates to `isPathWithinDir(path, this.getWriteDir())`, preserving the fail-closed behaviour for empty `writeDir`.
 - Extend the buffer entry kind union to `"created" | "modified" | "deleted" | "renamed"`.
-- Per-event gating — each handler checks its own bool. Drop the mode-enum dispatch.
-  - `onCreate(path)` — `if (!this.getEvents().create) return;`
-  - `onModify(path)` — `if (!this.getEvents().modify) return;`
-  - `onDelete(path)` — `if (!this.getEvents().delete) return;`
-  - `onRename(newPath, oldPath)` — `if (!this.getEvents().rename) return;` (use `newPath` for `shouldNotifyForPath`)
-- Relabel notices: `"Vault write: created foo.md"` (single event) and `"Vault writes: 2 created, 1 deleted"` (aggregate). Drop the "Agent ..." prefix — in `vaultWide` mode the same events fire for human edits made directly in the Obsidian UI, so the label would be wrong.
+- Per-event gating: each handler checks its own bool. Drop the mode-enum dispatch.
+  - `onCreate(path)`: `if (!this.getEvents().create) return;`
+  - `onModify(path)`: `if (!this.getEvents().modify) return;`
+  - `onDelete(path)`: `if (!this.getEvents().delete) return;`
+  - `onRename(newPath, oldPath)`: `if (!this.getEvents().rename) return;` (use `newPath` for `shouldNotifyForPath`)
+- Relabel notices: `"Vault write: created foo.md"` (single event) and `"Vault writes: 2 created, 1 deleted"` (aggregate). Drop the "Agent ..." prefix: in `vaultWide` mode the same events fire for human edits made in the Obsidian UI, so the label would be wrong.
 
 ### `plugin/src/main.ts`
 
@@ -83,10 +83,10 @@ this.registerEvent(
 
 ## Tests
 
-Unit (Vitest) — extend `plugin/test/activity.test.ts` (or equivalent, verify location during impl):
+Unit (Vitest), extend `plugin/test/activity.test.ts` (or equivalent, verify location during impl):
 
 - `vaultWide` scope fires for paths outside `vaultWriteDir`; `writeDir` scope still suppresses them.
-- Each event toggle is independently honored — e.g. `{ create: true, modify: false, delete: true, rename: true }` fires for create/delete/rename, not modify.
+- Each event toggle is honoured on its own: `{ create: true, modify: false, delete: true, rename: true }` fires for create/delete/rename, not modify.
 - All four flags false → notifier is silent.
 - `onDelete` and `onRename` flow through the debounce + rate-limit pipeline.
 - Migration from each of the three legacy enum values maps to the correct object.
@@ -95,13 +95,13 @@ Unit (Vitest) — extend `plugin/test/activity.test.ts` (or equivalent, verify l
 
 1. Set scope to `vaultWide`, all four event toggles on. From inside the vault (e.g. Obsidian UI), create, modify, delete, and rename a file outside the write dir. Observe four notices with "Vault write: ..." text.
 2. Turn the "modify" toggle off. Edit a file. No notice; the other three kinds still fire.
-3. Set scope to `writeDir` with all toggles on. Repeat step 1 outside the write dir — zero notices. Repeat inside the write dir — four notices.
+3. Set scope to `writeDir` with all toggles on. Repeat step 1 outside the write dir: zero notices. Repeat inside the write dir: four notices.
 4. Trigger `vault_move` via the MCP server (e.g. `vault_move_anywhere`) to move a file across folders. With scope `vaultWide` and the rename toggle on, observe "Vault write: renamed ..." notice.
 5. Load a vault with a legacy `agentOutputNotify: "new"` value in `data.json`. Open Settings. Confirm the four toggles match the migrated state `{create: true, modify: false, delete: true, rename: true}`.
 
 ## Sequencing
 
-Single PR. Relabel, new event subscriptions, and scope setting are all bundled — they are a coherent UX change and share the same test surface. No companion follow-up issues.
+Single PR. Relabel, new event subscriptions, and scope setting are all bundled: they form a coherent UX change and share the same test surface. No companion follow-up issues.
 
 Standalone follow-ups explicitly out of scope:
 - Provenance tracking (distinguishing agent vs human writes)

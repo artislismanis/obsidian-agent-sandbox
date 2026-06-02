@@ -76,7 +76,7 @@ services:
         healthcheck:
             test: ["CMD-SHELL", 'curl -fsSL -o /dev/null "http://localhost:$$OAS_TTYD_PORT/"']
             interval: 10s
-            # Match prod's 5s timeout — Round 8 raised this on prod after a 3s
+            # Match prod's 5s timeout: Round 8 raised this on prod after a 3s
             # ceiling produced false-negative unhealthy flips under heavy
             # startup load. Test runs should not be flakier than prod.
             timeout: 5s

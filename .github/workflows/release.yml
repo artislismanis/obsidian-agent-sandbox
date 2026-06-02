@@ -62,9 +62,9 @@ jobs:
             exit 1
           fi
           # versions.json[tag] is the minAppVersion that this plugin
-          # release requires. It MUST match manifest.json.minAppVersion —
+          # release requires. It MUST match manifest.json.minAppVersion;
           # otherwise BRAT and Obsidian would disagree about which Obsidian
-          # build is the floor, and one of them would silently apply the
+          # build is the floor, and one of them would apply the
           # wrong gate. version-bump.mjs keeps these in sync; this is the
           # CI guard against a hand-edited release path.
           VERSIONS_MIN=$(jq -r --arg v "$TAG_VERSION" '.[$v]' versions.json)
@@ -74,7 +74,7 @@ jobs:
           fi
 
       # Gate the release on the same check.yml runs against PRs. The SLSA
-      # attestation proves the artifact came from this workflow — it does NOT
+      # attestation proves the artifact came from this workflow; it does NOT
       # prove the artifact works. Without this gate, a release tag pushed
       # against a regression-laden commit ships signed garbage to BRAT stable.
       - name: Lint + format + type-check + unit tests
@@ -93,14 +93,14 @@ jobs:
           sha256sum main.js manifest.json styles.css > SHA256SUMS
           cat SHA256SUMS
 
-      # Sign the three release artifacts (not SHA256SUMS — the attestation
+      # Sign the three release artifacts (not SHA256SUMS; the attestation
       # IS the signed root of trust). Verify with:
       #   gh attestation verify <file> --repo <owner>/<repo>
       - name: Attest build provenance
         # SHA-pinned: a moving major-tag pin on the action that signs
-        # releases is a supply-chain liability — a tag re-push would
+        # releases is a supply-chain liability; a tag re-push would
         # compromise every future release signature with no rollback.
-        # SHA is v4.1.0 — keep comment in sync when bumping.
+        # SHA is v4.1.0; keep comment in sync when bumping.
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
         with:
           subject-path: |
@@ -109,7 +109,7 @@ jobs:
             plugin/dist/styles.css
 
       - name: Create GitHub Release
-        # SHA is v2.6.2 — keep comment in sync when bumping.
+        # SHA is v2.6.2; keep comment in sync when bumping.
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           name: ${{ github.ref_name }}

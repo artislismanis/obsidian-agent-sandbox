@@ -537,7 +537,10 @@ export default class AgentSandboxPlugin extends Plugin {
 					mode: 0o600,
 				}),
 			)
-			.catch((e) => logger.error("Plugin", "Could not save secrets file", e));
+			.catch((e) => {
+				logger.error("Plugin", "Could not save secrets file", e);
+				new Notice(`Failed to save sudo password: ${errMsg(e)}`);
+			});
 	}
 
 	saveSettings() {

@@ -59,7 +59,7 @@ echo ""
 echo "--- T12: stress and edge cases ---"
 
 # ---------------------------------------------------------------------------
-# T12.2 — Vault path with unicode
+# T12.2: Vault path with unicode
 # Run a vault_list through a symlink whose path contains non-ASCII characters.
 # Confirms that the mount point and paths survive unicode path round-trips.
 # ---------------------------------------------------------------------------
@@ -81,11 +81,11 @@ if [[ -n "$UNICODE_VAULT" ]]; then
         skip "12.2 (could not read token via unicode symlink path)"
     fi
 else
-    skip "12.2 (could not create unicode symlink — filesystem may not support it)"
+    skip "12.2 (could not create unicode symlink; filesystem may not support it)"
 fi
 
 # ---------------------------------------------------------------------------
-# T12.3 — Very large note read
+# T12.3: Very large note read
 # Create a ~5 MB file in the vault and read it via vault_read.
 # Asserts a success result is returned without timeout.
 # ---------------------------------------------------------------------------
@@ -116,7 +116,7 @@ if [[ -f "$LARGE_FILE" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# T12.7a — Teardown leaves no oas-test-* debris
+# T12.7a: Teardown leaves no oas-test-* debris
 # Run compose down on the test project, then scan for leftover resources.
 # Uses the oas-test compose project (integration test project, not production).
 # ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# T12.1 — Docker daemon stop mid-session (optional, host-disruptive)
+# T12.1: Docker daemon stop mid-session (optional, host-disruptive)
 # ---------------------------------------------------------------------------
 
 for arg in "${@:2}"; do

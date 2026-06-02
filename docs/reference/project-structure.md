@@ -3,7 +3,7 @@
 ```
 obsidian-agent-sandbox/
 ├── plugin/            Obsidian plugin source (TypeScript, xterm.js, esbuild)
-│   ├── src/                     see `ls plugin/src/*.ts`; selected highlights below — see plugin/CLAUDE.md for the full map
+│   ├── src/                     see `ls plugin/src/*.ts`; selected highlights below (see plugin/CLAUDE.md for the full map)
 │   │   ├── main.ts              Plugin entry; commands; MCP wiring; UI routing
 │   │   ├── settings.ts          Settings interface + tabbed UI + tier derivation
 │   │   ├── docker.ts            DockerManager: WSL/local compose commands + firewall
@@ -14,7 +14,7 @@ obsidian-agent-sandbox/
 │   │   ├── mcp-server.ts        ObsidianMcpServer (HTTP, auth, audit, activity)
 │   │   ├── mcp-tools.ts         Tool registry across all tiers (big file)
 │   │   ├── mcp-extensions.ts    Plugin-integration tools (Canvas, Dataview, Tasks, Templater, Periodic Notes)
-│   │   ├── mcp-cache.ts         VaultCache — metadata-invalidated graph cache
+│   │   ├── mcp-cache.ts         VaultCache: metadata-invalidated graph cache
 │   │   ├── permission-tiers.ts  Tier metadata + reviewsRequired() / vaultWriteTiers()
 │   │   ├── analyse.ts           AnalyseManager (file-menu "Analyse in Sandbox")
 │   │   ├── activity.ts          ActivityUi + AgentOutputNotifier
@@ -39,7 +39,7 @@ obsidian-agent-sandbox/
 │       ├── init-firewall.sh
 │       └── verify.sh            Also baked into image at /usr/local/bin/verify.sh
 │
-├── workspace/         Claude's domain — mounted rw at /workspace/ inside the container
+├── workspace/         Claude's domain, mounted rw at /workspace/ inside the container
 │   ├── CLAUDE.md                Rules the agent follows inside the sandbox
 │   ├── .claude/
 │   │   ├── settings.json        Claude Code project settings (permission mode, hooks)
@@ -62,8 +62,8 @@ obsidian-agent-sandbox/
 
 Three folders own three different concerns:
 
-- **`plugin/`** — the Obsidian plugin. Runs on the host, drives the container.
-- **`container/`** — infra. The image definition and scripts the container runs. Deliberately not mounted inside the running container so Claude (as agent) cannot modify its own environment.
-- **`workspace/`** — Claude's configurable domain. Mounted rw inside the container. Contains Claude Code config, skills, hooks, prompts — the stuff Claude legitimately writes to.
+- **`plugin/`**: the Obsidian plugin. Runs on the host, drives the container.
+- **`container/`**: infra. The image definition and scripts the container runs. Not mounted inside the running container, so Claude (as agent) cannot modify its own environment.
+- **`workspace/`**: Claude's configurable domain. Mounted rw inside the container. Holds Claude Code config, skills, hooks, and prompts: the files Claude writes to.
 
 See `explanation/architecture.md` for the rationale and the three-tier extensibility model.

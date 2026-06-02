@@ -9,7 +9,7 @@
 //
 // Connectivity is re-probed before every request, with a 30-second positive
 // cache. The proxy recovers automatically once Obsidian becomes reachable
-// for *new* `tools/list` queries — but Claude Code caches an empty tools list
+// for *new* `tools/list` queries, but Claude Code caches an empty tools list
 // from the first response, so an existing Claude session that started with
 // Obsidian unreachable will not see the tools appear without a `/mcp restart
 // obsidian` (or full restart). Start Obsidian before `claude` if you want
@@ -26,7 +26,7 @@ const { execFileSync } = require("child_process");
 
 // Guard parseInt against non-numeric env values. Without the finite-check, a
 // typo like OAS_MCP_PORT=foo collapses to NaN and flows into
-// net.createConnection({port: NaN}) / http.request({timeout: NaN}) — opaque
+// net.createConnection({port: NaN}) / http.request({timeout: NaN}): opaque
 // failure or a silently disabled timeout.
 function envInt(name, fallback) {
 	const raw = process.env[name];
@@ -38,7 +38,7 @@ function envInt(name, fallback) {
 // Resolve the routing key once at startup: this proxy lives for one in-container
 // session, so tmux #S / OAS_TAB_ID are stable for its lifetime. Mirrors the
 // precedence in notify-status.sh so hook calls and direct agent calls always land
-// on the same activity-map key — preventing __default__ orphans that the
+// on the same activity-map key, preventing __default__ orphans that the
 // session-specific Stop hook can't reset.
 function resolveSessionKey() {
 	if (process.env.TMUX) {
@@ -81,7 +81,7 @@ let sessionId = null;
 // a sessionId. Claude Code emits `initialize` followed immediately by
 // `notifications/initialized` on consecutive stdin lines, and handleMessage
 // runs without awaiting, so without this gate the notification's httpPost
-// would fire with sessionId still null — losing the Mcp-Session-Id header
+// would fire with sessionId still null, losing the Mcp-Session-Id header
 // the upstream server uses for routing. Held only until the first
 // initialize resolves.
 let pendingInitialize = null;
@@ -206,7 +206,7 @@ function httpPost(message) {
 					const status = res.statusCode || 0;
 					if (status < 200 || status >= 300) {
 						// A stale-session 404 (-32001) means the server restarted
-						// but is still reachable — don't flip the probe to false.
+						// but is still reachable, so don't flip the probe to false.
 						const isStale = status === 404 && /Session expired/i.test(buf);
 						if (!isStale) lastProbeResult = false;
 						const err = new Error(
@@ -243,7 +243,7 @@ function httpPost(message) {
 			lastProbeResult = false;
 			reject(
 				new Error(
-					`Obsidian MCP handler did not respond within ${HTTP_TIMEOUT_MS}ms — check Obsidian's developer console for plugin errors.`,
+					`Obsidian MCP handler did not respond within ${HTTP_TIMEOUT_MS}ms; check Obsidian's developer console for plugin errors.`,
 				),
 			);
 		});
@@ -303,7 +303,7 @@ async function handleMessage(msg) {
 
 	// Notifications have no id and need no response. The MCP spec requires
 	// `notifications/initialized` after `initialize`, so we still forward
-	// them upstream (fire-and-forget) when the server is reachable —
+	// them upstream (fire-and-forget) when the server is reachable;
 	// dropping them would prevent the upstream session from leaving init.
 	if (msg.id === undefined) {
 		if (available) {
@@ -333,7 +333,7 @@ async function handleMessage(msg) {
 	// Hold id-bearing requests until any in-flight initialize has established
 	// the session id. Claude Code awaits the initialize response before sending
 	// tool calls, but a batched-stdin client (notify-status.sh pipes initialize
-	// + tools/call back-to-back) does not — and a stateful upstream rejects a
+	// + tools/call back-to-back) does not, and a stateful upstream rejects a
 	// non-initialize POST that lacks Mcp-Session-Id (HTTP 400, -32600). Mirrors
 	// the notification gate above; the method check stops initialize awaiting
 	// itself.
@@ -341,7 +341,7 @@ async function handleMessage(msg) {
 		await pendingInitialize;
 	}
 
-	// If a session-recovery replay is in progress, wait for it before sending —
+	// If a session-recovery replay is in progress, wait for it before sending;
 	// sessionId is null during replay and would cause the server to allocate an
 	// unwanted new session for this request.
 	if (pendingRecovery) await pendingRecovery;
@@ -362,7 +362,7 @@ async function handleMessage(msg) {
 
 		if (isStale && cachedInitializeMsg) {
 			try {
-				// Only one concurrent recovery — peers that also hit 404 await
+				// Only one concurrent recovery; peers that also hit 404 await
 				// the same promise rather than each replaying initialize.
 				if (!pendingRecovery) {
 					const recoveryStart = Date.now();
@@ -450,7 +450,7 @@ function main() {
 			// handleMessage's inner try/catch normally produces an error
 			// frame. This fallback covers the rare path where it throws
 			// before reaching that catch (e.g. a malformed `msg` that
-			// passed JSON.parse but tripped a property access) — without
+			// passed JSON.parse but tripped a property access), without
 			// it, Claude would hang waiting for a response that never
 			// comes until the request times out.
 			if (msg && typeof msg === "object" && msg.id !== undefined) {
@@ -470,7 +470,7 @@ function main() {
 	});
 
 	rl.on("close", () => {
-		// stdin EOF — drain in-flight handlers with a bounded budget so we
+		// stdin EOF: drain in-flight handlers with a bounded budget so we
 		// don't abandon pending HTTP requests mid-flight (response would never
 		// reach Claude; upstream may still mutate vault state).
 		const deadline = Promise.race([

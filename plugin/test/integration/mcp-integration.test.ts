@@ -19,7 +19,7 @@ import {
 } from "./helpers";
 
 // Mock the symbols imported by code-under-test. FileSystemAdapter is the
-// load-bearing one — obsidian-internals.ts does `adapter instanceof
+// load-bearing one: obsidian-internals.ts does `adapter instanceof
 // FileSystemAdapter` to decide whether to read basePath, and without the
 // export every write-path tool throws on import. prepareFuzzySearch is used
 // by vault_suggest_links; both `prepare*` returns no-match-iterator stubs.
@@ -96,7 +96,7 @@ describe.skipIf(SKIP)("MCP HTTP server (standalone, no Obsidian)", () => {
 				resolvedLinks: {},
 				unresolvedLinks: {},
 				// VaultCache (mcp-cache.ts) wires a `resolved` listener via on()
-				// and unregisters via offref() — mock the trio so server.start
+				// and unregisters via offref(): mock the trio so server.start
 				// doesn't TypeError when constructing the cache.
 				on: () => ({}),
 				off: () => {},
@@ -173,7 +173,7 @@ describe.skipIf(SKIP)("MCP HTTP server (standalone, no Obsidian)", () => {
 		const status = await httpGet(`http://127.0.0.1:${MCP_PORT}/mcp`, {
 			Authorization: `Bearer ${MCP_TOKEN}`,
 		});
-		// Accept the 4xx range — the SDK has historically returned 400/405/404
+		// Accept the 4xx range: the SDK has historically returned 400/405/404
 		// for "GET without session" depending on the transport version.
 		expect(status).toBeGreaterThanOrEqual(400);
 		expect(status).toBeLessThan(500);
@@ -245,7 +245,7 @@ describe("stale session after MCP server restart", () => {
 		const staleSessionId = init.sessionId;
 		expect(staleSessionId).toBeTruthy();
 
-		// 2. Restart the server — all previous sessions are gone.
+		// 2. Restart the server: all previous sessions are gone.
 		await server1.stop();
 		const server2 = makeServer();
 		await server2.start();
@@ -313,7 +313,7 @@ function makeMockApp() {
 			resolvedLinks: {},
 			unresolvedLinks: {},
 			// VaultCache wires a `resolved` listener via on() and unregisters
-			// via offref() — mock the trio so server.start doesn't TypeError.
+			// via offref(): mock the trio so server.start doesn't TypeError.
 			on: () => ({}),
 			off: () => {},
 			offref: () => {},
@@ -415,7 +415,7 @@ describe.skipIf(SKIP)("MCP tools/list and tier enforcement", () => {
 	it("read+writeScoped: only read + writeScoped + the always-on capabilities tool", async () => {
 		const names = await listToolNames(defaultSession);
 		// Capabilities tool is always present. Then read tools and writeScoped
-		// tools — but no _anywhere/_reviewed suffixed tools, no navigate/manage.
+		// tools, but no _anywhere/_reviewed suffixed tools, no navigate/manage.
 		expect(names).toContain("mcp_capabilities");
 		expect(names).toContain("vault_search");
 		expect(names).toContain("vault_create");
@@ -511,7 +511,7 @@ describe.skipIf(SKIP)("MCP tool invocation (HTTP end-to-end)", () => {
 	it("vault_create rejects writes outside the write dir (second layer)", async () => {
 		// Use a non-traversal path that's still outside the write directory
 		// so we exercise the write-dir gate specifically (the upfront check
-		// passes — no `..` segment, no leading slash).
+		// passes: no `..` segment, no leading slash).
 		const res = (await mcpRequest(session, "tools/call", {
 			name: "vault_create",
 			arguments: { path: "elsewhere/escape.md", content: "evil" },
@@ -531,7 +531,7 @@ describe.skipIf(SKIP)("MCP tool invocation (HTTP end-to-end)", () => {
 
 	it("calling a tool from a disabled tier fails", async () => {
 		// navigate tier is not enabled; vault_open is not registered with the MCP SDK.
-		// The SDK may return a JSON-RPC error envelope OR a result with isError — either is acceptable.
+		// The SDK may return a JSON-RPC error envelope OR a result with isError; either is acceptable.
 		const res = (await mcpRequest(session, "tools/call", {
 			name: "vault_open",
 			arguments: { path: "Welcome.md" },
@@ -639,7 +639,7 @@ function runProxyOnce(
 	});
 }
 
-describe("proxy handshake race — batched-stdin regression", () => {
+describe("proxy handshake race: batched-stdin regression", () => {
 	// Simulates a stateful upstream MCP server: allocates a session on
 	// initialize, rejects non-initialize POSTs that lack Mcp-Session-Id, and
 	// serves a tools/call result once the session is established.
@@ -678,7 +678,7 @@ describe("proxy handshake race — batched-stdin regression", () => {
 				return;
 			}
 
-			// notifications/initialized — no response needed
+			// notifications/initialized: no response needed
 			if (parsed.id === undefined) {
 				res.writeHead(202);
 				res.end();
@@ -702,7 +702,7 @@ describe("proxy handshake race — batched-stdin regression", () => {
 				return;
 			}
 
-			// Session present — serve tools/call result
+			// Session present: serve tools/call result
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(
 				JSON.stringify({
@@ -780,7 +780,7 @@ describe("proxy handshake race — batched-stdin regression", () => {
 						},
 					});
 
-					// Write all three frames without waiting — the bug scenario
+					// Write all three frames without waiting: the bug scenario
 					proc.stdin.write(INIT + "\n");
 					proc.stdin.write(NOTIF + "\n");
 					proc.stdin.write(CALL + "\n");
@@ -828,11 +828,11 @@ describe("proxy handshake race — batched-stdin regression", () => {
 	);
 });
 
-describe("proxy SSE keepalive — timeout regression", () => {
+describe("proxy SSE keepalive: timeout regression", () => {
 	it(
 		"times out with an error frame when the upstream server sends no data",
 		async () => {
-			// The fake server accepts the TCP connection but writes nothing —
+			// The fake server accepts the TCP connection but writes nothing:
 			// simulating an Obsidian plugin that stalls before sending any response.
 			// The proxy's socket inactivity timer should fire after PROXY_TIMEOUT_MS
 			// and produce a JSON-RPC error on stdout.
@@ -853,7 +853,7 @@ describe("proxy SSE keepalive — timeout regression", () => {
 		// The fake server responds with text/event-stream and emits keepalive
 		// comments every 1 s (< PROXY_TIMEOUT_MS = 3 s) to keep the socket
 		// active, then delivers the real MCP response after 5 s. The proxy
-		// should wait for the response and return a result frame — not an error.
+		// should wait for the response and return a result frame, not an error.
 		const KEEPALIVE_INTERVAL = 1_000;
 		const RESPONSE_DELAY = 5_000;
 

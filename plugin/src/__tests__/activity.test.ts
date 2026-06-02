@@ -385,7 +385,7 @@ describe("ActivityUi per-tab routing", () => {
 	});
 
 	it("orphaned per-tab activity entries don't inflate the attention badge", () => {
-		// tab is open — oas-tab-1 should count
+		// tab is open, oas-tab-1 should count
 		const tab1 = makeLeaf("oas-tab-1");
 		const { ui, activity, setAttention } = fixtureWithLeaves([tab1]);
 

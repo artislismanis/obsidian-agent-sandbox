@@ -13,7 +13,7 @@ const execOpts: ExecSyncOptions = {
 	// Bound every containerExec/compose call by a 30s timeout so a hanging
 	// container (claude infinite loop, tmux stall, network blocked by
 	// iptables tests) doesn't deadlock the suite for the file's full 60s
-	// vitest budget. Claude-code tests need longer — they override this
+	// vitest budget. Claude-code tests need longer: they override this
 	// inline when they need to.
 	timeout: 30000,
 	env: {
@@ -62,13 +62,13 @@ const LIVE_CLAUDE_VOLUME = "oas_oas-claude-config";
 /**
  * Ensure the external claude-config volume exists. Called by globalSetup before
  * compose up so Docker does not reject the external volume reference.
- * docker volume create is idempotent — exits 0 if the volume already exists.
+ * docker volume create is idempotent: exits 0 if the volume already exists.
  */
 export function ensureTestClaudeVolume(): void {
 	try {
 		execSync(`docker volume create ${TEST_CLAUDE_VOLUME}`, { stdio: "pipe" });
 	} catch {
-		// already exists or docker unavailable — both handled downstream
+		// already exists or docker unavailable: both handled downstream
 	}
 }
 
@@ -98,7 +98,7 @@ export function hasTestClaudeAuth(): boolean {
  * test volume is empty.
  *
  * No-op when the live volume is missing or the test volume is already seeded.
- * Best-effort — failures are silenced because tests skip on missing auth.
+ * Best-effort: failures are silenced because tests skip on missing auth.
  */
 export function seedClaudeAuth(): void {
 	if (hasTestClaudeAuth()) return;
@@ -122,12 +122,12 @@ export function seedClaudeAuth(): void {
 			{ stdio: "pipe", timeout: 30000 },
 		);
 	} catch {
-		// best-effort — hasTestClaudeAuth() will report unseeded and tests skip
+		// best-effort: hasTestClaudeAuth() will report unseeded and tests skip
 	}
 }
 
 function forceCleanup(): void {
-	// Nuclear cleanup — ignores errors because any of these may not exist
+	// Nuclear cleanup: ignores errors because any of these may not exist
 	try {
 		execSync("docker rm -f oas-test-sandbox", { stdio: "pipe" });
 	} catch {
@@ -155,7 +155,7 @@ export function containerUp(): void {
 		} catch (err) {
 			lastErr = err;
 			forceCleanup();
-			// Brief pause before retry — Docker state may be settling
+			// Brief pause before retry: Docker state may be settling
 			try {
 				execSync("sleep 1", { stdio: "pipe" });
 			} catch {
@@ -319,7 +319,7 @@ export function httpPostFull(
 				port: parsed.port,
 				path: parsed.pathname,
 				method: "POST",
-				// Disable keep-alive — see httpPost comment.
+				// Disable keep-alive: see httpPost comment.
 				agent: false,
 				headers: {
 					"Content-Type": "application/json",

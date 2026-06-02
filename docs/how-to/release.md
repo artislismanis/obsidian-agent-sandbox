@@ -6,24 +6,24 @@ Maintainer-only guide for cutting a new plugin release. End-users should follow 
 
 - Push access to the GitHub repo.
 - Local git configured so pushes work without prompts.
-- A **Personal Access Token with `workflow` scope** if you need to push changes to `.github/workflows/*` — the default auth may lack this scope. Classic PAT or fine-grained PAT with "Workflows: Read and write" both work.
+- A **Personal Access Token with `workflow` scope** to push changes to `.github/workflows/*`: the default auth can lack this scope. Classic PAT or fine-grained PAT with "Workflows: Read and write" both work.
 - Node 24+ and `npm ci` clean in `plugin/`.
 
 ## What a release consists of
 
 Each tagged release on GitHub gets three attached assets:
 
-- `main.js` — bundled plugin code (minified)
-- `manifest.json` — plugin metadata with the new version
-- `styles.css` — xterm.js + plugin styles
+- `main.js`: bundled plugin code (minified)
+- `manifest.json`: plugin metadata with the new version
+- `styles.css`: xterm.js + plugin styles
 
 BRAT downloads these three files by the latest tag and drops them into the user's `<vault>/.obsidian/plugins/obsidian-agent-sandbox/`.
 
 ## Version scheme
 
-Semantic-style, but pre-1.0 is treated as beta. Tag format is bare `N.N.N` — no `v` prefix (enforced by `plugin/.npmrc`).
+Semantic-style, but pre-1.0 is treated as beta. Tag format is bare `N.N.N`, no `v` prefix (enforced by `plugin/.npmrc`).
 
-`plugin/versions.json` maps each plugin version to the minimum Obsidian app version it requires. `manifest.json` has `minAppVersion` as the current floor. Don't raise the floor lightly — users on older Obsidian versions silently stop getting updates.
+`plugin/versions.json` maps each plugin version to the minimum Obsidian app version it requires. `manifest.json` has `minAppVersion` as the floor. Raising the floor stops updates for users on older Obsidian versions, so do it with care.
 
 ## Release procedure
 
@@ -44,7 +44,7 @@ Strongly recommended before tagging:
 npm run test:integration   # needs Docker + oas-sandbox:latest
 npm run test:e2e:headless  # needs xvfb or local display
 
-# From repo root — mirrors lint-infra.yml and links.yml CI jobs
+# From repo root: mirrors lint-infra.yml and links.yml CI jobs
 find container/scripts container/configs workspace/.claude \
     -type f \( -name '*.sh' -o -name '*.bash' \) | xargs shellcheck -S error
 hadolint --config container/.hadolint.yaml container/Dockerfile
@@ -59,7 +59,7 @@ git ls-files '*.md' | xargs lychee --no-progress --max-concurrency 4 \
 
 See `docs/testing.md` "Lint infrastructure" for how to install `shellcheck`, `hadolint`, `actionlint`, and `lychee`.
 
-Security boundary smoke (required before shipping — covers P0 scenarios from Stage 7/8, P1/P2 regressions from Stage 9):
+Security boundary smoke (required before shipping; covers P0 scenarios from Stage 7/8, P1/P2 regressions from Stage 9):
 
 ```bash
 # Needs: live container, firewall enabled, example.com in Additional firewall domains,
@@ -67,7 +67,7 @@ Security boundary smoke (required before shipping — covers P0 scenarios from S
 bash container/test-scripts/security-checks.sh /path/to/test-vault
 ```
 
-Stress smoke (required before shipping — covers Stage 12 edge cases):
+Stress smoke (required before shipping; covers Stage 12 edge cases):
 
 ```bash
 # Needs: live container, MCP enabled, jq on host PATH
@@ -76,7 +76,7 @@ bash container/test-scripts/stress-checks.sh /path/to/test-vault
 
 ### 2. Update the changelog (optional)
 
-We don't ship a separate `CHANGELOG.md` — GitHub Release auto-generates notes from commit messages (`generate_release_notes: true` in `release.yml`). If you want curated notes, draft them in the Release UI after the workflow creates the Release.
+We don't ship a separate `CHANGELOG.md`. GitHub Release auto-generates notes from commit messages (`generate_release_notes: true` in `release.yml`). For curated notes, draft them in the Release UI after the workflow creates the Release.
 
 ### 3. Bump the version
 
@@ -93,7 +93,7 @@ This runs several things in order:
     - Appends `"0.2.0": "<minAppVersion>"` to `versions.json`.
     - Stages both files.
 3. Creates a commit containing `package.json`, `manifest.json`, `versions.json`.
-4. Creates tag `0.2.0` (no `v` prefix — `.npmrc` sets `tag-version-prefix=""`).
+4. Creates tag `0.2.0` (no `v` prefix: `.npmrc` sets `tag-version-prefix=""`).
 
 If `npm version` fails partway, see "Recovering from a botched release" below.
 
@@ -109,7 +109,7 @@ The tag push triggers `.github/workflows/release.yml`:
 - Checks out at the tag.
 - Verifies `GITHUB_REF_NAME` matches `manifest.json.version` (refuses if out of sync).
 - `npm ci && npm run build`.
-- Creates a GitHub Release named `0.2.0` with `dist/main.js`, `dist/manifest.json`, `dist/styles.css` attached. Marked "Stable" by default — set `RELEASE_PRERELEASE=true` (repo variable) to mark as pre-release; see step 5.
+- Creates a GitHub Release named `0.2.0` with `dist/main.js`, `dist/manifest.json`, `dist/styles.css` attached. Marked "Stable" by default. Set `RELEASE_PRERELEASE=true` (repo variable) to mark as pre-release; see step 5.
 - Auto-generates release notes from commits since the previous tag.
 
 Watch the workflow: `gh run watch` or visit the Actions tab in the repo.
@@ -118,9 +118,9 @@ Watch the workflow: `gh run watch` or visit the Actions tab in the repo.
 
 Once the workflow is green:
 
-1. **Assets present** — GitHub → Releases → `0.2.0` → confirm `main.js`, `manifest.json`, `styles.css` download.
-2. **Pre-release flag** — the Release is marked "Stable" by default. The flag is driven by the `RELEASE_PRERELEASE` repo variable: ONLY the literal string `true` makes the Release a pre-release; any other value (including unset) ships as stable. To mark a release as pre-release, either tick the box in the GitHub UI for that single Release, or set `RELEASE_PRERELEASE=true` under repo Settings → Secrets and variables → Actions → Variables.
-3. **BRAT install** — in a clean Obsidian profile:
+1. **Assets present**: GitHub → Releases → `0.2.0` → confirm `main.js`, `manifest.json`, `styles.css` download.
+2. **Pre-release flag**: the Release is marked "Stable" by default. The flag is driven by the `RELEASE_PRERELEASE` repo variable: ONLY the literal string `true` makes the Release a pre-release; any other value (including unset) ships as stable. To mark a release as pre-release, either tick the box in the GitHub UI for that single Release, or set `RELEASE_PRERELEASE=true` under repo Settings → Secrets and variables → Actions → Variables.
+3. **BRAT install**: in a clean Obsidian profile:
     - Command palette → **BRAT: Add a beta plugin for testing**.
     - Paste the repo URL (e.g. `https://github.com/artislismanis/obsidian-agent-sandbox`).
     - BRAT downloads the three assets. Enable the plugin. Confirm it starts and the settings tab renders.
@@ -147,7 +147,7 @@ If critical bug found immediately:
 git log --oneline -3
 git tag --list | head
 
-# If the local commit is unpushed, just delete the tag locally and try again
+# If the local commit is unpushed, delete the tag locally and try again
 git tag -d 0.2.0
 git reset --hard HEAD~1   # discards the commit version-bump produced
 ```

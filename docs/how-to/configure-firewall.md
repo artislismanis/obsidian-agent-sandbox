@@ -1,22 +1,22 @@
 # How to configure the container firewall
 
-The sandbox container runs an allowlist-based outbound firewall. Traffic to unlisted domains is denied. The allowlist has three additive sources — the **effective** list is the union of all three.
+The sandbox container runs an allowlist-based outbound firewall. Traffic to unlisted domains is denied. The allowlist has three additive sources: the **effective** list is the union of all three.
 
 ## The three sources
 
 | Source | Where it lives | Who controls it | Claude can see/modify? |
 |---|---|---|---|
-| `baseline` | `container/scripts/init-firewall.sh` | Project maintainers (git) | No — script isn't mounted |
-| `plugin` | Obsidian plugin setting "Additional firewall domains" | User via plugin UI | No — env var only, not in `/workspace` |
-| `file` | `container/firewall-extras.txt` | User (host filesystem) | No — mounted read-only at `/etc/oas/firewall-extras.txt`, outside `/workspace` |
+| `baseline` | `container/scripts/init-firewall.sh` | Project maintainers (git) | No: script isn't mounted |
+| `plugin` | Obsidian plugin setting "Additional firewall domains" | User via plugin UI | No: env var only, not in `/workspace` |
+| `file` | `container/firewall-extras.txt` | User (host filesystem) | No: mounted read-only at `/etc/oas/firewall-extras.txt`, outside `/workspace` |
 
 All three are additive. There is no override precedence; duplicates are harmless.
 
 ## Which source to use
 
-- **baseline** — only for fundamentally-shared domains (Anthropic, GitHub, npm, PyPI, apt mirrors). Changes go via PR.
-- **plugin** — discoverable in the UI, validated on input. Best for integrations you're happy to see in Obsidian settings (e.g. `api.atlassian.com`, `slack.com`).
-- **file** — best for rules you want the agent to not know about, or for personal/corporate domains you don't want in settings. Host-side editing, survives plugin settings resets.
+- **baseline**: only for shared domains (Anthropic, GitHub, npm, PyPI, apt mirrors). Changes go via PR.
+- **plugin**: discoverable in the UI, validated on input. Best for integrations you're happy to see in Obsidian settings (e.g. `api.atlassian.com`, `slack.com`).
+- **file**: best for rules you want the agent to not know about, or for personal/corporate domains you don't want in settings. Host-side editing, survives plugin settings resets.
 
 ## Adding a domain via the plugin setting
 
@@ -26,7 +26,7 @@ All three are additive. There is no override precedence; duplicates are harmless
 
 ## Adding a domain via the host file
 
-Edit `container/firewall-extras.txt` on the host. One entry per line — domain or IPv4 CIDR. `#` starts a comment.
+Edit `container/firewall-extras.txt` on the host. One entry per line: a domain or an IPv4 CIDR. `#` starts a comment.
 
 ```
 # Corporate Jira (doesn't need to be visible to Claude)
@@ -51,7 +51,7 @@ git update-index --no-skip-worktree container/firewall-extras.txt
 
 Two ways:
 
-1. **Plugin UI** — Advanced tab → Security section → "Effective allowlist" → Refresh. Shows each entry tagged with its source.
+1. **Plugin UI**: Advanced tab → Security section → "Effective allowlist" → Refresh. Shows each entry tagged with its source.
 2. **Container shell**:
    ```bash
    cd container && docker compose exec sandbox /usr/local/bin/init-firewall.sh --list-sources

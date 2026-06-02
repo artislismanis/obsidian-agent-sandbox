@@ -14,7 +14,7 @@ container/.claude/
 .DS_Store
 Thumbs.db
 
-# env (`.env` matches at any depth — covers container/.env too)
+# env (`.env` matches at any depth, covers container/.env too)
 .env
 
 # Coverage
@@ -57,10 +57,10 @@ workspace/vault/
 
 # Claude Code local overrides
 **/.claude/settings.local.json
-# Claude Code scheduler state — runtime artefact, never committed
+# Claude Code scheduler state: runtime artefact, never committed
 **/.claude/scheduled_tasks.lock
 # Project-root .claude/ is entirely per-machine runtime state (sandbox masks,
-# agent worktrees). workspace/.claude/ has committed project files — this
+# agent worktrees). workspace/.claude/ has committed project files; this
 # root-anchored pattern deliberately leaves that untouched.
 /.claude/
 tmux-*.log

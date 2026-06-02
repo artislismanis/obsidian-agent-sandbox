@@ -12,7 +12,7 @@ LOCK_FILE="/var/lock/oas-firewall.lock"
 
 # Serialise concurrent invocations. A re-init racing the ipset swap can leave
 # the OUTPUT chain attached to a half-built set. flock with -n bails fast
-# rather than queueing — the second caller's intent is already satisfied
+# rather than queueing; the second caller's intent is already satisfied
 # by the first. --status and --list-sources don't mutate active ruleset
 # state so they skip the lock to stay responsive.
 case "${1:-}" in
@@ -47,7 +47,7 @@ case "${1:-}" in
     ;;
   --list-sources)
     if [ ! -f "$SOURCES_FILE" ]; then
-      echo "(no firewall-sources file — firewall has not been initialized in this container)" >&2
+      echo "(no firewall-sources file; firewall has not been initialised in this container)" >&2
       exit 1
     fi
     # Pretty-print grouped by source tag
@@ -59,7 +59,7 @@ esac
 
 # Assemble the effective allowlist from three sources. Record each
 # entry's origin for later inspection via --list-sources.
-# Sources are additive — no override semantics, duplicates are harmless.
+# Sources are additive: no override semantics, duplicates are harmless.
 mkdir -p "$(dirname "$SOURCES_FILE")"
 : > "$SOURCES_FILE"
 
@@ -78,7 +78,7 @@ _trim() {
 }
 
 # Validate an IPv4 octet (0-255). Rejects leading-zero forms ("01", "010")
-# because some libc inet_aton variants reinterpret them as octal — a user
+# because some libc inet_aton variants reinterpret them as octal; a user
 # typing "0177.0.0.1" would otherwise get a literal-decimal rule when they
 # meant 127.0.0.1. Always reject to keep the contract dot-decimal-only.
 _is_valid_octet() {
@@ -124,17 +124,17 @@ add_entry() {
   printf '%s\t%s\n' "$tag" "$entry" >> "$SOURCES_FILE"
 }
 
-# Baseline — read from host-managed file (mounted ro at BASELINE_FILE).
+# Baseline: read from host-managed file (mounted ro at BASELINE_FILE).
 # The file is also baked into the image as a fallback so the container
 # works if the host mount is absent. Both the directory-shadow case and
 # the missing-file case are hard errors: the baseline is required for
 # normal Claude Code operation and its absence indicates a configuration
-# problem that must not be silently papered over.
+# problem that must not be papered over.
 if [ -d "$BASELINE_FILE" ]; then
-  echo "init-firewall: ERROR: $BASELINE_FILE is a directory (host file missing — Docker auto-created the mount target). Baseline domains cannot be loaded. Restore container/firewall-baseline.txt on the host and 'docker compose down && up -d' to re-bind." >&2
+  echo "init-firewall: ERROR: $BASELINE_FILE is a directory (host file missing; Docker auto-created the mount target). Baseline domains cannot be loaded. Restore container/firewall-baseline.txt on the host and 'docker compose down && up -d' to re-bind." >&2
   exit 1
 elif [ ! -f "$BASELINE_FILE" ]; then
-  echo "init-firewall: ERROR: $BASELINE_FILE not found. The baseline allowlist is required — ensure the image was built with the file baked in." >&2
+  echo "init-firewall: ERROR: $BASELINE_FILE not found. The baseline allowlist is required; ensure the image was built with the file baked in." >&2
   exit 1
 else
   first_line=1
@@ -168,15 +168,15 @@ fi
 # if the host deleted firewall-extras.txt before `docker compose up`,
 # Docker auto-creates the mount target as a *directory* (the bind source
 # doesn't exist, so Docker treats it as a folder), and a -f test silently
-# returns false — extras are dropped without any user-visible signal.
+# returns false; extras are dropped without any user-visible signal.
 # Flag the directory case so the operator notices, but still proceed so
 # the firewall comes up.
 if [ -d "$EXTRAS_FILE" ]; then
-  echo "init-firewall: WARNING: $EXTRAS_FILE is a directory (host file missing — Docker auto-created the mount target). File-tier extras skipped. Restore container/firewall-extras.txt on the host and 'docker compose down && up -d' to re-bind." >&2
+  echo "init-firewall: WARNING: $EXTRAS_FILE is a directory (host file missing; Docker auto-created the mount target). File-tier extras skipped. Restore container/firewall-extras.txt on the host and 'docker compose down && up -d' to re-bind." >&2
 elif [ -f "$EXTRAS_FILE" ]; then
   first_line=1
   while IFS= read -r line || [ -n "$line" ]; do
-    # Strip UTF-8 BOM on the first line — Windows editors often save with
+    # Strip UTF-8 BOM on the first line; Windows editors often save with
     # one and the resulting `﻿host.example.com` fails IPv4 routing,
     # gets passed to dig, returns no records, and is logged as a generic
     # resolution failure with no hint at the real cause.
@@ -194,7 +194,7 @@ fi
 # leave the container with a DROP policy and no rules; existing rules from a
 # prior successful init keep protecting until the atomic swap below.
 #
-# Build a fresh ipset in parallel with the existing one — only swap on
+# Build a fresh ipset in parallel with the existing one; only swap on
 # success.
 ipset create allowed_ips hash:net -exist
 ipset create allowed_ips_new hash:net -exist
@@ -208,7 +208,7 @@ trap 'ipset destroy allowed_ips_new 2>/dev/null || true' EXIT
 echo "Resolving domains..."
 # Track baseline domains separately so a failure to resolve one (e.g.
 # api.anthropic.com) is treated as a hard error rather than a silent gap.
-# Plugin/file-supplied entries can fail safely with a warning — the user
+# Plugin/file-supplied entries can fail safely with a warning; the user
 # may have typo'd a domain or be working offline.
 declare -A IS_BASELINE
 for d in "${BASELINE_ENTRIES[@]}"; do IS_BASELINE[$d]=1; done
@@ -234,7 +234,7 @@ PIDS=()
 PID_DOMAIN=()
 PID_TIER=()
 for entry in "${ALLOWED_DOMAINS[@]}"; do
-  # CIDR (e.g. 10.0.0.0/16) or bare IPv4 — add directly, no DNS needed.
+  # CIDR (e.g. 10.0.0.0/16) or bare IPv4: add directly, no DNS needed.
   # Octet bounds and prefix length are validated by _is_ipv4_or_cidr;
   # the simple shape regex below is just to route CIDR-shaped entries
   # away from DNS resolution.
@@ -285,14 +285,14 @@ for i in "${!PIDS[@]}"; do
 done
 
 if [ "$BASELINE_FAILED" -gt 0 ]; then
-  echo "ERROR: $BASELINE_FAILED baseline domain(s) failed to resolve — refusing to apply firewall with required gaps" >&2
+  echo "ERROR: $BASELINE_FAILED baseline domain(s) failed to resolve; refusing to apply firewall with required gaps" >&2
   ipset destroy allowed_ips_new 2>/dev/null || true
-  # Existing OUTPUT chain (if any) is left intact — policy and rules are
+  # Existing OUTPUT chain (if any) is left intact; policy and rules are
   # untouched on this code path.
   exit 1
 fi
 if [ "$OPTIONAL_FAILED" -gt 0 ]; then
-  echo "WARNING: $OPTIONAL_FAILED optional domain(s) failed to resolve — firewall applied without them" >&2
+  echo "WARNING: $OPTIONAL_FAILED optional domain(s) failed to resolve; firewall applied without them" >&2
 fi
 
 # Aggregate into CIDR blocks if possible
@@ -319,7 +319,7 @@ trap - EXIT
 # silently dropping traffic. iptables-restore commits everything in one
 # kernel transaction.
 MCP_PORT="${OAS_MCP_PORT:-28080}"
-# Validate MCP_PORT — typo'd values would land verbatim in --dport and
+# Validate MCP_PORT; typo'd values would land verbatim in --dport and
 # iptables-restore would reject the whole transaction, leaving the firewall
 # half-applied with the previous OUTPUT rules intact (or completely down on
 # a fresh container).
@@ -327,7 +327,7 @@ if ! [[ "$MCP_PORT" =~ ^[0-9]+$ ]] || (( MCP_PORT < 1 || MCP_PORT > 65535 )); th
   echo "init-firewall: ERROR: invalid OAS_MCP_PORT='$MCP_PORT' (must be 1-65535)" >&2
   exit 1
 fi
-# Take the first default route only — multiple default routes (rare, e.g.
+# Take the first default route only; multiple default routes (rare, e.g.
 # attached secondary networks) would otherwise produce a multi-line literal
 # that iptables-restore rejects.
 GATEWAY=$(ip route | awk '/default/ {print $3; exit}')
@@ -336,7 +336,7 @@ OAS_HOST=$(getent hosts host.docker.internal 2>/dev/null | awk '{print $1; exit}
 # alias for host.docker.internal on some hosts; passing it verbatim to
 # iptables-restore (which expects IPv4) aborts the transaction.
 if [ -n "$OAS_HOST" ] && ! _is_ipv4_or_cidr "$OAS_HOST"; then
-  echo "init-firewall: WARNING: host.docker.internal resolved to non-IPv4 '$OAS_HOST' — skipping MCP gateway rule" >&2
+  echo "init-firewall: WARNING: host.docker.internal resolved to non-IPv4 '$OAS_HOST'; skipping MCP gateway rule" >&2
   OAS_HOST=""
 fi
 
@@ -347,7 +347,7 @@ fi
 # active" message followed by inexplicable resolution failures.
 mapfile -t NAMESERVERS < <(grep -oP 'nameserver \K[\d.]+' /etc/resolv.conf)
 if [ "${#NAMESERVERS[@]}" -eq 0 ]; then
-  echo "init-firewall: ERROR: no IPv4 nameservers found in /etc/resolv.conf — DNS would be unreachable under the planned OUTPUT DROP policy. Aborting before applying any rules." >&2
+  echo "init-firewall: ERROR: no IPv4 nameservers found in /etc/resolv.conf; DNS would be unreachable under the planned OUTPUT DROP policy. Aborting before applying any rules." >&2
   exit 1
 fi
 
@@ -366,18 +366,18 @@ fi
   echo "-A OUTPUT -o lo -j ACCEPT"
   echo "-A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT"
 
-  # DNS — restrict to configured resolvers only (prevents DNS tunneling).
+  # DNS: restrict to configured resolvers only (prevents DNS tunnelling).
   # IPv4-only by design; presence of at least one resolver was checked above.
   for ns in "${NAMESERVERS[@]}"; do
     echo "-A OUTPUT -d $ns -p udp --dport 53 -j ACCEPT"
     echo "-A OUTPUT -d $ns -p tcp --dport 53 -j ACCEPT"
   done
 
-  # Block cloud metadata + DNS-rebinding surfaces BEFORE allowlist ACCEPTs —
-  # defense in depth in case any of these IPs ends up in allowed_ips by mistake
+  # Block cloud metadata + DNS-rebinding surfaces BEFORE allowlist ACCEPTs;
+  # defence in depth in case any of these IPs ends up in allowed_ips by mistake
   # (a malicious authoritative DNS for an allowlisted domain can return any IP).
-  #   169.254.0.0/16 — link-local incl. AWS/Azure/GCP metadata (.169.254)
-  #   100.64.0.0/10  — CGNAT range incl. Alibaba metadata (100.100.100.200)
+  #   169.254.0.0/16: link-local incl. AWS/Azure/GCP metadata (.169.254)
+  #   100.64.0.0/10 : CGNAT range incl. Alibaba metadata (100.100.100.200)
   # Legitimate access to these is opt-in via OAS_ALLOWED_PRIVATE_HOSTS (which
   # adds rules AFTER these DROPs but is keyed on specific IPv4/CIDRs, not the
   # broad ranges below).
@@ -387,7 +387,7 @@ fi
   echo "-A OUTPUT -m set --match-set allowed_ips dst -p tcp --dport 443 -j ACCEPT"
   echo "-A OUTPUT -m set --match-set allowed_ips dst -p tcp --dport 80 -j ACCEPT"
 
-  # Docker gateway — port-scoped (HTTP/HTTPS + MCP only). The gateway is
+  # Docker gateway: port-scoped (HTTP/HTTPS + MCP only). The gateway is
   # the path to all host services, so a wide-open rule would be a hole in
   # NAT mode.
   if [ -n "$GATEWAY" ]; then
@@ -396,7 +396,7 @@ fi
     echo "-A OUTPUT -d $GATEWAY -p tcp --dport $MCP_PORT -j ACCEPT"
   fi
 
-  # Obsidian MCP host — host.docker.internal can resolve to the gateway or
+  # Obsidian MCP host: host.docker.internal can resolve to the gateway or
   # to a separately mapped adapter (WSL2 mirrored). Always emit the MCP
   # rule independently.
   if [ -n "$OAS_HOST" ]; then
@@ -411,7 +411,7 @@ fi
       host="$(_trim "$host")"
       [ -z "$host" ] && continue
       if ! _is_ipv4_or_cidr "$host"; then
-        echo "ERROR: OAS_ALLOWED_PRIVATE_HOSTS entry '$host' is not a valid IPv4 address or CIDR — hostnames are not accepted here. Skipping." >&2
+        echo "ERROR: OAS_ALLOWED_PRIVATE_HOSTS entry '$host' is not a valid IPv4 address or CIDR. Hostnames are not accepted here. Skipping." >&2
         continue
       fi
       echo "-A OUTPUT -d $host -p tcp --dport 80 -j ACCEPT"
@@ -420,7 +420,7 @@ fi
     done
   fi
 
-  # Explicit terminal DROP (defense in depth — policy is also DROP).
+  # Explicit terminal DROP (defence in depth; policy is also DROP).
   echo "-A OUTPUT -j DROP"
 
   echo "COMMIT"

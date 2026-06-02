@@ -1,6 +1,6 @@
-# CLAUDE.md — Container (infra)
+# CLAUDE.md: Container (infra)
 
-This folder contains the Docker image definition and supporting scripts for the Agent Sandbox. **Anyone editing files here is working on infrastructure, not on Claude's workspace** — be careful and always test the rebuild.
+This folder contains the Docker image definition and supporting scripts for the Agent Sandbox. **Anyone editing files here is working on infrastructure, not on Claude's workspace.** Be careful and test the rebuild.
 
 ## What lives here
 
@@ -12,7 +12,7 @@ This folder contains the Docker image definition and supporting scripts for the 
 | `.dockerignore` | Excludes from the build context |
 | `firewall-extras.txt` | Host-managed firewall allowlist extras (mounted read-only at `/etc/oas/firewall-extras.txt`; invisible to the agent) |
 | `configs/` | Files copied into the image: `tmux.conf`, `session-helpers.sh` |
-| `scripts/entrypoint.sh` | Container entrypoint — sets sudo password, drops to `claude`, runs ttyd |
+| `scripts/entrypoint.sh` | Container entrypoint: sets sudo password, drops to `claude`, runs ttyd |
 | `scripts/session.sh` | Per-ttyd-connection session launcher |
 | `scripts/init-firewall.sh` | Allowlist-based outbound firewall (run as root) |
 | `scripts/verify.sh` | Environment verification / runtime manifest (also baked into image at `/usr/local/bin/verify.sh`) |
@@ -36,15 +36,15 @@ This folder is not mounted into the container. For the rationale and exceptions,
 2. If the tool needs network access at runtime, add the relevant domains to the allowlist in `scripts/init-firewall.sh`.
 3. Rebuild: `cd container && docker compose build`
 4. Restart the container (via plugin or `docker compose down && up -d`).
-5. Update `scripts/verify.sh` so the new tool is reported alongside the others (the script has a hardcoded list — adding to the Dockerfile alone won't surface it).
-6. Verify: `docker compose exec sandbox verify.sh` — the tool should appear in its category.
+5. Update `scripts/verify.sh` so the new tool is reported alongside the others (the script has a hardcoded list, so adding to the Dockerfile alone won't surface it).
+6. Verify: `docker compose exec sandbox verify.sh`. The tool should appear in its category.
 7. Commit on a feature branch and open a PR. Never push infra changes directly to `main`.
 
 ## Firewall allowlist
 
 See [`docs/how-to/configure-firewall.md`](../docs/how-to/configure-firewall.md) for how to add entries. The safety constraint that lives here: **never weaken the allowlist without clear justification** (this is duplicated in "Safety constraints" below for visibility).
 
-Currently allowed categories: Anthropic (api.anthropic.com, sentry.io), npm, GitHub, PyPI, CDNs (jsdelivr, cdnjs, unpkg), Ubuntu apt mirrors.
+Allowed categories: Anthropic (api.anthropic.com, sentry.io), npm, GitHub, PyPI, CDNs (jsdelivr, cdnjs, unpkg), Ubuntu apt mirrors.
 
 ## Sudo model
 
@@ -82,6 +82,6 @@ curl -sI \
 
 - Never weaken the firewall allowlist without clear justification
 - Never grant the claude user broader sudo than `apt-get`/`apt`
-- Never set `NOPASSWD` on the sudoers entry — the password gate is the human-intent signal
+- Never set `NOPASSWD` on the sudoers entry; the password gate is the human-intent signal
 - Never mount `container/` inside the running container; that would break the isolation this layout is designed to enforce
 - Rebuild and run `verify.sh` after any Dockerfile change before committing

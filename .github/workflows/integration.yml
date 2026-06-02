@@ -5,7 +5,7 @@ name: integration tests
 # can only mock. Heavier than `check.yml` because it builds the image,
 # so it runs on PRs that touch the plugin or container only.
 #
-# The Claude-Code subsuite is skipped in CI — it requires authenticating
+# The Claude-Code subsuite is skipped in CI; it requires authenticating
 # Claude inside the container, which needs interactive setup. See
 # `docs/testing.md` for the local-dev path.
 
@@ -56,7 +56,7 @@ jobs:
       # matches the bind-mount ownership. Without this, the test compose
       # (which mirrors prod's `cap_drop: ALL` + `NET_ADMIN/NET_RAW`-only
       # cap_add) cannot CHOWN/FOWNER the bind-mounted vault subdirs from
-      # uid 1001 (runner) to 1000 (default CLAUDE_UID) — the dropped
+      # uid 1001 (runner) to 1000 (default CLAUDE_UID); the dropped
       # caps make root-inside-container powerless to rewrite ownership.
       # Aligning at build time sidesteps the entrypoint chown path
       # entirely.
@@ -72,7 +72,7 @@ jobs:
       # cuts that to ~30s when the Dockerfile is unchanged. The base images
       # are pinned by digest so cache invalidation is deterministic.
       - name: Set up Docker Buildx
-        # buildx-action v3 — pinned by SHA to defend against tag re-pushes
+        # buildx-action v3; pinned by SHA to defend against tag re-pushes
         # (same policy as other third-party actions in this repo).
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
@@ -97,7 +97,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=oas-sandbox-uid${{ steps.runner_ids.outputs.uid }}
 
       - name: Integration tests
-        # The Claude-Code subsuite auto-skips here — `globalSetup.ts`
+        # The Claude-Code subsuite auto-skips here; `globalSetup.ts`
         # only runs it when there's auth in the test volume, which CI
         # doesn't have. Other suites (container, container-advanced,
         # mcp-integration) run against the built image.

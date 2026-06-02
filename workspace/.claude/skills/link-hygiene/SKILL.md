@@ -22,37 +22,37 @@ Periodic vault cleanup: broken links, orphans, and missed cross-references. Alwa
 
 ## Tool chain
 
-### Phase 1 — Inventory (read-only)
+### Phase 1: Inventory (read-only)
 
-1. **`vault_unresolved`** — list every broken wikilink and its source file.
-2. **`vault_orphans`** — notes with no links in or out.
-3. **`vault_recent`** with `limit: 20` — recently-modified notes are the likeliest candidates for missed links.
+1. **`vault_unresolved`**: list every broken wikilink and its source file.
+2. **`vault_orphans`**: notes with no links in or out.
+3. **`vault_recent`** with `limit: 20`: recently-modified notes are the likeliest candidates for missed links.
 
-Summarize counts and show the user before acting.
+Summarise counts and show the user before acting.
 
-### Phase 2 — Fix broken links
+### Phase 2: Fix broken links
 
 For each unresolved link, decide:
 - **Typo?** Use `vault_search_replace` on the source file with the corrected wikilink.
 - **Missing note the user wants?** Create it via `vault_create` (inside `$OAS_VAULT_WRITE_DIR`) with a stub (`# Title\n\n(placeholder)`), then the wikilink resolves.
 - **Stale reference?** Use `vault_search_replace` to remove the wikilink.
 
-Never decide silently — present the user with `{source, broken_link, proposed_action}` and wait for confirmation on ambiguous cases.
+Never decide without asking: present the user with `{source, broken_link, proposed_action}` and wait for confirmation on ambiguous cases.
 
-### Phase 3 — Suggest new links
+### Phase 3: Suggest new links
 
 For each recent note (from step 3):
 1. **`vault_suggest_links`** with `limit: 5`.
-2. Filter suggestions — drop low-score hits; drop anything that would create a circular reference that isn't meaningful.
+2. Filter suggestions: drop low-score hits; drop anything that would create a circular reference that isn't meaningful.
 3. Present the list; on approval, insert `[[target]]` wikilinks via `vault_search_replace` (find the anchor phrase, add the link) or `vault_patch` (insert after a specific heading).
 
-### Phase 4 — Surface orphans (no action)
+### Phase 4: Surface orphans (no action)
 
 List orphans grouped by folder. Ask the user whether any should be linked from an index note, archived, or deleted. Never delete without explicit per-file confirmation.
 
 ## Batching
 
-If applying many changes, do them one file at a time with review on — don't batch across files into a single modal, since the user needs per-change context.
+If applying many changes, do them one file at a time with review on. Don't batch across files into a single modal, since the user needs per-change context.
 
 ## Example output to user
 

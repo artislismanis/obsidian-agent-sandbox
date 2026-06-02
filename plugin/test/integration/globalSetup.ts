@@ -19,11 +19,11 @@ import {
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
 	if (!isDockerAvailable()) {
-		process.stderr.write("[integration] Docker unavailable — tests will skip\n");
+		process.stderr.write("[integration] Docker unavailable, tests will skip\n");
 		return async () => {};
 	}
 	if (!isImageBuilt()) {
-		process.stderr.write("[integration] oas-sandbox image not built — tests will skip\n");
+		process.stderr.write("[integration] oas-sandbox image not built, tests will skip\n");
 		return async () => {};
 	}
 
@@ -41,7 +41,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 	process.stderr.write(
 		hasAuth
 			? "[integration] Claude auth found in test volume (claude-code tests will run)\n"
-			: "[integration] no Claude auth in test volume (claude-code tests will skip — see docs/testing.md)\n",
+			: "[integration] no Claude auth in test volume (claude-code tests will skip; see docs/testing.md)\n",
 	);
 
 	process.stderr.write(`[integration] waiting for ttyd health on port ${TTYD_PORT}...\n`);

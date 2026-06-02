@@ -1076,7 +1076,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				// naturally undirected (link A→B implies "connected" from the
 				// user's mental model), matching vault_graph_neighborhood.
 				// Graph is already filtered at construction (computeLinkGraph);
-				// the intermediate-filter check below is defense in depth in
+				// the intermediate-filter check below is defence in depth in
 				// case the cached graph predates a filter change.
 				while (head < queue.length) {
 					const current = queue[head++];
@@ -2504,7 +2504,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 					.max(128)
 					.optional()
 					.describe(
-						"Session routing key. When running inside the Obsidian Agent Sandbox, omit this — the proxy stamps the correct key automatically. Max 128 chars.",
+						"Session routing key. When running inside the Obsidian Agent Sandbox, omit this; the proxy stamps the correct key. Max 128 chars.",
 					),
 				detail: z
 					.string()

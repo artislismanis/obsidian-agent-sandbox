@@ -226,7 +226,7 @@ export class ActivityUi {
 		// Activity entries for closed tabs (per-tab keys like oas-tab-N) would
 		// otherwise persist in the LRU map and keep inflating the badge after
 		// the tab is gone. Named-session entries are always counted regardless
-		// of open leaves — a named session in tmux outlives the tab.
+		// of open leaves. A named session in tmux outlives the tab.
 		const liveKeys = new Set<string>();
 		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL)) {
 			if (isTerminalViewLike(leaf.view)) {
