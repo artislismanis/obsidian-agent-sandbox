@@ -41,7 +41,7 @@ function settingDesc(name: string) {
 	);
 }
 
-describe("Settings — validation and warnings", function () {
+describe("Settings: validation and warnings", function () {
 	before(async function () {
 		await obsidianPage.resetVault();
 	});

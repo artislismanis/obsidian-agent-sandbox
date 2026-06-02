@@ -326,7 +326,7 @@ export function registerDataviewTools(app: App, push: ToolPusher, gate: WriteGat
 			tier: "extensions",
 			title: "Dataview query",
 			description:
-				"Run a Dataview Query Language (DQL) query against the vault. Requires the Dataview plugin to be installed and enabled. Returns the serialized result.",
+				"Run a Dataview Query Language (DQL) query against the vault. Requires the Dataview plugin to be installed and enabled. Returns the serialised result.",
 			inputSchema: {
 				query: z
 					.string()

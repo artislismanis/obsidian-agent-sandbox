@@ -1,6 +1,6 @@
 # Reference: keyboard shortcuts
 
-The plugin doesn't ship with hotkey bindings — Obsidian's own hotkey system handles them. Assign your preferred keys via **Obsidian → Settings → Hotkeys** and filter for "Agent Sandbox" or "Sandbox:".
+The plugin ships without hotkey bindings. Obsidian's own hotkey system handles them. Assign your preferred keys via **Obsidian → Settings → Hotkeys** and filter for "Agent Sandbox" or "Sandbox:".
 
 ## Inside the terminal
 
@@ -14,8 +14,8 @@ The plugin doesn't ship with hotkey bindings — Obsidian's own hotkey system ha
 
 ## Common suggested Obsidian bindings
 
-Not shipped — set these yourself if you use them often:
+Not shipped. Set these yourself if you use them often:
 
-- **Sandbox: Open Terminal** — e.g. `Ctrl` + `` ` ``
-- **Sandbox: Switch to Sandbox session…** — e.g. `Ctrl` + `Shift` + `S`
-- **Sandbox: Toggle Firewall** — e.g. `Ctrl` + `Alt` + `F`
+- **Sandbox: Open Terminal**: e.g. `Ctrl` + `` ` ``
+- **Sandbox: Switch to Sandbox session…**: e.g. `Ctrl` + `Shift` + `S`
+- **Sandbox: Toggle Firewall**: e.g. `Ctrl` + `Alt` + `F`

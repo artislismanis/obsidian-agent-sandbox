@@ -418,7 +418,7 @@ export class ObsidianMcpServer {
 		try {
 			if (req.method === "POST") {
 				// Reject non-JSON content types. The Bearer token is the primary
-				// defense, but defense-in-depth: a CSRF-style cross-origin POST
+				// defence, but defence-in-depth: a CSRF-style cross-origin POST
 				// from a browser can send Content-Type: text/plain without
 				// triggering a preflight (simple-request semantics). The Origin
 				// check above prevents the attacker reading the response, but

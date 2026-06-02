@@ -1,4 +1,4 @@
-# Container firewall allowlist — project-maintained baseline.
+# Container firewall allowlist: project-maintained baseline.
 #
 # One entry per line: a domain name (DNS A record is resolved) or an
 # IPv4 CIDR block. Lines starting with `#` and blank lines are ignored.
@@ -40,7 +40,7 @@ cdn.jsdelivr.net
 cdnjs.cloudflare.com
 unpkg.com
 
-# Ubuntu apt mirrors — for narrow sudo apt-get usage (see README)
+# Ubuntu apt mirrors, for narrow sudo apt-get usage (see README)
 archive.ubuntu.com
 security.ubuntu.com
 ports.ubuntu.com

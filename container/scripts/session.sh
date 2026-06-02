@@ -1,6 +1,6 @@
 #!/bin/bash
 # Strict mode: fail fast on unset vars and pipe failures. -e is intentionally
-# omitted — `bash -l` below exits with the user's last-command exit code,
+# omitted; `bash -l` below exits with the user's last-command exit code,
 # and we want the EXIT trap to log that code rather than have set -e abort
 # the script before cleanup() runs.
 set -uo pipefail
@@ -21,7 +21,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Don't exec — exec'ing here replaces the shell, so the EXIT trap never
+# Don't exec; exec'ing here replaces the shell, so the EXIT trap never
 # fires and we lose the end-of-session log line. The cost of one extra
 # shell per session is negligible.
 bash -l

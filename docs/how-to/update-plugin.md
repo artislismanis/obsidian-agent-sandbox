@@ -31,18 +31,18 @@ docker compose build
 
 Restart the container via the plugin (**Sandbox: Restart Container**).
 
-Check you got the new image: **Sandbox: Container Status** or `cd container && docker compose exec sandbox verify.sh` — look at the version line in the header.
+Check you got the new image: **Sandbox: Container Status** or `cd container && docker compose exec sandbox verify.sh`, then look at the version line in the header.
 
-## When to rebuild vs just update
+## When to rebuild vs update
 
 | Changed | Plugin update | Container rebuild |
 |---|---|---|
-| `plugin/src/**` | ✔ | — |
-| `workspace/**` | — (mounted rw) | — |
-| `container/Dockerfile` | — | ✔ |
-| `container/scripts/**` | — | ✔ (entrypoint/session/verify are baked into the image) |
-| `container/firewall-extras.txt` | — | no rebuild — either restart the container or rerun `/usr/local/bin/init-firewall.sh` inside the container (file is mounted ro and re-read on every apply) |
-| `container/docker-compose.yml` | — | no rebuild, just `docker compose up -d` |
+| `plugin/src/**` | ✔ | n/a |
+| `workspace/**` | n/a (mounted rw) | n/a |
+| `container/Dockerfile` | n/a | ✔ |
+| `container/scripts/**` | n/a | ✔ (entrypoint/session/verify are baked into the image) |
+| `container/firewall-extras.txt` | n/a | No rebuild. Restart the container or rerun `/usr/local/bin/init-firewall.sh` inside the container (file is mounted ro and re-read on every apply). |
+| `container/docker-compose.yml` | n/a | No rebuild, run `docker compose up -d`. |
 
 ## Rolling back
 
@@ -51,6 +51,6 @@ Check you got the new image: **Sandbox: Container Status** or `cd container && d
 
 ## Settings compatibility
 
-Plugin settings are additive — new releases add new keys with defaults but never remove or rename keys. Rolling back usually leaves unknown keys in `data.json` which are ignored; rolling forward picks up the new defaults.
+Plugin settings are additive: new releases add new keys with defaults but never remove or rename keys. Rolling back leaves unknown keys in `data.json`, which are ignored. Rolling forward picks up the new defaults.
 
-If a release introduces a breaking settings change, release notes will call it out explicitly.
+If a release introduces a breaking settings change, the release notes call it out.

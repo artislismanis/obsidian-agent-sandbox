@@ -104,7 +104,7 @@ tool_present() {
   fi
 }
 
-echo "=== Agent Sandbox — Environment Verification ==="
+echo "=== Agent Sandbox: Environment Verification ==="
 
 echo ""
 echo "── Tool versions ──────────────────────────────────"
@@ -151,7 +151,7 @@ print_mount "/workspace/vault/.oas"                             "Vault infrastru
 print_mount "/home/claude/.claude"                              "Claude Code config (named volume)"
 print_mount "/home/claude/.shell-history"                       "Shell history (named volume)"
 
-# Quick write tests — catch UID mismatches or missing rw overlay mounts
+# Quick write tests: catch UID mismatches or missing rw overlay mounts
 # that findmnt alone won't reveal.
 write_check() {
   local dir="$1"
@@ -160,10 +160,10 @@ write_check() {
     if touch "$probe" 2>/dev/null && rm -f "$probe"; then
       printf "  %-48s %s\n" "$dir" "[write OK]"
     else
-      printf "  %-48s %s\n" "$dir" "[WRITE FAILED — check UID or mount flags]"
+      printf "  %-48s %s\n" "$dir" "[WRITE FAILED: check UID or mount flags]"
     fi
   else
-    printf "  %-48s %s\n" "$dir" "[MISSING — dir does not exist]"
+    printf "  %-48s %s\n" "$dir" "[MISSING: dir does not exist]"
   fi
 }
 write_check "/workspace/vault/${OAS_VAULT_WRITE_DIR:-agent-workspace}"
@@ -184,7 +184,7 @@ echo "── Container env ─────────────────�
 # Host-side configuration knobs like OAS_VAULT_HOST_PATH, OAS_CONTAINER_MEMORY,
 # OAS_TTYD_BIND, etc. are consumed by `docker compose` on the host at
 # launch time to build mount sources, resource limits, and port
-# bindings — they're not exposed inside the container. Resource limits
+# bindings; they're not exposed inside the container. Resource limits
 # are surfaced in the next section from cgroup; mount-source paths are
 # visible above in Mount points.
 for var in TERM OAS_TTYD_PORT OAS_TTYD_DEBUG OAS_VAULT_WRITE_DIR OAS_MEMORY_FILE_NAME OAS_ALLOWED_PRIVATE_HOSTS OAS_ALLOWED_DOMAINS OAS_MCP_PORT OAS_MCP_TOKEN OAS_HOST_IP MEMORY_FILE_PATH; do
@@ -196,7 +196,7 @@ echo "── Resource limits (from cgroup) ────────────�
 # Kernel-enforced memory and CPU limits for the running container.
 # Docker writes the plugin/.env `deploy.resources` settings to these
 # cgroup files at container start, and the kernel polices them from
-# there — so reading the files is the truthful source for confirming
+# there, so reading the files is the truthful source for confirming
 # that plugin Advanced-tab settings actually took effect. Works on
 # cgroup v2 (default on modern Docker / WSL2); falls back to v1 paths.
 if [[ -r /sys/fs/cgroup/memory.max ]]; then
@@ -247,13 +247,13 @@ fi
 echo ""
 echo "── Privileges ─────────────────────────────────────"
 echo "  running as:   $(id -un) (uid $(id -u))"
-# Clear any cached sudo timestamp so the probe is deterministic —
+# Clear any cached sudo timestamp so the probe is deterministic;
 # otherwise a successful `sudo` earlier in the session would make
 # sudo -n succeed and mask the real PASSWD policy. `sudo -k` itself
 # requires no authentication; it only clears the user's own timestamp.
 sudo -k 2>/dev/null || true
 # Non-interactive probe. Capture stderr so we can distinguish
-# "password required" from "not in sudoers" by message content —
+# "password required" from "not in sudoers" by message content;
 # both exit non-zero but print different error strings. Never blocks
 # on input because -n forces sudo to fail instead of prompting.
 sudo_probe_err=$(sudo -n -l /usr/bin/apt-get 2>&1 >/dev/null)
@@ -298,12 +298,12 @@ echo "=== Done ==="
 had_failures=0
 if [ "$MISSING_TOOLS" -gt 0 ]; then
   echo "" >&2
-  echo "⚠  ${MISSING_TOOLS} tool(s) reported 'not found' under Tool versions — see above." >&2
+  echo "⚠  ${MISSING_TOOLS} tool(s) reported 'not found' under Tool versions; see above." >&2
   had_failures=1
 fi
 if [ "$TOOL_VERSION_REGRESSIONS" -gt 0 ]; then
   echo "" >&2
-  echo "⚠  ${TOOL_VERSION_REGRESSIONS} tool(s) below their version floor — see (below floor: N) markers above." >&2
+  echo "⚠  ${TOOL_VERSION_REGRESSIONS} tool(s) below their version floor; see (below floor: N) markers above." >&2
   had_failures=1
 fi
 exit "$had_failures"

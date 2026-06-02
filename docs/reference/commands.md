@@ -14,7 +14,7 @@ Every command registered by the plugin. Access via Obsidian's command palette (`
 | Sandbox: Toggle Firewall | `sandbox-toggle-firewall` | Enable / disable the container's outbound firewall. |
 | Sandbox: Toggle MCP Server | `sandbox-toggle-mcp` | Start / stop the in-plugin MCP HTTP server. |
 | Sandbox: Clean up detached sessions | `sandbox-cleanup-sessions` | Lists unattached tmux sessions, confirmation modal, kills selected. |
-| Sandbox: Switch to Sandbox session… | `sandbox-switch-session` | Modal picker over currently open terminal tabs. |
+| Sandbox: Switch to Sandbox session… | `sandbox-switch-session` | Modal picker over open terminal tabs. |
 | Sandbox: Copy terminal connection log | `sandbox-copy-terminal-connection-log` | Copies the in-memory ring buffer of recent WS open/close/reconnect events to the clipboard. See [Troubleshoot terminal disconnects](../how-to/troubleshoot-terminal-disconnects.md). |
 
 ## Ribbon icon
@@ -28,7 +28,7 @@ The plugin registers a single ribbon icon (terminal glyph, left sidebar) labelle
 | `obsidian://agent-sandbox/open-terminal` | Activate or open a terminal tab. |
 | `obsidian://agent-sandbox/analyse?vault=<name>&path=<path>&template=<name>` | Open a terminal, start Claude Code, inject a templated prompt. `template` name matches a `.md` filename (without extension) in `<vault>/.oas/prompts/`. |
 
-The `vault=` parameter is required when more than one vault is open — Obsidian uses it to route the URI to the correct vault's plugin. Use the exact vault name as shown in **Vault switcher** (or `Preferences → About`). Omitting `vault=` causes a "Vault Not Found" error if Obsidian cannot determine the target vault unambiguously.
+The `vault=` parameter is required when more than one vault is open. Obsidian uses it to route the URI to the correct vault's plugin. Use the exact vault name as shown in **Vault switcher** (or `Preferences → About`). Omitting `vault=` causes a "Vault Not Found" error if Obsidian cannot determine the target vault.
 
 Example:
 ```
@@ -49,4 +49,4 @@ Summarize
 Summarize @{{file}} in 3 concise bullet points.
 ```
 
-The `{{file}}` placeholder is replaced with the vault-relative path of the right-clicked note. Template files ship as examples under `workspace/.claude/prompts/` — copy any you want into `<vault>/.oas/prompts/` to activate them.
+The `{{file}}` placeholder is replaced with the vault-relative path of the right-clicked note. Template files ship as examples under `workspace/.claude/prompts/`. Copy any you want into `<vault>/.oas/prompts/` to activate them.

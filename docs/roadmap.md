@@ -4,8 +4,8 @@ What's left to do.
 
 ## Pre-1.0 stabilisation
 
-- [x] First BRAT-compatible release — shipped at `0.1.x` (see `plugin/manifest.json` / `plugin/versions.json`); tags are published via `release.yml`.
-- [ ] Beta-feedback pass on the BRAT release — collect issues from early installers, tune defaults, and tighten release notes before the next minor bump.
+- [x] First BRAT-compatible release: shipped at `0.1.x` (see `plugin/manifest.json` / `plugin/versions.json`); tags are published via `release.yml`.
+- [ ] Beta-feedback pass on the BRAT release: collect issues from early installers, tune defaults, and tighten release notes before the next minor bump.
 - [ ] Capture a GIF or screenshot of the core workflow for the top of the README.
 - [ ] Optional audible or tray notification when Claude transitions to "awaiting input" after a long-running task.
 
@@ -13,7 +13,7 @@ What's left to do.
 
 Pre-condition: BRAT release stabilised and beta feedback addressed.
 
-- [ ] Confirm `RELEASE_PRERELEASE` is unset or `=false` (default ships stable) — or remove the `prerelease:` line from `release.yml`.
+- [ ] Confirm `RELEASE_PRERELEASE` is unset or `=false` (default ships stable), or remove the `prerelease:` line from `release.yml`.
 - [ ] Confirm `manifest.json` meets the obsidianmd/obsidian-releases review checklist.
 - [ ] Final pass over user-facing docs.
 - [ ] Open the submission PR against `obsidianmd/obsidian-releases`.
@@ -21,7 +21,7 @@ Pre-condition: BRAT release stabilised and beta feedback addressed.
 
 ## Out of scope (intentional)
 
-These come up periodically but are not planned — recording them so we don't re-litigate.
+These come up often but are not planned. Recording them here so we don't re-litigate.
 
 - **Format-aware Obsidian conventions inside the plugin.** Wikilinks / callouts / embeds / properties are handled by [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) packaged as standalone skills, not by this plugin's MCP layer.
 - **Visible test counts in docs.** Counts drift faster than they get updated; the suites' own pass/fail summaries are authoritative.

@@ -28,7 +28,7 @@ describe("Plugin loads", function () {
 		// `.status-bar` is Obsidian's always-present root container, so query
 		// the plugin-owned child by the "Sandbox:" prefix that StatusBarManager
 		// always writes (see status-bar.ts STATE_DISPLAY). WDIO's `*=text`
-		// doesn't compose with descendant combinators (` `), so use XPath —
+		// doesn't compose with descendant combinators (` `), so use XPath,
 		// same approach as settings.e2e.ts.
 		const sandboxItem = $(
 			"//*[contains(concat(' ', normalize-space(@class), ' '), ' status-bar-item ') and contains(., 'Sandbox')]",
@@ -43,7 +43,7 @@ describe("Plugin loads", function () {
 			return Object.keys(commands).filter((id) => id.startsWith(`${pluginId}:`));
 		}, PLUGIN_ID);
 
-		// Spot-check key commands — see main.ts onload for the full list.
+		// Spot-check key commands: see main.ts onload for the full list.
 		expect(commandIds).toContain(`${PLUGIN_ID}:open-claude-terminal`);
 		expect(commandIds).toContain(`${PLUGIN_ID}:sandbox-start-container`);
 		expect(commandIds).toContain(`${PLUGIN_ID}:sandbox-stop-container`);
@@ -83,7 +83,7 @@ describe("Settings UI", function () {
 		await expect(alwaysOnList).toHaveText(expect.stringContaining("Read"));
 		await expect(alwaysOnList).toHaveText(expect.stringContaining("Write (scoped)"));
 
-		// Escalation Settings — match the labels rendered by settings.ts.
+		// Escalation Settings: match the labels rendered by settings.ts.
 		for (const name of ["Vault-wide writes", "Navigate", "Manage", "Extensions"]) {
 			await expect($(`.setting-item-name=${name}`)).toBeDisplayed();
 		}

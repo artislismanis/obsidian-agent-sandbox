@@ -6,7 +6,7 @@ export default tseslint.config(
 	...tseslint.configs.recommended,
 	{
 		// Type-aware rules need parser project info. Scope to src/ via a
-		// nested override below — running type-aware lint on test/ + *.mjs
+		// nested override below; running type-aware lint on test/ + *.mjs
 		// would require those to be in the same TS project.
 		files: ["src/**/*.ts"],
 		languageOptions: {
@@ -20,9 +20,9 @@ export default tseslint.config(
 			// must be awaited, .catch()'d, or explicitly `void`'d.
 			"@typescript-eslint/no-floating-promises": "error",
 			// Async fn passed where a sync callback is expected (e.g.
-			// setTimeout(asyncFn)) — the returned promise floats.
+			// setTimeout(asyncFn)): the returned promise floats.
 			// `checksVoidReturn: false` keeps it permissive for DOM event
-			// handlers (which return void) — only flag genuine async misuse.
+			// handlers (which return void); only flag genuine async misuse.
 			"@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: false }],
 		},
 	},
@@ -57,7 +57,7 @@ export default tseslint.config(
 			"@typescript-eslint/no-require-imports": "off",
 			"@typescript-eslint/no-explicit-any": "off",
 			"@typescript-eslint/consistent-type-imports": "off",
-			// Build/release scripts and test harnesses are CLIs/diagnostics —
+			// Build/release scripts and test harnesses are CLIs/diagnostics;
 			// console output is the point.
 			"no-console": "off",
 		},

@@ -26,7 +26,7 @@ describe.skipIf(SKIP)("Container prerequisites", () => {
 	});
 });
 
-// Container lifecycle is managed by globalSetup.ts — we just run tests against it.
+// Container lifecycle is managed by globalSetup.ts; we just run tests against it.
 describe.skipIf(SKIP_NO_IMAGE)("Container", () => {
 	// ── lifecycle / health ──
 	it("is running and healthy", () => {
@@ -113,9 +113,9 @@ describe.skipIf(SKIP_NO_IMAGE)("Container", () => {
 		const mounts = execSyncTrim(
 			"docker inspect --format '{{range .Mounts}}{{.Name}} {{end}}' oas-test-sandbox",
 		);
-		// claude-config is an external volume — no compose project prefix
+		// claude-config is an external volume: no compose project prefix
 		expect(mounts).toContain("oas-test-claude-config");
-		// shell-history is compose-managed — gets the oas-test project prefix
+		// shell-history is compose-managed: gets the oas-test project prefix
 		expect(mounts).toContain("oas-test_oas-test-shell-history");
 	});
 });

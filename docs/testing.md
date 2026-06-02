@@ -1,6 +1,6 @@
 # Testing
 
-Three layers of automated tests plus a short manual checklist for things that require human judgment or cross-process workflows. If a behavior is covered by the automated suites, fix the code, don't re-verify by hand.
+Three layers of automated tests plus a short manual checklist for things that require human judgement or cross-process workflows. If a behaviour is covered by the automated suites, fix the code, don't re-verify by hand.
 
 ## Quick reference
 
@@ -8,9 +8,9 @@ Three layers of automated tests plus a short manual checklist for things that re
 cd plugin
 npm install               # one-time, installs all test tooling
 
-npm run test              # Layer 1 — unit tests              (~1.5s,   no deps)
-npm run test:integration  # Layer 2 — container integration   (~30s,    needs Docker)
-npm run test:e2e          # Layer 3 — real Obsidian UI        (~25s,    needs display / xvfb)
+npm run test              # Layer 1: unit tests               (~1.5s,   no deps)
+npm run test:integration  # Layer 2: container integration    (~30s,    needs Docker)
+npm run test:e2e          # Layer 3: real Obsidian UI         (~25s,    needs display / xvfb)
 npm run test:e2e:headless # same as above but wrapped in xvfb-run
 npm run check             # lint + format:check + tsc + unit tests with coverage (run before committing)
 ```
@@ -29,19 +29,19 @@ Exit code `0` means the suite passed. Any non-zero code = one or more failures. 
 - **Docker Engine** running and reachable via `docker info`
 - **Image built:** `cd container && docker compose build` (or let CI build it)
   - Helpers check for `oas-sandbox:latest` and skip the whole suite if missing
-- **Ports 17681 (ttyd) and 38080 (MCP)** free on `127.0.0.1` — the test compose remaps away from production defaults so it can run alongside a live container
-- **Optional — Claude Code auth seeding:** to run the `claude-code.test.ts` subsuite you need a live `oas_oas-claude-config` Docker volume. See "Claude Code authentication" below. Without it the Claude tests skip; everything else still runs.
+- **Ports 17681 (ttyd) and 38080 (MCP)** free on `127.0.0.1`. The test compose remaps away from production defaults so it can run alongside a live container.
+- **Optional, Claude Code auth seeding:** to run the `claude-code.test.ts` subsuite you need a live `oas_oas-claude-config` Docker volume. See "Claude Code authentication" below. Without it the Claude tests skip; everything else still runs.
 
 ### E2E tests (Layer 3)
 
-- **Obsidian desktop** — `wdio-obsidian-service` downloads it automatically the first time, cached in `plugin/.obsidian-cache/`
-- **A display server** — locally any X/Wayland session works; in CI or SSH use `npm run test:e2e:headless` which wraps the runner in `xvfb-run`:
+- **Obsidian desktop**: `wdio-obsidian-service` downloads it on first run, cached in `plugin/.obsidian-cache/`
+- **A display server**: locally any X/Wayland session works; in CI or SSH use `npm run test:e2e:headless`, which wraps the runner in `xvfb-run`:
   ```bash
   # Ubuntu / Debian / WSL
   sudo apt install xvfb
-  # macOS — not needed, Obsidian uses the native display
+  # macOS: not needed, Obsidian uses the native display
   ```
-- **Built plugin artifacts** — run `npm run build` before `npm run test:e2e`; `dist/main.js`, `dist/manifest.json`, `dist/styles.css` must exist before the suite launches Obsidian
+- **Built plugin artifacts**: run `npm run build` before `npm run test:e2e`; `dist/main.js`, `dist/manifest.json`, `dist/styles.css` must exist before the suite launches Obsidian
 
 On first run, wdio downloads Obsidian from GitHub releases into `plugin/.obsidian-cache/`. Network errors are transient; retry.
 
@@ -50,20 +50,20 @@ On first run, wdio downloads Obsidian from GitHub releases into `plugin/.obsidia
 Four host-side tools mirror the `lint-infra.yml` and `links.yml` CI jobs. Install once:
 
 ```bash
-# shellcheck — shell script linter (in Ubuntu repos; brew install shellcheck on macOS)
+# shellcheck: shell script linter (in Ubuntu repos; brew install shellcheck on macOS)
 sudo apt install shellcheck
 
-# hadolint — Dockerfile linter (not in Ubuntu repos)
+# hadolint: Dockerfile linter (not in Ubuntu repos)
 curl -sSL https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64 \
   -o /tmp/hadolint && chmod +x /tmp/hadolint && sudo mv /tmp/hadolint /usr/local/bin/hadolint
 # brew install hadolint   # macOS
 
-# actionlint — GitHub Actions workflow linter
+# actionlint: GitHub Actions workflow linter
 bash <(curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) \
   && sudo mv actionlint /usr/local/bin/
 # brew install actionlint  # macOS
 
-# lychee — markdown link checker
+# lychee: markdown link checker
 curl -sSL https://github.com/lycheeverse/lychee/releases/latest/download/lychee-x86_64-unknown-linux-gnu.tar.gz \
   | tar xz -C /tmp && sudo mv /tmp/lychee-x86_64-unknown-linux-gnu/lychee /usr/local/bin/
 # brew install lychee      # macOS
@@ -73,7 +73,7 @@ Verify: `shellcheck --version && hadolint --version && actionlint --version && l
 
 ## Running the suites
 
-### Layer 1 — unit tests
+### Layer 1: unit tests
 
 ```bash
 npm run test              # one-shot
@@ -82,23 +82,23 @@ npm run test:watch        # vitest watch mode
 
 No Docker, no Obsidian, no network. Covers pure logic: validators, shell escaping, ttyd polling, MCP auth + path traversal, tool handlers, status bar state machines. Runs in under 2 seconds and should always pass locally.
 
-The suite ends with a vitest summary listing all test files as `passed`. Any non-zero exit is a real failure — investigate the stack trace.
+The suite ends with a vitest summary listing all test files as `passed`. Any non-zero exit is a real failure: investigate the stack trace.
 
-### Layer 2 — integration tests
+### Layer 2: integration tests
 
 ```bash
 npm run test:integration
 ```
 
-All four integration spec files share **one** container, brought up once by `test/integration/globalSetup.ts` and torn down at the end. This keeps the suite to ~30 seconds. Tests are serialized (`fileParallelism: false`, `sequence.concurrent: false`) to avoid `docker exec` races.
+All four integration spec files share **one** container, brought up once by `test/integration/globalSetup.ts` and torn down at the end. This keeps the suite to ~30 seconds. Tests are serialised (`fileParallelism: false`, `sequence.concurrent: false`) to avoid `docker exec` races.
 
-Skip behavior: if Docker isn't running or `oas-sandbox:latest` isn't built, all tests are marked `skipped` and the process exits 0. Look for `[integration] Docker unavailable — tests will skip` in the output.
+Skip behaviour: if Docker isn't running or `oas-sandbox:latest` isn't built, all tests are marked `skipped` and the process exits 0. Look for `[integration] Docker unavailable, tests will skip` in the output.
 
-The suite finishes with a vitest summary; either every spec passes or every spec is skipped (when Docker is unavailable). Mixed pass/skip is fine — Claude Code subsuite skips when seeded auth is absent.
+The suite finishes with a vitest summary; either every spec passes or every spec is skipped (when Docker is unavailable). Mixed pass/skip is fine: the Claude Code subsuite skips when seeded auth is absent.
 
 The test harness uses an isolated Docker Compose project (`oas-test` prefix) so it never touches your real `oas-sandbox` container, volumes, or network.
 
-### Layer 3 — end-to-end (real Obsidian)
+### Layer 3: end-to-end (real Obsidian)
 
 ```bash
 npm run test:e2e             # local dev (needs a display)
@@ -107,7 +107,7 @@ npm run test:e2e:headless    # CI / SSH (wraps in xvfb-run)
 
 Each spec file launches its own fresh Obsidian instance against an ephemeral copy of `test/e2e/vaults/simple/`. The `wdio-obsidian-service` installs the built `dist/` as a plugin and enables it automatically.
 
-A full run prints a per-spec summary followed by the wdio total — every spec file should report `passed` and `100% completed`. Failures are flagged with the offending selector or assertion.
+A full run prints a per-spec summary followed by the wdio total. Every spec file should report `passed` and `100% completed`. Failures are flagged with the offending selector or assertion.
 
 To run a single spec file:
 
@@ -115,7 +115,7 @@ To run a single spec file:
 npx wdio run ./wdio.conf.mts --spec test/e2e/specs/settings.e2e.ts
 ```
 
-Test matrix — set `OBSIDIAN_VERSIONS` to target multiple versions:
+Test matrix: set `OBSIDIAN_VERSIONS` to target multiple versions:
 
 ```bash
 OBSIDIAN_VERSIONS="latest/latest earliest/earliest" npm run test:e2e
@@ -129,7 +129,7 @@ How it works:
 
 1. Your live container's auth lives in the `oas_oas-claude-config` Docker volume (created the first time you run `claude` and complete the login flow inside your real sandbox). The `oas_` prefix is docker-compose's project name.
 2. Before running Claude tests, `seedClaudeAuth()` copies this volume into the test's external `oas-test-claude-config` volume (declared `external: true` in `docker-compose.test.yml`, so no compose project prefix) via a throwaway alpine container.
-3. `docker compose down -v` at teardown removes only the test volume — your live auth is never touched and never mutated.
+3. `docker compose down -v` at teardown removes only the test volume. Your live auth is never touched and never mutated.
 
 If the live volume doesn't exist (you haven't used Claude inside the sandbox yet), these tests **skip gracefully** rather than fail. To enable them:
 
@@ -155,11 +155,11 @@ After that, `npm run test:integration` will include the four Claude tests (`clau
 
 Some scenarios can't be reliably automated in this harness:
 
-- **Settings persistence across full Obsidian restart** — `wdio-obsidian-service` uses an ephemeral vault copy per launch, so `data.json` is wiped between sessions. The in-memory save path is covered by validation tests; durable persistence is Obsidian's responsibility.
-- **Plugin disable/enable cycle via the UI** — after `disablePluginAndSave`, the service's plugin files are no longer on disk in a re-loadable state, so re-enable fails with ENOENT. This is a harness limitation. Unload cleanup is covered by unit tests on `StatusBarManager.destroy()`, `FirewallStatusBar.destroy()`, etc.
-- **Interactive Claude conversations against the plugin's running MCP server** — integration tests cover `claude -p` against memory + filesystem MCP servers, but the plugin's own Obsidian MCP server needs a real Obsidian instance listening. See the manual checklist below.
-- **Cross-platform Docker edges (WSL path conversion, Rancher Desktop, Docker Desktop on Windows)** — shell escaping and path conversion are unit-tested, but the full round-trip through `wsl.exe` / Docker Desktop only runs on actual Windows hosts.
-- **Visual rendering** — xterm themes, status bar icons, font fallback, terminal resize. Xvfb can't judge "does it look right".
+- **Settings persistence across full Obsidian restart**: `wdio-obsidian-service` uses an ephemeral vault copy per launch, so `data.json` is wiped between sessions. The in-memory save path is covered by validation tests; durable persistence is Obsidian's responsibility.
+- **Plugin disable/enable cycle via the UI**: after `disablePluginAndSave`, the service's plugin files are no longer on disk in a re-loadable state, so re-enable fails with ENOENT. This is a harness limitation. Unload cleanup is covered by unit tests on `StatusBarManager.destroy()`, `FirewallStatusBar.destroy()`, etc.
+- **Interactive Claude conversations against the plugin's running MCP server**: integration tests cover `claude -p` against memory + filesystem MCP servers, but the plugin's own Obsidian MCP server needs a real Obsidian instance listening. See the manual checklist below.
+- **Cross-platform Docker edges (WSL path conversion, Rancher Desktop, Docker Desktop on Windows)**: shell escaping and path conversion are unit-tested, but the full round-trip through `wsl.exe` / Docker Desktop only runs on actual Windows hosts.
+- **Visual rendering**: xterm themes, status bar icons, font fallback, terminal resize. Xvfb can't judge "does it look right".
 
 ## Interpreting failures
 
@@ -173,20 +173,20 @@ Some scenarios can't be reliably automated in this harness:
 Four GitHub Actions workflows run on every PR. To mirror them locally before pushing (run from repo root):
 
 ```bash
-# check.yml — lint + format + type-check + unit tests + build + e2e
+# check.yml: lint + format + type-check + unit tests + build + e2e
 cd plugin && npm ci && npm run check && npm run build && npm run test:e2e:headless
 
-# integration.yml — docker build + container integration suite
+# integration.yml: docker build + container integration suite
 cd ../container && docker compose build
 cd ../plugin && npm run test:integration
 
-# lint-infra.yml — shellcheck + hadolint + actionlint
+# lint-infra.yml: shellcheck + hadolint + actionlint
 find container/scripts container/configs workspace/.claude \
     -type f \( -name '*.sh' -o -name '*.bash' \) | xargs shellcheck -S error
 hadolint --config container/.hadolint.yaml container/Dockerfile
 actionlint
 
-# links.yml — lychee markdown link check (git ls-files avoids scanning .obsidian-cache/)
+# links.yml: lychee markdown link check (git ls-files avoids scanning .obsidian-cache/)
 git ls-files '*.md' | xargs lychee --no-progress --max-concurrency 4 \
     --exclude '^https?://api\.github\.com/' \
     --exclude '^https?://github\.com/[^/]+/[^/]+/(issues|pull|discussions|commit)/' \
@@ -205,7 +205,7 @@ Cache `plugin/.obsidian-cache/` by the key printed at the start of an e2e run (`
 
 Two host-runnable bash scripts cover the shell-verifiable scenarios from `qa-test-plan.md`. Requires: live container, a test vault, and `jq` on the host.
 
-**`container/test-scripts/security-checks.sh`** — Stage 7 (symlink/path-traversal boundary), Stage 8 (firewall egress, list-sources tagging, MCP path isolation), and Stage 9 tool-bug regression probes (string→bool/number coercion, periodic-note default, canvas changes validation). Firewall must be enabled with `example.com` in Additional firewall domains.
+**`container/test-scripts/security-checks.sh`**: Stage 7 (symlink/path-traversal boundary), Stage 8 (firewall egress, list-sources tagging, MCP path isolation), and Stage 9 tool-bug regression probes (string→bool/number coercion, periodic-note default, canvas changes validation). Firewall must be enabled with `example.com` in Additional firewall domains.
 
 ```bash
 bash container/test-scripts/security-checks.sh /path/to/test-vault
@@ -213,7 +213,7 @@ bash container/test-scripts/security-checks.sh /path/to/test-vault
 bash container/test-scripts/security-checks.sh /path/to/test-vault --firewall-off
 ```
 
-**`container/test-scripts/stress-checks.sh`** — Stage 12 stress scenarios: unicode vault path, large-file read (~5 MB), oas-test-* teardown debris check. The daemon-stop probe (`--with-daemon-stop`) is host-disruptive and optional for routine runs.
+**`container/test-scripts/stress-checks.sh`**: Stage 12 stress scenarios: unicode vault path, large-file read (~5 MB), oas-test-* teardown debris check. The daemon-stop probe (`--with-daemon-stop`) is host-disruptive and optional for routine runs.
 
 ```bash
 bash container/test-scripts/stress-checks.sh /path/to/test-vault
@@ -225,11 +225,11 @@ Both scripts complement but do not replace the `mcp-capability-test.md` cell swe
 
 ## Manual test scenarios
 
-End-to-end manual scenarios — things that need human judgment, interactive LLM use, cross-process workflows, or specific hardware — live in [qa-test-plan.md](./qa-test-plan.md). That plan is organised by setup cost (Stage 0 prerequisites → Stage 12 stress/recovery) so you can run it top-to-bottom on a fresh machine, or jump to a single stage when verifying a focused change.
+End-to-end manual scenarios live in [qa-test-plan.md](./qa-test-plan.md): things that need human judgement, interactive LLM use, cross-process workflows, or specific hardware. That plan is organised by setup cost (Stage 0 prerequisites to Stage 12 stress/recovery) so you can run it top-to-bottom on a fresh machine, or jump to a single stage when verifying a focused change.
 
-For an exhaustive sweep of the MCP tool surface (every read/write/manage/extensions tool, gating behaviour, error shapes), hand [mcp-capability-test.md](./mcp-capability-test.md) to an in-container Claude Code session — it drives the run itself and emits a matrix-format report. Run it whenever the tool surface changes or as part of release validation; `qa-test-plan.md` Stage 3 cells matrix defines the six permission configurations to run it under.
+For an exhaustive sweep of the MCP tool surface (every read/write/manage/extensions tool, gating behaviour, error shapes), hand [mcp-capability-test.md](./mcp-capability-test.md) to an in-container Claude Code session. It drives the run itself and emits a matrix-format report. Run it whenever the tool surface changes or as part of release validation; `qa-test-plan.md` Stage 3 cells matrix defines the six permission configurations to run it under.
 
-Run the automated suites here first; only fall through to the QA plan or the MCP capability plan for behaviour the harness genuinely can't reach (see "What's NOT covered" above for the canonical list of gaps).
+Run the automated suites here first; only fall through to the QA plan or the MCP capability plan for behaviour the harness can't reach (see "What's NOT covered" above for the canonical list of gaps).
 
 ---
 
@@ -242,7 +242,7 @@ docker compose down
 # docker compose down -v
 ```
 
-The integration harness cleans up its own `oas-test-*` resources automatically via `globalSetup.ts`, even on crash — so you don't normally need to touch test containers/volumes manually. If something gets wedged:
+The integration harness cleans up its own `oas-test-*` resources via `globalSetup.ts`, even on crash, so you don't normally need to touch test containers/volumes by hand. If something gets wedged:
 
 ```bash
 docker rm -f oas-test-sandbox

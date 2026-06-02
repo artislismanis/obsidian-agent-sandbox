@@ -11,7 +11,7 @@ How the plugin manages the `oas-sandbox` container across Obsidian start/stop, D
 | `stopped` | No container or container not running. |
 | `starting` | `docker compose up -d` in flight. |
 | `running` | Container is up; ttyd responds. |
-| `error` | Docker/WSL error — surfaced in status bar tooltip. |
+| `error` | Docker/WSL error, surfaced in status bar tooltip. |
 | `checking` | Transient probe-in-progress state. |
 
 ## Startup sequence
@@ -31,10 +31,10 @@ On Obsidian load (`onLayoutReady`):
 1. If busy, notify + bail.
 2. `checkStartupPortConflicts()` test-binds ttyd + MCP ports on the bind address. EADDRINUSE aborts with an actionable Notice.
 3. `ensureWriteDir()` creates the write dir if missing (checks `getFolderByPath` first; calls `createFolder` only when absent so any unexpected error surfaces uncaught).
-4. `docker compose up -d` — relies on compose's own idempotency (no manual `down` first).
+4. `docker compose up -d`: relies on compose's own idempotency (no manual `down` first).
 5. On success: capture container ID, apply firewall, start health + firewall polls.
 
-`restartContainer()` is the explicit clean-recreate escape hatch — `docker compose down && up -d`.
+`restartContainer()` is the explicit clean-recreate escape hatch: `docker compose down && up -d`.
 
 ## Stop
 
@@ -45,14 +45,14 @@ On Obsidian load (`onLayoutReady`):
 ## Health poll
 
 Every 30 seconds while `running`:
-1. Skip if busy (`docker.isBusy()` — serialises operations).
+1. Skip if busy (`docker.isBusy()` serialises operations).
 2. `probeStatus` → compare to known running state → `syncStatusBar`.
 3. On transition out of `running`, stop the firewall poll.
 4. Drift check: `docker.getContainerId()` compared to `lastKnownContainerId`. Mismatch triggers a Notice and detaches terminal leaves (they reopen against the new container).
 
 ## Firewall refresh
 
-Firewall state can change out-of-band — user runs `init-firewall.sh` in the container shell, or another tool toggles it. The plugin uses **event-driven refresh**, not polling:
+Firewall state can change out-of-band: a user runs `init-firewall.sh` in the container shell, or another tool toggles it. The plugin uses **event-driven refresh**, not polling:
 
 - On container transitions into `running`.
 - On explicit firewall toggles from the status bar pill.
@@ -62,20 +62,20 @@ Firewall state can change out-of-band — user runs `init-firewall.sh` in the co
 
 ## Out-of-band container recreation
 
-If you run `docker compose down && up -d` yourself, or another tool recreates the container, the plugin detects the ID drift on the next health poll and re-hydrates — existing terminal tabs are closed (they reopen cleanly against the new container when the user clicks).
+If you run `docker compose down && up -d` yourself, or another tool recreates the container, the plugin detects the ID drift on the next health poll and re-hydrates. Existing terminal tabs close (they reopen against the new container when the user clicks).
 
 ## Shutdown
 
 On Obsidian exit, the `quit` workspace event fires:
-- If `autoStopContainer` is on, race `docker compose down` against a 5s wall-clock timer (via `Promise.race`). Whichever finishes first wins — docker stop continues in the background if the timer expired. If a Docker op is already in-flight (`docker.isBusy()`), use the detached `stopDetached` path instead so the host-side `docker compose down` survives Obsidian's exit.
+- If `autoStopContainer` is on, race `docker compose down` against a 5s wall-clock timer (via `Promise.race`). Whichever finishes first wins: docker stop continues in the background if the timer expired. If a Docker op is already in-flight (`docker.isBusy()`), use the detached `stopDetached` path instead so the host-side `docker compose down` survives Obsidian's exit.
 - Otherwise leave the container running so the next Obsidian open is instant.
 
 On plugin disable (`onunload`):
 - Stop the MCP server.
 - Flush settings.
 - Stop polls.
-- Stop the container unconditionally via `stopDetached()`. `autoStopContainer` only governs the Obsidian-quit path above — disable is an explicit user action.
+- Stop the container via `stopDetached()`. `autoStopContainer` governs only the Obsidian-quit path above: disable is an explicit user action.
 
 ## Multiple terminals
 
-Each "Open Sandbox Terminal" creates an independent tab with its own WebSocket connection and unique `instanceId`. Sessions with a `sessionName` attach to a tmux session; without, they get a bare bash shell. Stale unattached sessions can be cleaned up via `Sandbox: Clean up detached sessions` (manual — no auto-GC).
+Each "Open Sandbox Terminal" creates an independent tab with its own WebSocket connection and unique `instanceId`. Sessions with a `sessionName` attach to a tmux session. Without one, they get a bare bash shell. Stale unattached sessions clean up via `Sandbox: Clean up detached sessions` (manual, no auto-GC).

@@ -6,7 +6,7 @@ set -euo pipefail
 #
 # OAS_SUDO_PASSWORD is a human-intent gate for narrow sudo (apt-get only).
 # If unset or empty, the claude user password stays unset and `sudo`
-# fails at the password prompt — i.e. sudo is effectively disabled.
+# fails at the password prompt, i.e. sudo is effectively disabled.
 # See container/.env.example and README.md "Development" section.
 
 if [[ -n "${OAS_SUDO_PASSWORD:-}" ]]; then
@@ -50,7 +50,7 @@ fi
 
 # Fix directory ownership if it doesn't match claude's current uid.
 # Named volumes persist across rebuilds and bind-mount targets may be
-# created as root:root — check-then-chown is idempotent and skips if
+# created as root:root; check-then-chown is idempotent and skips if
 # already correct, so per-start cost is essentially zero.
 claude_uid=$(id -u claude)
 claude_gid=$(id -g claude)
@@ -63,17 +63,17 @@ ensure_ownership() {
         if [[ -n "$current_uid" && "$current_uid" != "$claude_uid" ]]; then
             echo "entrypoint: fixing ownership on $dir (uid $current_uid → $claude_uid)"
             # Try chown first (works on native Linux and named volumes).
-            # Don't abort on failure — many bind-mount backends (drvfs/9p,
-            # rootless Docker idmap) reject chown by design — but DO log
-            # rather than swallow silently, so the operator can see why
+            # Don't abort on failure (many bind-mount backends (drvfs/9p,
+            # rootless Docker idmap) reject chown by design) but DO log
+            # rather than swallow, so the operator can see why
             # the chmod fallback path triggered.
             chown -R "${claude_uid}:${claude_gid}" "$dir" 2>/dev/null
             rc=$?
             if [ "$rc" -ne 0 ]; then
-                echo "entrypoint: chown -R failed on $dir (rc=$rc) — likely a non-Linux-native mount" >&2
+                echo "entrypoint: chown -R failed on $dir (rc=$rc); likely a non-Linux-native mount" >&2
             fi
-            # Verify it worked — on 9p/drvfs mounts (Windows), chown may
-            # succeed silently without effect. Fall back to chmod so the
+            # Verify it worked: on 9p/drvfs mounts (Windows), chown may
+            # succeed without effect. Fall back to chmod so the
             # claude user can write regardless of ownership.
             local new_uid
             new_uid=$(stat -c '%u' "$dir" 2>/dev/null || echo "")
@@ -86,7 +86,7 @@ ensure_ownership() {
                 fi
             fi
         fi
-        # Final write check — both chown and chmod can silently fail on some
+        # Final write check: both chown and chmod can fail on some
         # exotic mount setups. Surface that loudly rather than letting Claude
         # discover it later via mysterious EACCES.
         if ! sudo -u "#${claude_uid}" test -w "$dir" 2>/dev/null; then
@@ -95,11 +95,11 @@ ensure_ownership() {
     fi
 }
 
-# Defense-in-depth guard for OAS_VAULT_WRITE_DIR. The plugin performs the
+# Defence-in-depth guard for OAS_VAULT_WRITE_DIR. The plugin performs the
 # primary host-side containment check (path.resolve + prefix comparison)
 # before compose establishes the bind mount. This entrypoint check is a
 # second layer that catches any value that slipped through: absolute paths,
-# backslashes (Windows-style), leading-dot roots, and — via realpath -m —
+# backslashes (Windows-style), leading-dot roots, and, via realpath -m,
 # anything that normalises outside /workspace/vault regardless of '..' count.
 # Nested relative paths (e.g. "@Inbox/agent-workspace") are intentionally
 # allowed; only escape attempts are rejected. Empty/unset uses the default.
@@ -128,7 +128,7 @@ ensure_ownership /workspace/vault/.oas
 
 # IPv4-only stance: docker-compose sets net.ipv6.conf.all.disable_ipv6=1, but
 # some host kernels reject the sysctl (e.g. when ipv6 is built as a module
-# that hasn't loaded). Hard-fail rather than silently allow IPv6 traffic — the
+# that hasn't loaded). Hard-fail rather than allow IPv6 traffic; the
 # firewall has no IPv6 rules so an enabled stack would be unfirewalled.
 if [[ -r /proc/sys/net/ipv6/conf/all/disable_ipv6 ]]; then
     if [[ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" != "1" ]]; then
@@ -139,7 +139,7 @@ if [[ -r /proc/sys/net/ipv6/conf/all/disable_ipv6 ]]; then
     fi
 fi
 
-# Prompt templates are not seeded — auto-seeding would overwrite user-edited prompts.
+# Prompt templates are not seeded; auto-seeding would overwrite user-edited prompts.
 
 # Ensure memory file exists (MCP memory server expects it).
 memory_file="/workspace/vault/.oas/${OAS_MEMORY_FILE_NAME:-memory.json}"

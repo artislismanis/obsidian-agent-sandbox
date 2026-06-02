@@ -8,7 +8,7 @@ on:
   pull_request:
     paths:
       - "plugin/**"
-      # The `actions` CodeQL language scans workflows themselves —
+      # The `actions` CodeQL language scans workflows themselves;
       # any workflow change should re-run the analysis.
       - ".github/workflows/**"
   push:
@@ -17,7 +17,7 @@ on:
       - "plugin/**"
       - ".github/workflows/**"
   schedule:
-    # Weekly Monday 06:00 UTC — same slot as the links sweep so off-peak
+    # Weekly Monday 06:00 UTC; same slot as the links sweep so off-peak
     # quota usage clusters.
     - cron: "0 6 * * 1"
   workflow_dispatch: {}
@@ -42,13 +42,13 @@ jobs:
       matrix:
         # `actions` covers GitHub Actions workflows (script injection,
         # untrusted-input flows). Shell scripts under container/scripts are
-        # not in scope for CodeQL — shellcheck handles those via lint-infra.
+        # not in scope for CodeQL; shellcheck handles those via lint-infra.
         language: [javascript-typescript, actions]
     steps:
       - uses: actions/checkout@v6
 
       - name: Initialize CodeQL
-        # First-party GitHub action — major-tag pin per GitHub guidance.
+        # First-party GitHub action; major-tag pin per GitHub guidance.
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
@@ -60,6 +60,6 @@ jobs:
           # GitHub's docs recommend `category: ${{ matrix.language }}` for
           # matrices with different languages. The `/language:` prefix is a
           # convention for matrices running the same language across config
-          # variants — using it here causes SARIF results to upload with a
+          # variants; using it here causes SARIF results to upload with a
           # non-canonical category, which the UI groups oddly.
           category: ${{ matrix.language }}

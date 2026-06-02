@@ -1,17 +1,17 @@
-# How to customize the workspace
+# How to customise the workspace
 
-`workspace/` on the host is mounted rw at `/workspace/` inside the container. It's Claude's configurable domain. Several directories inside are intended for customisation.
+`workspace/` on the host is mounted rw at `/workspace/` inside the container. It's Claude's configurable domain. Several directories inside are meant for customisation.
 
-## `.claude/skills/` — project skills
+## `.claude/skills/`: project skills
 
 Markdown files Claude reads when the invocation pattern matches. Shipped skills:
 
-- `research-topic` — discovery chain
-- `link-hygiene` — periodic link cleanup
-- `reviewed-edit` — safe out-of-workspace writes
-- `tag-audit` — consolidate tag variants
-- `daily-review` — recent-activity digest
-- `note-refactor` — safe rename/move/delete
+- `research-topic`: discovery chain
+- `link-hygiene`: periodic link cleanup
+- `reviewed-edit`: safe out-of-workspace writes
+- `tag-audit`: consolidate tag variants
+- `daily-review`: recent-activity digest
+- `note-refactor`: safe rename/move/delete
 
 Each skill is `workspace/.claude/skills/<name>/SKILL.md` with frontmatter `name` + `description`. Add your own:
 
@@ -28,7 +28,7 @@ Explain what Claude should do and which tools to chain.
 
 Restart Claude (or the whole container) to pick up new skills.
 
-## `.claude/prompts/` — Analyse-in-Sandbox templates
+## `.claude/prompts/`: Analyse-in-Sandbox templates
 
 Populated via `Right-click a note → Analyse in Sandbox → <template-name>`. Each template is:
 
@@ -40,11 +40,11 @@ Prompt body with the @{{file}} placeholder.
 
 The first non-empty line before `---` is the menu label. The body is passed to `claude` as its initial argument, with `{{file}}` replaced by the clicked note's path.
 
-Shipped: `summarize`, `extract-todos`, `critique`, `explain`. Add your own; no restart needed — they're cached with a 30s background refresh, so newly-added templates appear on the next right-click after that window.
+Shipped: `summarize`, `extract-todos`, `critique`, `explain`. Add your own; no restart needed. They're cached with a 30s background refresh, so new templates appear on the next right-click after that window.
 
-## `.claude/hooks/` — Claude Code lifecycle hooks
+## `.claude/hooks/`: Claude Code lifecycle hooks
 
-Shell scripts called on events. Currently ships `notify-status.sh` (activity signalling). Hooks are wired in `.claude/settings.json`:
+Shell scripts called on events. Ships `notify-status.sh` (activity signalling). Hooks are wired in `.claude/settings.json`:
 
 ```json
 {
@@ -56,17 +56,17 @@ Shell scripts called on events. Currently ships `notify-status.sh` (activity sig
 
 Events include `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `Notification`, `SessionStart`, `SessionEnd`. See Claude Code docs for the full list.
 
-## `.claude/settings.json` — Claude Code config
+## `.claude/settings.json`: Claude Code config
 
 Permission mode, env vars, status line, hooks. Changes apply on the next `claude` invocation.
 
 ## `.claude/agents/`, `.claude/commands/`
 
-Subagent and slash-command definitions respectively. **Not shipped in this repo** — neither directory exists in `workspace/.claude/` by default. Create them yourself if you want to define your own subagents or slash commands; Claude Code picks them up on next invocation.
+Subagent and slash-command definitions respectively. **Not shipped in this repo**: neither directory exists in `workspace/.claude/` by default. Create them yourself to define your own subagents or slash commands. Claude Code picks them up on next invocation.
 
-## `.mcp.json` — MCP servers
+## `.mcp.json`: MCP servers
 
-Lists MCP servers Claude Code should connect to. The Obsidian plugin's MCP server is typically pre-configured here.
+Lists MCP servers Claude Code connects to. The Obsidian plugin's MCP server is pre-configured here.
 
 ## Promotion path
 
@@ -74,8 +74,8 @@ Changes here live in git (under `workspace/`), so they ship with the repo. Perso
 
 ## Tiers recap
 
-- **Tier 1 — `workspace/`** (git) — shared with everyone who clones.
-- **Tier 2 — `/home/claude/.claude/`** (named volume) — personal config that survives container rebuilds; NOT in git.
-- **Tier 3 — `.claude/settings.local.json`** (gitignored) — per-machine overrides of Tier 1 without polluting shared config.
+- **Tier 1, `workspace/`** (git): shared with everyone who clones.
+- **Tier 2, `/home/claude/.claude/`** (named volume): personal config that survives container rebuilds; NOT in git.
+- **Tier 3, `.claude/settings.local.json`** (gitignored): per-machine overrides of Tier 1 without polluting shared config.
 
 Put new things in the right tier. See `workspace/CLAUDE.md` for the full rationale.

@@ -99,7 +99,7 @@ printf '{"nodes":[],"edges":[]}\n' > agent-workspace/regression.canvas
 popd >/dev/null
 
 # ---------------------------------------------------------------------------
-# T7 — MCP path-traversal boundary
+# T7: MCP path-traversal boundary
 # ---------------------------------------------------------------------------
 
 echo "--- T7: path-traversal ---"
@@ -122,7 +122,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# T8 — Firewall
+# T8: Firewall
 # ---------------------------------------------------------------------------
 
 echo ""
@@ -171,25 +171,25 @@ for arg in "${@:2}"; do
 done
 
 # ---------------------------------------------------------------------------
-# T9 — Tool-bug regression probes (P1/P2 fixes from capability-test triage)
+# T9: Tool-bug regression probes (P1/P2 fixes from capability-test triage)
 # ---------------------------------------------------------------------------
 
 echo ""
 echo "--- T9: tool-bug regressions ---"
 
-# 9.1a — String "false" must coerce to boolean false (not be rejected by Zod)
+# 9.1a: String "false" must coerce to boolean false (not be rejected by Zod)
 RESP=$(mcp_call vault_search '{"query":"__t9probe__","caseSensitive":"false"}')
 assert_ok "$RESP" "9.1a caseSensitive=\"false\" coerces to bool"
 
-# 9.1b — String "true" must coerce to boolean true
+# 9.1b: String "true" must coerce to boolean true
 RESP=$(mcp_call vault_search '{"query":"__t9probe__","caseSensitive":"true"}')
 assert_ok "$RESP" "9.1b caseSensitive=\"true\" coerces to bool"
 
-# 9.2 — String numeric must coerce to number
+# 9.2: String numeric must coerce to number
 RESP=$(mcp_call vault_search '{"query":"__t9probe__","limit":"3"}')
 assert_ok "$RESP" "9.2 limit=\"3\" coerces to number"
 
-# 9.3 — vault_periodic_note with no args must default periodicity to "daily"
+# 9.3: vault_periodic_note with no args must default periodicity to "daily"
 # Gate: probe for PeriodicNotesPlugin availability first; SKIP if absent.
 PROBE=$(mcp_call vault_periodic_note '{}')
 if echo "$PROBE" | jq -e '.result.isError == true' >/dev/null 2>&1; then
@@ -203,12 +203,12 @@ else
     pass "9.3 vault_periodic_note {} defaults to daily (no periodicity required)"
 fi
 
-# 9.4 — vault_canvas_modify with plain-object changes must be rejected
+# 9.4: vault_canvas_modify with plain-object changes must be rejected
 RESP=$(mcp_call vault_canvas_modify \
     '{"path":"agent-workspace/regression.canvas","changes":{"ops":[]}}')
 assert_error "$RESP" "9.4 canvas changes as plain object rejected"
 
-# 9.5 — vault_canvas_modify with JSON-string changes must succeed
+# 9.5: vault_canvas_modify with JSON-string changes must succeed
 RESP=$(mcp_call vault_canvas_modify \
     '{"path":"agent-workspace/regression.canvas","changes":"{\"ops\":[]}"}')
 assert_ok "$RESP" "9.5 canvas changes as JSON string accepted"

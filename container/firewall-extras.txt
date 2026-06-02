@@ -1,4 +1,4 @@
-# Container firewall allowlist — host-managed extras.
+# Container firewall allowlist: host-managed extras.
 #
 # One entry per line: a domain name (DNS A record is resolved) or an
 # IPv4 CIDR block. Lines starting with `#` and blank lines are ignored.
@@ -10,7 +10,7 @@
 # domains you don't want the agent to know about (or to tamper with).
 #
 # For domains you're happy for the plugin UI to show, prefer the
-# "Additional firewall domains" setting in the Obsidian plugin — it's
+# "Additional firewall domains" setting in the Obsidian plugin; it's
 # discoverable, validated on input, and doesn't require editing files
 # on the host.
 #
