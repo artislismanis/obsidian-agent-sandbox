@@ -26,6 +26,11 @@ function assertSafeSessionName(name: string): void {
 const EXEC_TIMEOUT = 30_000;
 const PROBE_TIMEOUT = 5_000;
 const SERVICE_NAME = "sandbox";
+// Compose project name (`name: oas` in docker-compose.yml) + default network
+// → `oas_default`. If the project name in the compose YAML ever changes,
+// update this constant too.
+const NETWORK_NAME = "oas_default";
+const MASQ_OPT_KEY = "com.docker.network.bridge.enable_ip_masquerade";
 
 import type { DockerMode } from "./settings";
 import {
@@ -226,6 +231,28 @@ export function getWslHostIp(mode: string | undefined): string | undefined {
 		return pick((n) => !/wsl|vethernet|loopback/i.test(n));
 	}
 	return pick((n) => n.toLowerCase().includes("wsl"));
+}
+
+/**
+ * Parse the JSON value of `docker network inspect <net> --format '{{json .Options}}'`
+ * and return the effective `enable_ip_masquerade` boolean.
+ *
+ * Docker stores driver_opts as string values ("true" / "false"). A missing key
+ * means the default applies (MASQUERADE on), so absence → true. Malformed JSON
+ * is treated the same: caller stays on the no-recreate path rather than
+ * tearing the container down based on garbage.
+ */
+export function parseDockerNetworkMasq(jsonStr: string): boolean {
+	let opts: unknown;
+	try {
+		opts = JSON.parse(jsonStr);
+	} catch {
+		return true;
+	}
+	if (!opts || typeof opts !== "object") return true;
+	const v = (opts as Record<string, unknown>)[MASQ_OPT_KEY];
+	if (v === undefined || v === null) return true;
+	return String(v).toLowerCase() === "true";
 }
 
 /**
@@ -551,9 +578,76 @@ export class DockerManager {
 		}
 	}
 
+	/**
+	 * Reconcile the network's MASQUERADE driver_opt with the current WSL mode.
+	 *
+	 * `com.docker.network.bridge.enable_ip_masquerade` is a Docker driver_opt
+	 * and only takes effect when the network is created (see comment in
+	 * docker-compose.yml lines 172-174). If a user switches WSL networking
+	 * mode after the network already exists, the env-var change has no
+	 * effect; the stale opt keeps masquerading packets and Windows's
+	 * Hyper-V vNic filter drops them in mirrored mode.
+	 *
+	 * Inspect the existing network; if its MASQ value disagrees with what
+	 * we'd set now, run `docker compose down` so the next `up -d` recreates
+	 * the network with the right opt. No-op when the network does not exist
+	 * yet (first start) or when inspect fails for unrelated reasons.
+	 */
+	private async verifyAndMaybeRecreateNetwork(expectedMasq: boolean): Promise<void> {
+		let stdout: string;
+		try {
+			// quiet=true: a "no such network" stderr on a fresh setup is
+			// expected, not an operator-visible failure.
+			stdout = await this.run(
+				`docker network inspect ${NETWORK_NAME} --format {{json .Options}}`,
+				EXEC_TIMEOUT,
+				true,
+			);
+		} catch (error: unknown) {
+			const err = error as { stderr?: string; combined?: string; message?: string };
+			const blob = (
+				(err.stderr || "") +
+				(err.combined || "") +
+				(err.message || "")
+			).toLowerCase();
+			if (blob.includes("no such network") || blob.includes("not found")) {
+				return;
+			}
+			logger.warn(
+				"Docker",
+				`Could not inspect ${NETWORK_NAME}; skipping MASQ verification: ${errMsg(error)}`,
+			);
+			return;
+		}
+
+		const actualMasq = parseDockerNetworkMasq(stdout);
+		if (actualMasq === expectedMasq) return;
+
+		logger.warn(
+			"Docker",
+			`${NETWORK_NAME} MASQ mismatch (actual=${actualMasq}, expected=${expectedMasq}); ` +
+				`recreating network so driver_opts take effect.`,
+		);
+		try {
+			await this.run("docker compose down");
+		} catch (err) {
+			logger.warn(
+				"Docker",
+				`docker compose down during MASQ recreate failed: ${errMsg(err)}`,
+			);
+		}
+	}
+
 	/** `up -d` only - compose reconciles config matches. For a forced clean recreate, use `restart()`. */
 	async start(): Promise<string> {
-		return this.withGuard(() => this.run("docker compose up -d"));
+		return this.withGuard(async () => {
+			const { mode } = await this.getWslProbe(this.getSettings().wslDistro);
+			// docker.ts:456-462 sets OAS_IP_MASQ=false only in mirrored mode;
+			// everywhere else compose's `${OAS_IP_MASQ:-true}` defaults to true.
+			const expectedMasq = mode !== "mirrored";
+			await this.verifyAndMaybeRecreateNetwork(expectedMasq);
+			return this.run("docker compose up -d");
+		});
 	}
 
 	async stop(): Promise<string> {
