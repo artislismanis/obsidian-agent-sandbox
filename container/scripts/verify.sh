@@ -150,6 +150,7 @@ print_mount "/workspace/vault/${OAS_VAULT_WRITE_DIR:-agent-workspace}" "Vault wr
 print_mount "/workspace/vault/.oas"                             "Vault infrastructure (memory, etc.)"
 print_mount "/home/claude/.claude"                              "Claude Code config (named volume)"
 print_mount "/home/claude/.shell-history"                       "Shell history (named volume)"
+print_mount "/home/claude/.config"                              "User CLI config (named volume: gh auth, git global, npm, atuin)"
 
 # Quick write tests: catch UID mismatches or missing rw overlay mounts
 # that findmnt alone won't reveal.

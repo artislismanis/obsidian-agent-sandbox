@@ -27,6 +27,7 @@ Inspect: `docker ps | grep oas-`.
 |---|---|---|
 | `oas-claude-config` | `/home/claude/.claude` | Claude Code auth, session history, personal config. Survives container rebuilds. |
 | `oas-shell-history` | `/home/claude/.shell-history` | atuin SQLite history DB (`atuin/history.db`). Bash's own `.bash_history` is not written here. Survives container rebuilds. |
+| `oas-user-config` | `/home/claude/.config` | Other CLI tool auth/config: `gh` OAuth token, git global config (via `GIT_CONFIG_GLOBAL`), npm user config (via `NPM_CONFIG_USERCONFIG`), atuin config, plus any future XDG-compliant tool. Narrow on purpose: mounting all of `/home/claude/` would shadow image-baked binaries. Survives container rebuilds. |
 
 Inspect: `docker volume ls | grep oas-`.
 

@@ -53,18 +53,25 @@ See [`docs/explanation/security-model.md`](../docs/explanation/security-model.md
 ## Pinned binary downloads
 
 The Dockerfile downloads several binaries directly via `curl` (ttyd,
-bash-preexec, atuin, the nvm install script). Each has a matching
-`*_SHA256*` build ARG that is verified with `sha256sum -c` after the
-download. **When bumping any of `TTYD_VERSION`, `BASH_PREEXEC_VERSION`,
-`ATUIN_VERSION`, or `NVM_VERSION`, you MUST recompute the matching SHA**
-or the build will hard-fail on the verification step:
+bash-preexec, atuin, the native Claude Code binary, the nvm install
+script). Each has a matching `*_SHA256*` build ARG that is verified
+with `sha256sum -c` after the download. **When bumping any of
+`TTYD_VERSION`, `BASH_PREEXEC_VERSION`, `ATUIN_VERSION`,
+`CLAUDE_CODE_VERSION`, or `NVM_VERSION`, you MUST recompute the
+matching SHA** or the build will hard-fail on the verification step:
 
 ```
 curl -fsSL <url> | sha256sum
 ```
 
 For arch-split downloads (ttyd, atuin) compute both `_AMD64` and
-`_ARM64` SHAs by substituting `x86_64` / `aarch64` in the URL.
+`_ARM64` SHAs by substituting `x86_64` / `aarch64` in the URL. For
+Claude Code, fetch them straight from the upstream manifest:
+
+```
+curl -fsSL "https://downloads.claude.ai/claude-code-releases/${CLAUDE_CODE_VERSION}/manifest.json" \
+  | jq -r '.platforms | {amd64: ."linux-x64".checksum, arm64: ."linux-arm64".checksum}'
+```
 
 The base images (`ubuntu:24.04`, `ghcr.io/astral-sh/uv`) are pinned by digest at
 the top of the Dockerfile; Dependabot's docker ecosystem refreshes them
