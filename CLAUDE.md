@@ -32,7 +32,7 @@ See `docs/testing.md` for the test automation guide (three layers: unit, integra
 All user-visible Docker resources use an `oas-` prefix (Obsidian Agent Sandbox):
 - Image: `oas-sandbox:latest`
 - Container: `oas-sandbox`
-- Volumes: `oas-claude-config`, `oas-shell-history`
+- Volumes: `oas-claude-config`, `oas-shell-history`, `oas-user-config`
 - Compose project: `oas`
 
 Quick check: `docker ps | grep oas-` and `docker volume ls | grep oas-`.

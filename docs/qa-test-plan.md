@@ -871,7 +871,7 @@ Automated in `stress-checks.sh T12.3` (creates a ~5 MB note and calls `vault_rea
 
 ### 12.7a Teardown leaves no `oas-*` debris
 
-Automated in `stress-checks.sh T12.7a`. Runs `docker compose -p oas-test down -v` and greps for leftover `oas-test-*` resources. The production volumes (`oas-claude-config`, `oas-shell-history`) are checked separately.
+Automated in `stress-checks.sh T12.7a`. Runs `docker compose -p oas-test down -v` and greps for leftover `oas-test-*` resources. The production volumes (`oas-claude-config`, `oas-shell-history`, `oas-user-config`) are checked separately.
 
 - **Notes:** P1.
 

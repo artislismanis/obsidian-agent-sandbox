@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DockerManager, parseSsListeningPorts } from "../docker";
+import { DockerManager, parseDockerNetworkMasq, parseSsListeningPorts } from "../docker";
 
 describe("DockerManager", () => {
 	describe("run rejects when composePath is empty", () => {
@@ -180,5 +180,52 @@ describe("parseSsListeningPorts", () => {
 
 	it("returns empty on empty stdout", () => {
 		expect(parseSsListeningPorts("", [7681])).toEqual([]);
+	});
+});
+
+describe("parseDockerNetworkMasq", () => {
+	const KEY = "com.docker.network.bridge.enable_ip_masquerade";
+
+	it("returns true when value is the string 'true'", () => {
+		expect(parseDockerNetworkMasq(`{"${KEY}":"true"}`)).toBe(true);
+	});
+
+	it("returns false when value is the string 'false'", () => {
+		expect(parseDockerNetworkMasq(`{"${KEY}":"false"}`)).toBe(false);
+	});
+
+	it("returns true when options object is empty (Docker default)", () => {
+		expect(parseDockerNetworkMasq("{}")).toBe(true);
+	});
+
+	it("returns true when the MASQ key is absent (Docker default)", () => {
+		expect(parseDockerNetworkMasq('{"com.docker.network.bridge.name":"docker0"}')).toBe(true);
+	});
+
+	it("returns true on malformed JSON (defensive: caller stays on no-recreate path)", () => {
+		expect(parseDockerNetworkMasq("not json at all")).toBe(true);
+		expect(parseDockerNetworkMasq('{"unterminated":')).toBe(true);
+	});
+
+	it("returns true when JSON parses to null (no options)", () => {
+		expect(parseDockerNetworkMasq("null")).toBe(true);
+	});
+
+	it("returns true when JSON parses to a non-object (array/number)", () => {
+		expect(parseDockerNetworkMasq("[]")).toBe(true);
+		expect(parseDockerNetworkMasq("42")).toBe(true);
+	});
+
+	it("is case-insensitive on the value string", () => {
+		expect(parseDockerNetworkMasq(`{"${KEY}":"TRUE"}`)).toBe(true);
+		expect(parseDockerNetworkMasq(`{"${KEY}":"False"}`)).toBe(false);
+	});
+
+	it("treats unrecognised values as false (only literal 'true' enables MASQ)", () => {
+		// Docker only emits 'true'/'false' strings here; any other shape is
+		// abnormal: default to "MASQ disabled" so we recreate the network and
+		// let compose write the right opt.
+		expect(parseDockerNetworkMasq(`{"${KEY}":""}`)).toBe(false);
+		expect(parseDockerNetworkMasq(`{"${KEY}":"1"}`)).toBe(false);
 	});
 });

@@ -19,6 +19,7 @@
 // doesn't block subsequent calls. Writes back to stdout are serialised
 // through a single queue so JSON-RPC frames never interleave.
 
+const dns = require("dns");
 const http = require("http");
 const net = require("net");
 const readline = require("readline");
@@ -102,14 +103,44 @@ function probePort() {
 		s.setTimeout(2000);
 		s.on("connect", () => {
 			s.destroy();
-			resolve(true);
+			resolve({ ok: true });
 		});
-		s.on("error", () => resolve(false));
+		s.on("error", (err) => resolve({ ok: false, reason: err.code || err.message || "ERROR" }));
 		s.on("timeout", () => {
 			s.destroy();
-			resolve(false);
+			resolve({ ok: false, reason: "TIMEOUT_2S" });
 		});
 	});
+}
+
+function resolveHost(host) {
+	return new Promise((resolve) => {
+		dns.lookup(host, { family: 0 }, (err, address) => {
+			if (err) resolve(`<unresolved: ${err.code || err.message || "ERROR"}>`);
+			else resolve(address);
+		});
+	});
+}
+
+// Emit once per availability flip from true → false so a single unreachable
+// burst lands one diagnostic line instead of one per tools/call. Reset when
+// availability flips back to true.
+let lastDiagnosticEmittedFor = null;
+
+async function emitUnavailableDiagnostic(reason) {
+	if (lastDiagnosticEmittedFor === reason) return;
+	lastDiagnosticEmittedFor = reason;
+	const resolved = await resolveHost(HOST);
+	const hint =
+		reason === "TIMEOUT_2S"
+			? "If WSL2 mirrored mode: run `docker compose down && up -d` after switching modes; driver_opts only apply on network creation."
+			: reason === "ECONNREFUSED"
+				? "Port closed: Obsidian may be closed or the OAS plugin's MCP server is stopped/wrong port."
+				: "Check Obsidian plugin status and OAS_MCP_HOST/PORT values.";
+	// Single structured line, no token included.
+	process.stderr.write(
+		`[obsidian-mcp-proxy] unreachable host=${HOST} resolved=${resolved} port=${PORT} reason=${reason} hint="${hint}"\n`,
+	);
 }
 
 async function isAvailable() {
@@ -123,8 +154,14 @@ async function isAvailable() {
 	if (lastProbeResult && now - lastProbeTime < PROBE_TTL_MS) {
 		return true;
 	}
-	lastProbeResult = await probePort();
+	const probe = await probePort();
+	lastProbeResult = probe.ok;
 	lastProbeTime = now;
+	if (probe.ok) {
+		lastDiagnosticEmittedFor = null;
+	} else {
+		await emitUnavailableDiagnostic(probe.reason);
+	}
 	return lastProbeResult;
 }
 

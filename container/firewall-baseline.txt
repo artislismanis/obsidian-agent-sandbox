@@ -18,6 +18,7 @@
 # Anthropic
 api.anthropic.com
 sentry.io
+downloads.claude.ai
 
 # npm
 registry.npmjs.org

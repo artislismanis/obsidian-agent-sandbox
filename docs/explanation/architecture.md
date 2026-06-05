@@ -19,8 +19,14 @@ Capabilities, settings, and agents live in one of three tiers. Choose the tier b
 **Tier 1, repo-managed (`workspace/`)**
 Shared capabilities. Lives in git. Changes flow via PR like any other code. Examples: project skills you want every user of the sandbox to inherit, MCP server declarations, permission defaults, vault-specific methodology (CLAUDE.md conventions).
 
-**Tier 2, user-persistent (named volume `oas-claude-config`, mounted at `/home/claude/.claude/`)**
-Personal session state that survives container rebuilds but is not committed. Examples: Claude Code authentication, per-user preferences, drafts, session history, personal skills you haven't decided to share yet. Writes here are safe: they don't affect other users or the image.
+**Tier 2, user-persistent (named volumes mounted under `/home/claude/`)**
+Personal session state that survives container rebuilds but is not committed. Three named volumes back this tier:
+
+- `oas-claude-config` at `/home/claude/.claude/`: Claude Code authentication, per-user preferences, drafts, session history, personal skills you haven't decided to share yet.
+- `oas-user-config` at `/home/claude/.config/`: auth and config for other CLI tools. `gh` OAuth token (`~/.config/gh/hosts.yml`), git global config (via `GIT_CONFIG_GLOBAL=~/.config/git/config`, which `gh auth setup-git` honours), npm user config (via `NPM_CONFIG_USERCONFIG=~/.config/npm/npmrc`), atuin config seed, and any future XDG-compliant tool. Narrow on purpose: mounting `/home/claude/` wholesale would shadow image-baked binaries (nvm, native `claude`, python) and trap users on the initial image versions forever.
+- `oas-shell-history` at `/home/claude/.shell-history/`: atuin's local-only history database. Separate from the atuin config above so backing up history doesn't drag in OAuth tokens.
+
+Writes to any of these are safe: they don't affect other users or the image. Caveat: `gh` on Linux without `dbus`/`gnome-keyring` stores its OAuth token plaintext in `~/.config/gh/hosts.yml`. Same risk profile as Claude Code's creds in `oas-claude-config`; treat the host-side volume backups accordingly, and `gh auth logout` revokes if the volume is compromised.
 
 **Tier 3, local overrides (`workspace/.claude/settings.local.json`)**
 Per-machine tweaks that override Tier 1 without polluting the shared config. Gitignored. Examples: a developer-specific API key, a local-only MCP server URL that points to your own machine.
@@ -33,7 +39,8 @@ Per-machine tweaks that override Tier 1 without polluting the shared config. Git
 |-------|------|------|
 | Default permission mode (e.g. `bypassPermissions`) | 1 | `workspace/.claude/settings.json` |
 | MCP server declaration | 1 | `workspace/.mcp.json` |
-| Claude Code authentication | 2 | `/home/claude/.claude/` (named volume) |
+| Claude Code authentication | 2 | `/home/claude/.claude/` (named volume `oas-claude-config`) |
+| `gh` / `git` / `npm` auth state | 2 | `/home/claude/.config/` (named volume `oas-user-config`) |
 | Project skill (shared across users) | 1 | `workspace/.claude/skills/<name>/SKILL.md` |
 | Personal-only skill draft | 2 | `/home/claude/.claude/skills/<name>/` |
 | API key override (per-machine) | 3 | `workspace/.claude/settings.local.json` |

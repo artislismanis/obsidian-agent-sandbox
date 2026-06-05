@@ -57,41 +57,45 @@ claude_gid=$(id -g claude)
 
 ensure_ownership() {
     local dir="$1"
-    if [[ -d "$dir" ]]; then
-        local current_uid
-        current_uid=$(stat -c '%u' "$dir" 2>/dev/null || echo "")
-        if [[ -n "$current_uid" && "$current_uid" != "$claude_uid" ]]; then
-            echo "entrypoint: fixing ownership on $dir (uid $current_uid → $claude_uid)"
-            # Try chown first (works on native Linux and named volumes).
-            # Don't abort on failure (many bind-mount backends (drvfs/9p,
-            # rootless Docker idmap) reject chown by design) but DO log
-            # rather than swallow, so the operator can see why
-            # the chmod fallback path triggered.
-            chown -R "${claude_uid}:${claude_gid}" "$dir" 2>/dev/null
-            rc=$?
-            if [ "$rc" -ne 0 ]; then
-                echo "entrypoint: chown -R failed on $dir (rc=$rc); likely a non-Linux-native mount" >&2
-            fi
-            # Verify it worked: on 9p/drvfs mounts (Windows), chown may
-            # succeed without effect. Fall back to chmod so the
-            # claude user can write regardless of ownership.
-            local new_uid
-            new_uid=$(stat -c '%u' "$dir" 2>/dev/null || echo "")
-            if [[ "$new_uid" != "$claude_uid" ]]; then
-                echo "entrypoint: chown ineffective on $dir (9p/drvfs mount?), using chmod"
-                chmod -R a+rwX "$dir" 2>/dev/null
-                rc=$?
-                if [ "$rc" -ne 0 ]; then
-                    echo "entrypoint: chmod -R fallback failed on $dir (rc=$rc)" >&2
-                fi
-            fi
+    [[ -d "$dir" ]] || return 0
+
+    # Scan for any entry whose uid OR gid doesn't match claude. Checking only
+    # the top-level dir misses subdirs created as root on a persisted named
+    # volume (e.g. ~/.claude/skills/ from a past `docker exec -u root` or an
+    # older image build path): the parent stays claude-owned, so a top-level
+    # stat passes and the recursive chown below never runs. `find -print -quit`
+    # exits on the first hit, so the fast path stays cheap on healthy starts.
+    if [[ -z "$(find "$dir" \( -not -uid "$claude_uid" -o -not -gid "$claude_gid" \) -print -quit 2>/dev/null)" ]]; then
+        return 0
+    fi
+
+    echo "entrypoint: fixing ownership under $dir to uid $claude_uid"
+    # Try chown first (works on native Linux and named volumes). Don't abort
+    # on failure (many bind-mount backends (drvfs/9p, rootless Docker idmap)
+    # reject chown by design) but DO log rather than swallow, so the operator
+    # can see why the chmod fallback path triggered.
+    chown -R "${claude_uid}:${claude_gid}" "$dir" 2>/dev/null
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "entrypoint: chown -R failed on $dir (rc=$rc); likely a non-Linux-native mount" >&2
+    fi
+    # Verify by re-scanning: on 9p/drvfs mounts (Windows), chown may succeed
+    # without effect. Fall back to chmod so the claude user can write
+    # regardless of ownership.
+    if [[ -n "$(find "$dir" \( -not -uid "$claude_uid" -o -not -gid "$claude_gid" \) -print -quit 2>/dev/null)" ]]; then
+        echo "entrypoint: chown ineffective under $dir (9p/drvfs mount?), using chmod"
+        chmod -R a+rwX "$dir" 2>/dev/null
+        rc=$?
+        if [ "$rc" -ne 0 ]; then
+            echo "entrypoint: chmod -R fallback failed on $dir (rc=$rc)" >&2
         fi
-        # Final write check: both chown and chmod can fail on some
-        # exotic mount setups. Surface that loudly rather than letting Claude
-        # discover it later via mysterious EACCES.
-        if ! sudo -u "#${claude_uid}" test -w "$dir" 2>/dev/null; then
-            echo "WARN: $dir is not writable by uid $claude_uid after ownership fix" >&2
-        fi
+    fi
+
+    # Final write check: both chown and chmod can fail on some exotic mount
+    # setups. Surface that loudly rather than letting Claude discover it later
+    # via mysterious EACCES.
+    if ! sudo -u "#${claude_uid}" test -w "$dir" 2>/dev/null; then
+        echo "WARN: $dir is not writable by uid $claude_uid after ownership fix" >&2
     fi
 }
 
@@ -122,6 +126,15 @@ esac
 # Named volumes
 ensure_ownership /home/claude/.claude
 ensure_ownership /home/claude/.shell-history
+ensure_ownership /home/claude/.config
+
+# XDG subdirs for tools we redirect via env (GIT_CONFIG_GLOBAL,
+# NPM_CONFIG_USERCONFIG). git/npm won't create parent dirs on first write,
+# so e.g. `gh auth login` → `gh config set ... git_protocol` fails with
+# "could not lock config file" if .config/git/ is missing on the volume.
+install -d -o "$claude_uid" -g "$claude_gid" -m 755 \
+    /home/claude/.config/git \
+    /home/claude/.config/npm
 # Vault RW overlays
 ensure_ownership "/workspace/vault/${write_dir}"
 ensure_ownership /workspace/vault/.oas

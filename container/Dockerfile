@@ -7,7 +7,7 @@ FROM ghcr.io/astral-sh/uv:${UV_VERSION}@sha256:629240833dd25d03949509fc01ceff56a
 FROM ubuntu:24.04@sha256:c4a8d5503dfb2a3eb8ab5f807da5bc69a85730fb49b5cfca2330194ebcc41c7b
 
 # ── Version ARGs ─────────────────────────────────────────────
-ARG CLAUDE_CODE_VERSION=2.1.101
+ARG CLAUDE_CODE_VERSION=2.1.161
 ARG PYTHON_VERSION=3.12
 ARG NODE_MAJOR=24
 ARG TTYD_VERSION=1.7.7
@@ -26,6 +26,10 @@ ARG TTYD_SHA256_ARM64=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219
 ARG BASH_PREEXEC_SHA256=6ef95f16012bdfec0ab6ee853e8892d51eee295c8639944f9b983b3d40e0e9f7
 ARG ATUIN_SHA256_AMD64=5da991d001632ec140d9bc7b094ddcd7a227c59acc5c498bd9ef4141417ae8ea
 ARG ATUIN_SHA256_ARM64=19c862a874e6dc41e373888ee11dd90bb68f7ccbb5fd8353347bf00892445e88
+# SHA256s come from https://downloads.claude.ai/claude-code-releases/${CLAUDE_CODE_VERSION}/manifest.json
+# (platforms.linux-x64.checksum / platforms.linux-arm64.checksum).
+ARG CLAUDE_CODE_SHA256_AMD64=1f6a22f387a3bce496b6d869389a35dffb5a69c97d9831833f3bd6dc0e6c6c28
+ARG CLAUDE_CODE_SHA256_ARM64=7dfa0a79a2fc9f332057cdc0302f808cba63df7b75e2ccb5a7c1ab62639804e3
 
 # ── User ARGs ────────────────────────────────────────────────
 # The claude user's uid/gid. Defaults to 1000 because that's the
@@ -134,7 +138,11 @@ RUN curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/ins
     && nvm alias default "${NODE_MAJOR}" \
     && ln -s "$(dirname "$(dirname "$(nvm which default)")")" "$NVM_DIR/default" \
     && nvm cache clear
-ENV PATH=/home/claude/.nvm/default/bin:/home/claude/.local/python-default/bin:$PATH
+# ~/.local/bin holds the Claude Code native binary (symlink into
+# ~/.local/share/claude/versions/<ver>; installed in Phase 3). Listed
+# first so `claude update`'s atomic symlink swap is picked up by new
+# shells without a rebuild.
+ENV PATH=/home/claude/.local/bin:/home/claude/.nvm/default/bin:/home/claude/.local/python-default/bin:$PATH
 
 # Python via uv (userspace-managed). A stable dir symlink at
 # ~/.local/python-default gives a version-agnostic entry for PATH.
@@ -149,10 +157,10 @@ RUN uv python install "${PYTHON_VERSION}" && uv cache clean \
     && ln -sfn "$(dirname "$(dirname "$(uv python find)")")" /home/claude/.local/python-default \
     && ln -sf python3 /home/claude/.local/python-default/bin/python
 
-# Claude Code CLI and MCP servers. Clean the npm cache so ~30–50MB of
-# download artifacts don't end up baked into the image layer.
+# MCP servers. Claude Code itself is installed as a native binary in
+# Phase 3 (see CLAUDE_CODE_VERSION). Clean the npm cache so download
+# artifacts don't end up baked into the image layer.
 RUN npm install -g --no-audit --no-fund \
-       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
        "@modelcontextprotocol/server-memory@${MEMORY_SERVER_VERSION}" \
     && npm cache clean --force
 
@@ -168,7 +176,7 @@ RUN curl -fsSL "https://raw.githubusercontent.com/rcaloras/bash-preexec/${BASH_P
        else \
          echo "WARN: BASH_PREEXEC_SHA256 not pinned; skipping verification" >&2; \
        fi \
-    && mkdir -p /home/claude/.config/atuin /home/claude/.shell-history/atuin \
+    && mkdir -p /home/claude/.config/atuin /home/claude/.config/git /home/claude/.config/npm /home/claude/.shell-history/atuin \
     && printf '%s\n' \
        '## Local-only, no sync server' \
        'sync_address = ""' \
@@ -188,6 +196,13 @@ RUN curl -fsSL "https://raw.githubusercontent.com/rcaloras/bash-preexec/${BASH_P
 # before atuin init, so that atuin's hooks register into the
 # preexec_functions / precmd_functions arrays bash-preexec defines.
 RUN printf '%s\n' \
+       '' \
+       '# Redirect tools that hardcode $HOME/.xxx into the oas-user-config' \
+       '# named volume (mounted at ~/.config) so their auth state survives' \
+       '# container restarts. XDG-native tools (gh, atuin, pip, uv) already' \
+       '# write under ~/.config and need no redirect.' \
+       'export GIT_CONFIG_GLOBAL=/home/claude/.config/git/config' \
+       'export NPM_CONFIG_USERCONFIG=/home/claude/.config/npm/npmrc' \
        '' \
        '# atuin shell history (DB stored on the volume-backed history dir)' \
        'export ATUIN_CONFIG_DIR=/home/claude/.config/atuin' \
@@ -227,6 +242,41 @@ RUN ARCH="$(dpkg --print-architecture)" \
     && tar -xzf /tmp/atuin.tar.gz -C /tmp \
     && install -m 755 /tmp/atuin-*/atuin /usr/local/bin/atuin \
     && rm -rf /tmp/atuin*
+
+# Claude Code: native (self-contained) binary, pinned. We bypass the
+# upstream install.sh because it resolves the latest version at runtime;
+# we want a build-time-pinned version (matches ttyd/atuin). The binary is
+# self-contained, with no Node runtime dependency at runtime.
+#
+# Installed at the canonical native-install layout (~/.local/share/claude/
+# versions/<ver> as the binary, ~/.local/bin/claude as a symlink) and
+# owned by claude so that:
+#   1. Claude Code's installMethod=native self-check finds the binary
+#      where it expects; installing to /usr/local/bin trips a half-done
+#      self-migration on first run that leaves a dangling symlink.
+#   2. `claude update` at runtime is an atomic symlink swap into the
+#      same user-writable tree (downloads.claude.ai is allowlisted in
+#      firewall-baseline.txt).
+USER claude
+RUN ARCH="$(dpkg --print-architecture)" \
+    && if [ "$ARCH" = "arm64" ]; then \
+         NATIVE_PLATFORM="linux-arm64"; EXPECTED_SHA="${CLAUDE_CODE_SHA256_ARM64}"; \
+       else \
+         NATIVE_PLATFORM="linux-x64"; EXPECTED_SHA="${CLAUDE_CODE_SHA256_AMD64}"; \
+       fi \
+    && VERSIONED=/home/claude/.local/share/claude/versions/${CLAUDE_CODE_VERSION} \
+    && mkdir -p /home/claude/.local/bin /home/claude/.local/share/claude/versions \
+    && curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+       "https://downloads.claude.ai/claude-code-releases/${CLAUDE_CODE_VERSION}/${NATIVE_PLATFORM}/claude" \
+       -o "${VERSIONED}" \
+    && if [ -n "$EXPECTED_SHA" ]; then \
+         echo "${EXPECTED_SHA}  ${VERSIONED}" | sha256sum -c -; \
+       else \
+         echo "WARN: CLAUDE_CODE SHA256 not pinned for $NATIVE_PLATFORM, skipping verification" >&2; \
+       fi \
+    && chmod 755 "${VERSIONED}" \
+    && ln -sf "${VERSIONED}" /home/claude/.local/bin/claude
+USER root
 
 # Firewall script (run as root via docker compose exec --user root)
 COPY --chmod=755 scripts/init-firewall.sh /usr/local/bin/init-firewall.sh
