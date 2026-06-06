@@ -4,6 +4,7 @@ vi.mock("obsidian", () => ({
 	Modal: class {},
 	PluginSettingTab: class {},
 	Setting: class {},
+	SecretComponent: class {},
 }));
 
 import { GATED_TIERS, DEFAULT_SETTINGS, enabledTiersFromSettings } from "../settings";
