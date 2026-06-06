@@ -78,6 +78,8 @@ Integration tests share one `oas-test-sandbox` container via `globalSetup.ts`. T
 
 E2E tests use `wdio-obsidian-service`. Each spec launches a fresh Obsidian against an ephemeral copy of `test/e2e/vaults/simple/`.
 
+**Running e2e as an AI agent:** the suite spawns Electron/Chromium, which needs to write `/dev/shm` and `~/.config`. A restricted command-sandbox blocks those writes, so the run dies with `session not created: Chrome instance exited` even though every dependency is present (`--no-sandbox` does not help — it only disables Chromium's own sandbox, not the outer one). Run `npm run test:e2e:headless` with the command-sandbox disabled, or in a normal (unsandboxed) shell. Prerequisites and a fuller troubleshooting note live in `docs/testing.md`.
+
 The Obsidian API-dependent modules (main.ts, settings.ts, terminal-view.ts) are not unit tested: they would require mocking Plugin, ItemView, WorkspaceLeaf, etc. Instead they're exercised end-to-end by the e2e suite. Keep pure logic in testable modules (docker.ts, ttyd-client.ts, status-bar.ts, validation.ts, mcp-*.ts).
 
 ## Conventions

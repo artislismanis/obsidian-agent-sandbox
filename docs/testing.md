@@ -47,7 +47,11 @@ Exit code `0` means the suite passed. Any non-zero code = one or more failures. 
   ```bash
   # Ubuntu / Debian / WSL (Ubuntu < 24.04: libasound2 instead of libasound2t64)
   sudo apt install libnss3 libnspr4 libasound2t64
+  # Optional hygiene: silences a non-fatal "Could not load libsecret-1.so.0" warning
+  # (Chromium dlopens it lazily for os_crypt; absence does NOT block launch).
+  sudo apt install libsecret-1-0
   ```
+  No Chromium sandbox flag is needed: `wdio-obsidian-service` already passes `--no-sandbox` on Linux.
 - **Built plugin artifacts**: run `npm run build` before `npm run test:e2e`; `dist/main.js`, `dist/manifest.json`, `dist/styles.css` must exist before the suite launches Obsidian
 
 On first run, wdio downloads Obsidian from GitHub releases into `plugin/.obsidian-cache/`. Network errors are transient; retry.
@@ -174,6 +178,7 @@ Some scenarios can't be reliably automated in this harness:
 - **Integration failure** → usually either (a) the container is unhealthy (check `docker logs oas-test-sandbox`), (b) a port conflict on 17681/38080, or (c) a real regression. The helpers dump container logs + compose status on health-check timeouts.
 - **E2E failure** → typically a selector issue (DOM structure changed), a timing issue (bump the `pause()` or `waitForExist` timeout), or the build artifacts are stale (re-run `npm run build`).
 - **First-run e2e 504** → GitHub release download for Obsidian failed transiently. Re-run; the launcher retries with exponential backoff and caches on success.
+- **E2E `session not created: Chrome instance exited`** with every prerequisite present → the runner is inside a restricted seccomp/namespace sandbox (e.g. an AI coding-agent's command wrapper) that blocks Electron's `/dev/shm` and `~/.config` writes. `--no-sandbox` does not help — it only disables Chromium's own sandbox, not the outer one. Run the suite in a normal shell.
 
 ## Running in CI
 
