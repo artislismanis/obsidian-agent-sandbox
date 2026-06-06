@@ -38,10 +38,59 @@ This stage exercises the settings UI, error/fallback paths before any container 
 - **Setup:** Plugin freshly enabled (toggle off then on in Community Plugins). DevTools open (Ctrl+Shift+I) before clicking, to catch transient errors.
 - **Steps:** Open Settings → Agent Sandbox. Visit all four tabs in order: **General, Terminal, MCP, Advanced**. For each, verify fields appear in the order listed below with the stated defaults and "Requires container restart." labels where noted.
 - **Expected:**
-  - **General** (top to bottom): Docker mode = `WSL (Windows)` *(Requires container restart.)*; Docker Compose path = empty *(Requires container restart.)*; WSL distribution = empty with placeholder `Ubuntu` *(Requires container restart., visible only when Docker mode = WSL)*; Vault write directory = `agent-workspace` *(Requires container restart.)*; Memory file name = `memory.json` *(Requires container restart.)*; Auto-start on load = off *(no label)*; Auto-stop on exit = off *(no label)*; **Agent output notifications** *(heading)*; Notify on file created = on *(no label)*; Notify on file edited = off *(no label)*; Notify on file deleted = on *(no label)*; Notify on file renamed/moved = on *(no label)*; Vault-wide scope = off *(no label)*.
-  - **Terminal** (top to bottom): Port = `7681` *(Requires container restart.)*; Bind address = `127.0.0.1` *(Requires container restart.)*; **Appearance** *(heading)*; Terminal theme = `Follow Obsidian theme` *(no label)*; Terminal font = empty *(no label)*; Font size = `14` *(no label)*; Scrollback = `10000` *(no label)*; Auto-copy on selection = on *(no label)*.
-  - **MCP** (top to bottom): **Server** *(heading)*; Enable MCP server = on *(no label)*; MCP port = `28080` *(Requires container restart.)*; MCP bind address = `127.0.0.1` *(no label, hot-swap - applies without container restart)*; Auth token = auto-generated value, with **Regenerate** button *(Requires container restart.)*; **Always enabled** *(heading, with a two-item info list, no controls)*; **Escalations** *(heading)*; Vault-wide writes = `None` *(no label)*; Navigate / Manage / Extensions tiers = off *(no label each)*; **Path restrictions** *(heading)*; Allowed paths = empty *(no label)*; Allowlist mode = off *(no label)*; Blocked paths = empty *(no label)*; **Timeouts** *(heading)*; Tool timeout (seconds) = `10` *(no label)*; Review timeout (seconds) = `180` *(no label)*; User edit suppression window (seconds) = `10` *(no label)*.
-  - **Advanced** (top to bottom): **Diagnostics** *(heading)*; Log level = `Warn` *(no label)*; **Resource limits** *(heading)*; Memory limit = `4G` *(Requires container restart.)*; CPU limit = `2` *(Requires container restart.)*; **Security** *(heading)*; Auto-enable firewall on start = **on** *(no label)*; Allowed private hosts = empty, list editor with **Add** button *(Requires container restart.)*; Additional firewall domains = empty, list editor with **Add** button *(Requires container restart.)*; Effective allowlist (Refresh button, no input) *(no label)*; Sudo password = empty *(Requires container restart.)*.
+  - **General** (top to bottom):
+    - Docker mode = `WSL (Windows)` *(Requires container restart.)*
+    - Docker Compose path = empty *(Requires container restart.)*
+    - WSL distribution = empty with placeholder `Ubuntu` *(Requires container restart., visible only when Docker mode = WSL)*
+    - Vault write directory = `agent-workspace` *(Requires container restart.)*
+    - Memory file name = `memory.json` *(Requires container restart.)*
+    - Auto-start on load = off *(no label)*
+    - Auto-stop on exit = off *(no label)*
+    - **Agent output notifications** *(heading)*
+      - Notify on file created = on *(no label)*
+      - Notify on file edited = off *(no label)*
+      - Notify on file deleted = on *(no label)*
+      - Notify on file renamed/moved = on *(no label)*
+      - Vault-wide scope = off *(no label)*
+  - **Terminal** (top to bottom):
+    - Port = `7681` *(Requires container restart.)*
+    - Bind address = `127.0.0.1` *(Requires container restart.)*
+    - **Appearance** *(heading)*
+      - Terminal theme = `Follow Obsidian theme` *(no label)*
+      - Terminal font = empty *(no label)*
+      - Font size = `14` *(no label)*
+      - Scrollback = `10000` *(no label)*
+      - Auto-copy on selection = on *(no label)*
+  - **MCP** (top to bottom):
+    - **Server** *(heading)*
+      - Enable MCP server = on *(no label)*
+      - MCP port = `28080` *(Requires container restart.)*
+      - MCP bind address = `127.0.0.1` *(no label, hot-swap - applies without container restart)*
+      - Auth token = auto-generated value, with **Regenerate** button *(Requires container restart.)*
+    - **Always enabled** *(heading, with a two-item info list, no controls)*
+    - **Escalations** *(heading)*
+      - Vault-wide writes = `None` *(no label)*
+      - Navigate / Manage / Extensions tiers = off *(no label each)*
+    - **Path restrictions** *(heading)*
+      - Allowed paths = empty *(no label)*
+      - Allowlist mode = off *(no label)*
+      - Blocked paths = empty *(no label)*
+    - **Timeouts** *(heading)*
+      - Tool timeout (seconds) = `10` *(no label)*
+      - Review timeout (seconds) = `180` *(no label)*
+      - User edit suppression window (seconds) = `10` *(no label)*
+  - **Advanced** (top to bottom):
+    - **Diagnostics** *(heading)*
+      - Log level = `Warn` *(no label)*
+    - **Resource limits** *(heading)*
+      - Memory limit = `4G` *(Requires container restart.)*
+      - CPU limit = `2` *(Requires container restart.)*
+    - **Security** *(heading)*
+      - Auto-enable firewall on start = **on** *(no label)*
+      - Allowed private hosts = empty, list editor with **Add** button *(Requires container restart.)*
+      - Additional firewall domains = empty, list editor with **Add** button *(Requires container restart.)*
+      - Effective allowlist (Refresh button, no input) *(no label)*
+      - Sudo password = empty *(Requires container restart.)*
   - No red console errors on any tab. A `[Violation] Forced reflow …` yellow warning on plugin enable/disable is known and benign.
 - **Notes:** P1. This inventory is the authoritative list: field order, defaults, and label presence all matter. Update this scenario when settings change.
 
