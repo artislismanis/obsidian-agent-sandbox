@@ -9,6 +9,7 @@ This plan covers scenarios outside the scope of `npm run test`, `test:integratio
 - **Severity convention:** `P0` blocks ship, `P1` ships only with workaround, `P2` polish.
 - **Cleanup discipline:** scenarios that mutate state (symlinks, firewall, custom sudo password, files in vault) end with explicit cleanup. Run it: later scenarios assume a clean baseline.
 - **Don't repeat automated coverage.** If a behaviour is covered in `src/__tests__/*`, `test/integration/*`, or `test/e2e/*`, don't re-verify here. This plan is the gap-filler.
+- **`✅ Automated` markers.** A scenario (or stage) prefixed `✅ Automated` is fully covered by CI and needs **no manual run**. It is retained — with a pointer to the covering test — for traceability and as the reference spec for that test. Scenarios marked partially automated keep only their manual residual.
 
 ---
 
@@ -35,6 +36,7 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.1 First-enable settings tab render
 
+- **Partially automated** — tab rendering, restart-label presence, MCP tier defaults, and numeric / bind-address validation are covered by `test/e2e/specs/smoke.e2e.ts` + `settings.e2e.ts`. The manual value here is the full field-**order** and default-**value** audit below (not asserted exhaustively in e2e).
 - **Setup:** Plugin freshly enabled (toggle off then on in Community Plugins). DevTools open (Ctrl+Shift+I) before clicking, to catch transient errors.
 - **Steps:** Open Settings → Agent Sandbox. Visit all four tabs in order: **General, Terminal, MCP, Advanced**. For each, verify fields appear in the order listed below with the stated defaults and "Requires container restart." labels where noted.
 - **Expected:**
@@ -103,17 +105,11 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.3 MCP token regenerate
 
-- **Setup:** Settings → MCP visible.
-- **Steps:** Click Regenerate. Observe token field.
-- **Expected:** Field updates immediately to a new value distinguishable from the previous one. No restart required for the field to update visually (whether the running MCP server picks up the new token is covered in 3.x).
-- **Notes:** P1. Take a screenshot of old and new tokens to confirm they differ.
+- **✅ Automated** — `test/e2e/specs/settings.e2e.ts` ("token regenerate produces a new value") and `smoke.e2e.ts` ("auto-generates an MCP token on first load") assert the field changes to a fresh 32-char hex value. No manual step. Whether the *running* MCP server adopts the new token is the live-session check 3.6.
 
 ### 1.4 Bind address security warning toggle
 
-- **Setup:** Two bind-address fields: **Terminal → Bind address** (ttyd) and **MCP → MCP bind address**. Exercise both.
-- **Steps:** For each, change `127.0.0.1` → `0.0.0.0`, then to a non-loopback IP, then back to `127.0.0.1`. Keep the input focused while typing.
-- **Expected:** The field's normal description text remains visible at all times. When value is `0.0.0.0`, a distinct amber `⚠ WARNING:` banner appears *below* the description. ttyd field: "0.0.0.0 exposes ttyd to your network without authentication. Anyone on your network can access the terminal."; MCP field: "0.0.0.0 exposes MCP to your network. Bearer-token auth is the only line of defence." On revert to `127.0.0.1` (or any other non-`0.0.0.0` value) the banner disappears; the description is unchanged. Input focus is preserved across keystrokes (no full-tab re-render). Each warning shows on its own field only.
-- **Notes:** P0. Verify the banner is visually distinct (amber left-border) and the base description is still readable alongside it.
+- **✅ Automated** — `test/e2e/specs/settings.e2e.ts` asserts the network-exposure warning appears at `0.0.0.0` and clears on revert, for **both** the Terminal (ttyd) and MCP bind-address fields. No manual step. (Purely visual styling — amber left-border — is a 🎨 visual-regression candidate, not asserted.)
 
 ### 1.5 Start with Docker daemon stopped
 
@@ -124,10 +120,11 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.6 Write directory validation in settings
 
-- **Setup:** Plugin enabled. Settings → General open.
-- **Steps:** 1) Attempt to type a path outside the vault (e.g. `/root/forbidden` or `../../escape`) into **Vault write directory**. 2) Manually edit the vault's `data.json` (`.obsidian/plugins/obsidian-agent-sandbox/data.json`) to set `vaultWriteDir` to a path that escapes the vault, then reload the plugin (toggle off/on in Community Plugins).
-- **Expected:** 1) Settings UI rejects the input: the field blocks paths containing `..` or a leading `/`. 2) On load the settings tab shows the field in error state (red border / `sandbox-input-error` class). The stored value is **not** auto-corrected; attempting to start the container while the invalid value is stored emits a Notice and fails to start.
-- **Notes:** P1. Validation runs on both keystroke and settings-tab load. An invalid stored value prevents container start rather than causing a mid-start failure.
+- **✅ Automated (keystroke rejection)** — `settings.e2e.ts` ("write directory rejects escaping paths") covers typed `../escape` / `/root/forbidden` → `sandbox-input-error`; `validation.test.ts` unit-tests the validator. Manual residual below covers only the *stored-escape* path.
+- **Setup:** Plugin enabled.
+- **Steps:** Manually edit the vault's `data.json` (`.obsidian/plugins/obsidian-agent-sandbox/data.json`) to set `vaultWriteDir` to a path that escapes the vault, then reload the plugin (toggle off/on in Community Plugins).
+- **Expected:** On load the settings tab shows the field in error state (red border / `sandbox-input-error` class). The stored value is **not** auto-corrected; attempting to start the container while the invalid value is stored emits a Notice and fails to start.
+- **Notes:** P1. Only the stored-escape half is manual: the e2e harness loads the plugin out-of-tree, so it cannot seed `data.json` and reload (see the skipped probe in `test/e2e/specs/harness-probe.e2e.ts`).
 
 ### 1.7 Port conflict detection
 
@@ -186,22 +183,7 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 
 ### 1.9 Command palette entries present
 
-- **Setup:** Plugin enabled.
-- **Steps:** Open command palette and search "Sandbox". Confirm all 12 commands are listed by their display names (command IDs in parentheses):
-  - **Sandbox: Open Terminal** (`open-claude-terminal`)
-  - **Sandbox: Start Container** (`sandbox-start-container`)
-  - **Sandbox: Stop Container** (`sandbox-stop-container`)
-  - **Sandbox: Container Status** (`sandbox-container-status`)
-  - **Sandbox: Restart Container** (`sandbox-restart-container`)
-  - **Sandbox: Toggle Firewall** (`sandbox-toggle-firewall`)
-  - **Sandbox: Open Session...** (`open-session`)
-  - **Sandbox: Open in Browser** (`open-browser`)
-  - **Sandbox: Toggle MCP Server** (`sandbox-toggle-mcp`)
-  - **Sandbox: Copy terminal connection log** (`sandbox-copy-terminal-connection-log`)
-  - **Sandbox: Clean up detached sessions** (`sandbox-cleanup-sessions`)
-  - **Sandbox: Switch to Sandbox session…** (`sandbox-switch-session`)
-- **Expected:** All 12 visible. Each runs without throwing when invoked in this state (most should no-op with a Notice).
-- **Notes:** P2. Quick smoke check. Use `plugin/src/main.ts` as the canonical source if the count changes.
+- **✅ Automated** — `test/e2e/specs/smoke.e2e.ts` ("registers all 12 expected commands") asserts the **exact** set of all 12 command ids (fails if any are added, removed, or renamed). No manual step. `plugin/src/main.ts` is the canonical source if the count changes.
 
 ---
 
@@ -251,14 +233,14 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 - **Setup:** Container running. DevTools console open.
 - **Steps:** Disable "Agent Sandbox", wait 2 s, re-enable it.
 - **Expected:** Plugin loads cleanly: ribbon icon present, all 12 commands re-registered in command palette, settings tab renders, no red errors in console. No duplicate status bar pills or ribbon icons.
-- **Notes:** P0.
+- **Notes:** P0. Genuinely manual — not reachable in e2e: with the plugin loaded out-of-tree, `disablePlugin`/`enablePlugin` can't round-trip in the harness (skipped probe in `test/e2e/specs/harness-probe.e2e.ts`). Unload cleanup is unit-tested via `StatusBarManager.destroy()` / `FirewallStatusBar.destroy()`.
 
 ### 2.6 Settings persist across full Obsidian restart
 
 - **Setup:** Container running.
 - **Steps:** Change Terminal font size to 18. Quit Obsidian fully (not reload). Reopen.
 - **Expected:** Setting still shows 18. Open a terminal: font reflects it.
-- **Notes:** P0. Not covered by e2e (ephemeral vaults).
+- **Notes:** P0. Genuinely manual — not reachable in e2e: `wdio-obsidian-service` loads the plugin out-of-tree, so settings never reach `data.json` and a reboot resets them to defaults (see the skipped probe in `test/e2e/specs/harness-probe.e2e.ts`). Durable persistence is Obsidian's own `saveData`/`loadData` responsibility.
 
 ### 2.7 Terminal opens, attaches, renders
 
@@ -449,10 +431,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 3.4 Always-on tiers have no toggle
 
-- **Setup:** Settings → MCP, with MCP enabled.
-- **Steps:** Inspect the Escalations section.
-- **Expected:** Three toggles only (Navigate, Manage, Extensions) and one dropdown (**Vault-wide writes**: `None` / `Reviewed` / `Full (no review)`). No UI control for `read`, `writeScoped`, or `agent`; their tools always appear in `vault_*` listings while MCP is on.
-- **Notes:** P2. Confirms `docs/reference/settings.md` matches reality.
+- **✅ Automated** — `test/e2e/specs/smoke.e2e.ts` ("MCP tab shows permission tier toggles") asserts the Escalations section renders the Navigate / Manage / Extensions toggles plus the Vault-wide writes dropdown, while `read` and `writeScoped` appear only as non-interactive "Always enabled" bullets (not toggles). No manual step.
 
 ### 3.5 Navigate tier: active tab changes (UI assertion)
 
@@ -716,7 +695,7 @@ Unit tests verify the gate fires; humans verify the modal renders right.
 
 **Setup carried forward:** Stage 0–3.
 
-Unit tests cover `isRealPathWithinBase` with mocked realpath. These verify the OS round-trip.
+**✅ Automated** — `container/test-scripts/security-checks.sh` runs 7.1–7.4 against a live container (real symlink creation + `vault_read` / `vault_create` / `vault_list` MCP calls), and `src/__tests__/mcp-symlink.test.ts` unit-tests `isRealPathWithinBase`. The scenario bodies below are retained as the reference spec for that script — run them by hand only when debugging a script failure or on a platform without the script.
 
 ### 7.1 Read of escaping symlink is denied
 
@@ -764,6 +743,8 @@ Unit tests cover `isRealPathWithinBase` with mocked realpath. These verify the O
 ## Stage 8: Firewall
 
 **Setup carried forward:** Stage 0–3.
+
+**✅ Automated (egress + tagging)** — `container/test-scripts/security-checks.sh` covers 8.2 (plugin-domain reachable / other blocked), 8.3 (extras-file domain reachable + host path not vault-readable), 8.4 (`--list-sources` tag set), and 8.6 (egress restored when off); those bodies below are the reference spec for the script. **Genuinely manual:** 8.1 (live toggle UI) and 8.5 (Effective allowlist refresh button).
 
 ### 8.1 Firewall on/off toggle live
 

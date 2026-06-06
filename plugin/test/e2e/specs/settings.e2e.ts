@@ -71,6 +71,28 @@ describe("Settings: validation and warnings", function () {
 			expect(autoStartDesc).toBeDefined();
 			expect(autoStartDesc).not.toContain("Requires container restart");
 		});
+
+		// QA plan 1.6 (UI half): the write-dir field rejects paths that escape the
+		// vault (leading "/" or ".." segments) by flagging sandbox-input-error,
+		// and clears the flag for a valid relative folder. Mirrors the numeric
+		// validation pattern below. The stored-escape half (seed bad data.json,
+		// reload, assert error state) lives in harness-probe.e2e.ts.
+		it("write directory rejects escaping paths", async function () {
+			const writeDirInput = settingInput("Vault write directory");
+			await writeDirInput.waitForExist({ timeout: 3000 });
+
+			await writeDirInput.setValue("../escape");
+			await browser.pause(200);
+			expect(await writeDirInput.getAttribute("class")).toContain("sandbox-input-error");
+
+			await writeDirInput.setValue("/root/forbidden");
+			await browser.pause(200);
+			expect(await writeDirInput.getAttribute("class")).toContain("sandbox-input-error");
+
+			await writeDirInput.setValue("agent-workspace");
+			await browser.pause(200);
+			expect(await writeDirInput.getAttribute("class")).not.toContain("sandbox-input-error");
+		});
 	});
 
 	describe("Terminal tab", function () {
@@ -212,6 +234,22 @@ describe("Settings: validation and warnings", function () {
 			await portInput.setValue("28080");
 			await browser.pause(200);
 			expect(await portInput.getAttribute("class")).not.toContain("sandbox-input-error");
+		});
+
+		// QA plan 1.4 (MCP half): the MCP bind-address field shows a distinct
+		// network-exposure warning at 0.0.0.0 and hides it on revert. Mirrors the
+		// ttyd Bind address test above; the warning div lives inside descEl so
+		// getText() includes it only while visible.
+		it("bind address 0.0.0.0 shows security warning", async function () {
+			const bindInput = settingInput("MCP bind address");
+			await bindInput.waitForExist({ timeout: 3000 });
+			await bindInput.setValue("0.0.0.0");
+			await browser.pause(500);
+			expect(await settingDesc("MCP bind address").getText()).toContain("exposes MCP");
+
+			await settingInput("MCP bind address").setValue("127.0.0.1");
+			await browser.pause(500);
+			expect(await settingDesc("MCP bind address").getText()).not.toContain("exposes MCP");
 		});
 	});
 
