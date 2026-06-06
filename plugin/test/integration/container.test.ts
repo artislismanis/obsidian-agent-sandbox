@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { execSync } from "child_process";
+import { accessSync, constants, rmSync, statSync } from "fs";
+import { join } from "path";
 import {
 	isDockerAvailable,
 	isImageBuilt,
@@ -7,6 +9,7 @@ import {
 	containerExecRoot,
 	containerLogs,
 	TTYD_PORT,
+	VAULT_DIR,
 } from "./helpers";
 
 function execSyncTrim(cmd: string): string {
@@ -63,6 +66,37 @@ describe.skipIf(SKIP_NO_IMAGE)("Container", () => {
 	it("vault root is not writable", () => {
 		expect(() => containerExec("touch /workspace/vault/_should_fail")).toThrow();
 	});
+
+	// QA plan 3.10: a file the container writes into the bind-mounted write dir
+	// must land owned by the host user (or at least host-writable) so Obsidian
+	// can edit it without permission errors. uid semantics only hold on a native
+	// Linux bind mount (macOS Docker Desktop / WSL drvfs remap ownership), so
+	// gate on Linux — matching the QA item's "P1 on Linux" scope.
+	it.skipIf(process.platform !== "linux")(
+		"files the container writes are owned/editable by the host user",
+		() => {
+			const rel = "agent-workspace/_owner_test.md";
+			const hostPath = join(VAULT_DIR, rel);
+			try {
+				containerExec(`sh -c 'echo agent-write > /workspace/vault/${rel}'`);
+				const st = statSync(hostPath);
+				// The container's claude uid is built to match the host (CLAUDE_UID,
+				// default 1000). Either the uid matches, or the file is host-writable
+				// — both satisfy "Obsidian can edit it".
+				const uidMatches = st.uid === process.getuid?.();
+				let hostWritable = false;
+				try {
+					accessSync(hostPath, constants.W_OK);
+					hostWritable = true;
+				} catch {
+					hostWritable = false;
+				}
+				expect(uidMatches || hostWritable).toBe(true);
+			} finally {
+				rmSync(hostPath, { force: true });
+			}
+		},
+	);
 
 	// ── workspace tier (Tier 1) ──
 	it("workspace tier files are visible", () => {

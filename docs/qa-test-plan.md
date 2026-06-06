@@ -390,6 +390,8 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 3.1 Permission cells matrix
 
+- **✅ Automated (tier gating)** — `test/e2e/specs/bridge.e2e.ts` ("Bridge C1: permission-tier matrix") configures six cells against the real plugin and asserts, per cell, that `mcp_capabilities` reports the right enabled tiers and that the registered tool set (cross-checked against `tools/list`) contains a gated tool iff its tier is on (`vault_open`/navigate, `vault_rename`/manage, `vault_modify_reviewed`/reviewed, `vault_modify_anywhere`/full). Tier filtering is list-time (`mcp-server.ts` `buildTools(...).filter`), so this is a deterministic regression gate. The capability sweep below is now only the **LLM-behaviour** sanity check (does Claude pick the right tool, honour a denial), not the tier-gating proof.
+
 Each cell is a specific combination of plugin settings. Run [mcp-capability-test.md](./mcp-capability-test.md) under each relevant cell. For release validation run all six; for focused regression testing run only cells affected by the change.
 
 | Cell | Nav | Mng | Ext | Write mode | Active tier tags                                       |
@@ -439,7 +441,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 3.6 MCP token rotation kicks live connections
 
-- **Partially automated** — the container tier (`test/e2e/container/bridge-container.e2e.ts`) proves a **wrong bearer token is rejected (401)** from inside a live container, and a correct one is accepted (200). The full live-rotation flow (Regenerate while a Claude session is connected, then `/mcp` reconnect) stays manual.
+- **✅ Automated (auth rejection)** — `test/e2e/specs/bridge.e2e.ts` ("3.6 token rotation rejects the old token, accepts the new") rotates the token on the real plugin server and asserts a connection with the old token is rejected (HTTP 401/403) while the new token is accepted. The container tier (`test/e2e/container/bridge-container.e2e.ts`) also proves token accept/reject from inside a live container. Manual residual: the in-CLI `/mcp` reconnect dance after a rotation is Claude-CLI behaviour.
 - **Setup:** Active Claude session connected to MCP.
 - **Steps:** Click Regenerate token in plugin settings. In the same terminal, try another tool call.
 - **Expected:** The next call fails auth. Restarting the container per the regenerate-button description, then restarting Claude, restores tool access.
@@ -447,6 +449,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 3.7 MCP turn-off mid-session
 
+- **✅ Automated (connection drop)** — `test/e2e/specs/bridge.e2e.ts` ("3.7 turning MCP off drops connections; re-enabling restores them") turns the server off mid-session and asserts a reconnect fails, then re-enables and asserts a fresh session connects. Manual residual: the user-visible `/mcp` reconnect step in the Claude CLI is CLI behaviour.
 - **Setup:** Active Claude session that recently used a vault tool.
 - **Steps:** Toggle MCP off via command palette. In the same terminal, submit another tool-using prompt.
 - **Expected:** The toggle force-closes all active HTTP connections (including SSE keepalives). The running `claude` process receives a connection error and cannot continue using vault tools. Re-enabling MCP alone is not enough: the user must run `/mcp` in the terminal to reconnect the Claude CLI session to the newly restarted server.
@@ -454,6 +457,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 3.8 MCP cache invalidates on live edits
 
+- **✅ Automated (graph cache)** — `test/e2e/specs/bridge.e2e.ts` ("3.8 vault_backlinks reflects a live link added after the first read") reads `vault_backlinks`, adds a backlink live in Obsidian, waits for the `resolved` event, and asserts the next call reflects it. `VaultCache` keys the **link graph and tag/property counts** (not raw file content) and clears wholesale on `resolved`, so backlinks is the meaningful target. The content-read freshness below (`version A` → `version B`) is a separate non-cached path and stays a manual spot-check.
 - **Setup:** `notes/cache.md` with first line `version A`. Vault open in Obsidian.
 - **Steps:** 1) `claude -p "Read notes/cache.md and quote the first line"`. 2) In Obsidian, edit the note's first line to `version B` (Obsidian saves continuously, no explicit save needed). 3) Shortly after editing, re-read via Claude.
 - **Expected:** Second read returns `version B`. The cache invalidates on Obsidian's `metadataCache.resolved` event, typically within a second or two of the file changing. If the second read still returns `version A`, wait 5 s and retry once; document any lag >5 s.
@@ -461,6 +465,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 3.9 Concurrent MCP tool calls
 
+- **✅ Automated (parallel burst)** — `test/e2e/specs/bridge.e2e.ts` ("3.9 resolves a parallel burst of tool calls without error") fires a `Promise.all` burst of read-tier calls against the real plugin and asserts none deadlock or return `isError` (burst kept under the 60/min read rate limit). Manual residual: interleaving across a live multi-tool Claude conversation.
 - **Setup:** Vault with ≥10 notes containing "alpha" and ≥10 containing "beta".
 - **Steps:** `claude -p "In parallel, search the vault for 'alpha' and for 'beta' and read the first three hits of each."`
 - **Expected:** All calls complete without deadlock or `isError`. DevTools shows interleaved tool-call logs.
@@ -468,6 +473,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 3.10 File ownership after Claude writes (Linux)
 
+- **✅ Automated (Linux)** — `test/integration/container.test.ts` ("files the container writes are owned/editable by the host user") has the container write into the bind-mounted write dir and asserts the host-side file is owned by the host uid (or host-writable). Linux-gated, since macOS Docker Desktop and WSL drvfs remap ownership.
 - **Setup:** Linux host, vault on host filesystem. Note host uid: `id -u`.
 - **Steps:** `claude -p "Create agent-workspace/owner-test.md with content 'check uid'"`. Then: `ls -la <vault>/agent-workspace/owner-test.md` and edit in Obsidian.
 - **Expected:** Obsidian edits the file without permission errors. Owner uid matches host uid, or mode is permissive enough that the host user can write.
@@ -536,6 +542,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.2 Multi-session independence
 
+- **✅ Automated (badge logic)** — `test/e2e/specs/bridge.e2e.ts` ("5.2 idle sessions don't raise the badge; awaiting ones do") sets one session idle and another awaiting via `agent_status_set` and asserts an idle-only session never raises the bell, while an awaiting one does and clears correctly. The running-state tooltip that *names* the waiting sessions only composes when the container is running, so its precise text (and the `⚙` tab-title prefix on a live terminal tab) stays a manual check.
 - **Setup:** Two sessions `work` and `research`, both running Claude.
 - **Steps:** Prompt `work`, leave `research` idle.
 - **Expected:** Only `work` shows `⚙` prefix. Badge count reflects only sessions awaiting input.
@@ -550,6 +557,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.4 Toggle MCP off clears awaiting-input state
 
+- **✅ Automated (badge clears)** — `test/e2e/specs/bridge.e2e.ts` ("5.4 toggling MCP off clears the awaiting-input badge") sets an awaiting-input status, turns the MCP server off (`applyMcpEnabled(false)` → `clearActivity`), and asserts the bell clears. The tooltip-text half needs a running container (see 5.2) and stays a manual check.
 - **Setup:** Session in awaiting-input state.
 - **Steps:** Run **Sandbox: Toggle MCP Server**.
 - **Expected:** Badge AND tooltip both clear.

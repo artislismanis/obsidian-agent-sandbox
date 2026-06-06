@@ -1,7 +1,7 @@
 import { browser, expect, $, $$ } from "@wdio/globals";
 import { describe, it, before } from "mocha";
 import { obsidianPage } from "wdio-obsidian-service";
-import { mcpInitialize, mcpCallTool, type McpSession } from "../mcp-client";
+import { mcpInitialize, mcpCallTool, mcpRequest, type McpSession } from "../mcp-client";
 
 // Bridge layer — drives the REAL plugin's MCP server (running inside the
 // wdio-launched Obsidian) over loopback HTTP and asserts the resulting UI via
@@ -19,6 +19,8 @@ interface BridgeOpts {
 	navigate?: boolean;
 	manage?: boolean;
 	vaultWrites?: "scoped" | "reviewed" | "full";
+	/** Override the auth token (defaults to BRIDGE_MCP_TOKEN). Used by 3.6. */
+	token?: string;
 }
 
 /** Configure and (re)start the plugin's MCP server in the running Obsidian. */
@@ -50,12 +52,52 @@ async function startBridgeMcp(opts: BridgeOpts = {}): Promise<void> {
 		},
 		{
 			port: BRIDGE_MCP_PORT,
-			token: BRIDGE_MCP_TOKEN,
+			token: opts.token ?? BRIDGE_MCP_TOKEN,
 			navigate: opts.navigate,
 			manage: opts.manage,
 			vaultWrites: opts.vaultWrites,
 		},
 	);
+}
+
+/** Flip the MCP server on/off via the plugin's lifecycle (not a restart). 3.7/5.4. */
+async function setMcpEnabled(enabled: boolean): Promise<void> {
+	await browser.executeObsidian(async ({ app }, on) => {
+		const plugin = (
+			app as unknown as {
+				plugins: {
+					plugins: Record<
+						string,
+						{
+							settings: Record<string, unknown>;
+							applyMcpEnabled: (e: boolean) => Promise<void>;
+						}
+					>;
+				};
+			}
+		).plugins.plugins["obsidian-agent-sandbox"];
+		plugin.settings.mcpEnabled = on;
+		await plugin.applyMcpEnabled(on);
+	}, enabled);
+}
+
+interface Capabilities {
+	enabledTiers: string[];
+	alwaysOn: string[];
+	escalations: string[];
+	toolsByTier: Record<string, string[]>;
+}
+
+/** Call mcp_capabilities and parse its JSON body. */
+async function mcpCapabilities(session: McpSession): Promise<Capabilities> {
+	const res = await mcpCallTool(session, "mcp_capabilities", {});
+	expect(res.isError).toBe(false);
+	return JSON.parse(res.text) as Capabilities;
+}
+
+/** Flatten capabilities.toolsByTier into a flat set of registered tool names. */
+function toolNames(caps: Capabilities): Set<string> {
+	return new Set(Object.values(caps.toolsByTier).flat());
 }
 
 function mcpServerRunning(): Promise<boolean> {
@@ -310,5 +352,302 @@ describe("Bridge C1: agent activity badge (agent tier, no container)", function 
 			timeout: 5000,
 			timeoutMsg: "status-bar bell did not clear after idle",
 		});
+	});
+
+	// QA plan 5.2: an idle session never raises the attention badge; only an
+	// awaiting-input session does, and clearing it drops the badge even while
+	// another idle session remains. (The running-state tooltip that names the
+	// waiting sessions only composes when the container is running, so the
+	// bell — count > 0 — is the observable surface here.)
+	it("5.2 idle sessions don't raise the badge; awaiting ones do", async function () {
+		const BELL = "🔔";
+
+		// An idle session alone: no bell.
+		await mcpCallTool(session, "agent_status_set", { status: "idle", sessionName: "research" });
+		await browser.waitUntil(async () => !(await sandboxPillText()).includes(BELL), {
+			timeout: 5000,
+			timeoutMsg: "bell should not appear for an idle-only session",
+		});
+
+		// A second session goes awaiting: bell appears (research stays idle).
+		await mcpCallTool(session, "agent_status_set", {
+			status: "awaiting_input",
+			sessionName: "work",
+		});
+		await browser.waitUntil(async () => (await sandboxPillText()).includes(BELL), {
+			timeout: 5000,
+			timeoutMsg: "bell did not appear when one session became awaiting_input",
+		});
+
+		// The awaiting session goes idle: bell clears even though research is
+		// still present (and idle) — proving only awaiting sessions count.
+		await mcpCallTool(session, "agent_status_set", { status: "idle", sessionName: "work" });
+		await browser.waitUntil(async () => !(await sandboxPillText()).includes(BELL), {
+			timeout: 5000,
+			timeoutMsg: "bell did not clear when the only awaiting session went idle",
+		});
+	});
+
+	// QA plan 5.4: toggling the MCP server off clears any awaiting-input state
+	// (clearActivity → setAttention(0)), so the badge disappears.
+	it("5.4 toggling MCP off clears the awaiting-input badge", async function () {
+		const BELL = "🔔";
+
+		await mcpCallTool(session, "agent_status_set", {
+			status: "awaiting_input",
+			sessionName: "work",
+		});
+		await browser.waitUntil(async () => (await sandboxPillText()).includes(BELL), {
+			timeout: 5000,
+			timeoutMsg: "bell did not appear before MCP toggle-off",
+		});
+
+		await setMcpEnabled(false);
+		await browser.waitUntil(async () => !(await sandboxPillText()).includes(BELL), {
+			timeout: 5000,
+			timeoutMsg: "bell did not clear after MCP was toggled off",
+		});
+
+		// Restore for any later specs sharing this Obsidian instance.
+		await startBridgeMcp({});
+		session = await mcpInitialize(BRIDGE_MCP_PORT, BRIDGE_MCP_TOKEN);
+	});
+});
+
+// ── Permission-tier matrix (QA 3.1 / 3.2) ───────────────────────────────────
+// Tier filtering is list-time: buildTools(...).filter(t => enabledTiers.has).
+// So a cell's permission config is fully observable in the registered tool set,
+// which mcp_capabilities reports. This replaces the Claude-led capability sweep
+// (docs/mcp-capability-test.md) with a deterministic gate; that doc remains only
+// as the LLM-behaviour sanity check.
+
+interface MatrixCell {
+	name: string;
+	navigate: boolean;
+	manage: boolean;
+	vaultWrites: "scoped" | "reviewed" | "full";
+}
+
+const MATRIX_CELLS: MatrixCell[] = [
+	{ name: "A: read-only (all gated off)", navigate: false, manage: false, vaultWrites: "scoped" },
+	{ name: "B: navigate only", navigate: true, manage: false, vaultWrites: "scoped" },
+	{ name: "C: manage only", navigate: false, manage: true, vaultWrites: "scoped" },
+	{ name: "D: navigate + manage", navigate: true, manage: true, vaultWrites: "scoped" },
+	{ name: "E: reviewed writes", navigate: true, manage: true, vaultWrites: "reviewed" },
+	{ name: "F: full writes", navigate: true, manage: true, vaultWrites: "full" },
+];
+
+describe("Bridge C1: permission-tier matrix (3.1/3.2)", function () {
+	for (const cell of MATRIX_CELLS) {
+		it(`gates tiers + tools for cell ${cell.name}`, async function () {
+			await startBridgeMcp({
+				navigate: cell.navigate,
+				manage: cell.manage,
+				vaultWrites: cell.vaultWrites,
+			});
+			const session = await mcpInitialize(BRIDGE_MCP_PORT, BRIDGE_MCP_TOKEN);
+			const caps = await mcpCapabilities(session);
+			const tiers = new Set(caps.enabledTiers);
+			const tools = toolNames(caps);
+
+			// Always-on tiers + a representative always-on tool from each.
+			for (const t of ["read", "writeScoped", "agent"]) expect(tiers.has(t)).toBe(true);
+			expect(tools.has("vault_read")).toBe(true); // read
+			expect(tools.has("vault_modify")).toBe(true); // writeScoped (suffix "")
+			expect(tools.has("agent_status_set")).toBe(true); // agent
+
+			// Gated tiers present iff toggled, with a representative gated tool.
+			expect(tiers.has("navigate")).toBe(cell.navigate);
+			expect(tools.has("vault_open")).toBe(cell.navigate);
+			expect(tiers.has("manage")).toBe(cell.manage);
+			expect(tools.has("vault_rename")).toBe(cell.manage);
+
+			// Write mode selects mutually-exclusive reviewed / full tool variants.
+			const reviewed = cell.vaultWrites === "reviewed";
+			const full = cell.vaultWrites === "full";
+			expect(tiers.has("writeReviewed")).toBe(reviewed);
+			expect(tools.has("vault_modify_reviewed")).toBe(reviewed);
+			expect(tiers.has("writeVault")).toBe(full);
+			expect(tools.has("vault_modify_anywhere")).toBe(full);
+
+			// Cross-check the capability report against the raw tools/list: the
+			// flattened registered set must match what tools/list advertises.
+			const { envelope } = await mcpRequest(session, "tools/list", {});
+			const listed = new Set(
+				(
+					(envelope as { result?: { tools?: Array<{ name: string }> } }).result?.tools ??
+					[]
+				).map((t) => t.name),
+			);
+			expect(tools.has("vault_open")).toBe(listed.has("vault_open"));
+			expect(tools.has("vault_rename")).toBe(listed.has("vault_rename"));
+			expect(tools.has("vault_modify_reviewed")).toBe(listed.has("vault_modify_reviewed"));
+		});
+	}
+});
+
+// ── MCP auth lifecycle (QA 3.6 / 3.7) ───────────────────────────────────────
+// Mirrors the integration suite's auth tests, but against the REAL plugin
+// server. The bridge client disables keep-alive precisely so a server restarted
+// on the same port never reuses a dead socket.
+
+describe("Bridge C1: MCP auth lifecycle (3.6/3.7)", function () {
+	const OLD = "bridge-token-old";
+	const NEW = "bridge-token-new";
+
+	before(async function () {
+		await obsidianPage.resetVault();
+	});
+
+	// QA plan 3.6: rotating the token rejects connections using the old token;
+	// the new token works.
+	it("3.6 token rotation rejects the old token, accepts the new", async function () {
+		await startBridgeMcp({ token: OLD });
+		const session = await mcpInitialize(BRIDGE_MCP_PORT, OLD);
+		expect((await mcpCallTool(session, "vault_list", {})).isError).toBe(false);
+
+		await startBridgeMcp({ token: NEW });
+		await expect(mcpInitialize(BRIDGE_MCP_PORT, OLD)).rejects.toThrow(/HTTP 40[13]/);
+		const fresh = await mcpInitialize(BRIDGE_MCP_PORT, NEW);
+		expect(fresh.sessionId).not.toBe("");
+	});
+
+	// QA plan 3.7: turning the MCP server off mid-session drops the listener, so
+	// a reconnect fails; re-enabling restores access.
+	it("3.7 turning MCP off drops connections; re-enabling restores them", async function () {
+		await startBridgeMcp({ token: BRIDGE_MCP_TOKEN });
+		await mcpInitialize(BRIDGE_MCP_PORT, BRIDGE_MCP_TOKEN);
+
+		await setMcpEnabled(false);
+		// Listener gone → connection refused (or rejected before any HTTP status).
+		await expect(mcpInitialize(BRIDGE_MCP_PORT, BRIDGE_MCP_TOKEN)).rejects.toThrow();
+
+		await setMcpEnabled(true);
+		const restored = await mcpInitialize(BRIDGE_MCP_PORT, BRIDGE_MCP_TOKEN);
+		expect(restored.sessionId).not.toBe("");
+	});
+});
+
+// ── Cache invalidation on live edit (QA 3.8) ────────────────────────────────
+// VaultCache caches the link graph (and tag/property counts), not file content,
+// and clears wholesale on metadataCache's "resolved" event. vault_backlinks
+// routes through that cached graph, so a live link edit must surface on the
+// next call once the cache has resolved the new backlink.
+
+describe("Bridge C1: cache invalidation (3.8)", function () {
+	let session: McpSession;
+
+	before(async function () {
+		await obsidianPage.resetVault({
+			"target.md": "# Target\n",
+			"linker1.md": "See [[target]]\n",
+		});
+		await startBridgeMcp({});
+		session = await mcpInitialize(BRIDGE_MCP_PORT, BRIDGE_MCP_TOKEN);
+	});
+
+	it("3.8 vault_backlinks reflects a live link added after the first read", async function () {
+		await waitForBacklinks("target.md", 1);
+		const first = await mcpCallTool(session, "vault_backlinks", { path: "target.md" });
+		expect(first.isError).toBe(false);
+		expect(first.text).toContain("linker1.md");
+		expect(first.text).not.toContain("linker2.md");
+
+		// Add a second backlink live in Obsidian → fires "resolved" → cache clears.
+		await browser.executeObsidian(async ({ app }) => {
+			await app.vault.create("linker2.md", "Also [[target]]\n");
+		});
+		await waitForBacklinks("target.md", 2);
+
+		const second = await mcpCallTool(session, "vault_backlinks", { path: "target.md" });
+		expect(second.isError).toBe(false);
+		expect(second.text).toContain("linker1.md");
+		expect(second.text).toContain("linker2.md");
+	});
+});
+
+// ── Concurrent tool calls (QA 3.9) ──────────────────────────────────────────
+// Fire a burst of read-tier calls in parallel and assert they all resolve
+// cleanly. The burst stays well under the read rate limit (60/min per tool) so
+// the limiter never trips it into flakiness.
+
+describe("Bridge C1: concurrent tool calls (3.9)", function () {
+	let session: McpSession;
+
+	before(async function () {
+		await obsidianPage.resetVault({
+			"a.md": "alpha\n",
+			"b.md": "alpha beta\n",
+			"c.md": "beta\n",
+		});
+		await startBridgeMcp({});
+		session = await mcpInitialize(BRIDGE_MCP_PORT, BRIDGE_MCP_TOKEN);
+	});
+
+	it("3.9 resolves a parallel burst of tool calls without error", async function () {
+		const calls = [
+			mcpCallTool(session, "vault_search", { query: "alpha" }),
+			mcpCallTool(session, "vault_search", { query: "beta" }),
+			mcpCallTool(session, "vault_list", {}),
+			mcpCallTool(session, "vault_read", { path: "a.md" }),
+			mcpCallTool(session, "vault_read", { path: "b.md" }),
+			mcpCallTool(session, "vault_read", { path: "c.md" }),
+		];
+		const results = await Promise.all(calls);
+		for (const r of results) expect(r.isError).toBe(false);
+	});
+});
+
+// ── Read-tier fidelity: real scorer + metadata graph (Tranche 3) ────────────
+// Unit tests stub prepareSimpleSearch / prepareFuzzySearch and hand-populate
+// resolvedLinks, so the real Obsidian search ranking and live graph resolution
+// are exercised only here. This is fidelity coverage, not manual-QA conversion.
+
+describe("Bridge C1: read-tier fidelity (search + graph)", function () {
+	let session: McpSession;
+
+	before(async function () {
+		await obsidianPage.resetVault({
+			"alpha.md": "alpha alpha alpha\n",
+			"mixed.md": "alpha beta\n",
+			"hub.md": "[[alpha]] and [[mixed]]\n",
+		});
+		await startBridgeMcp({});
+		session = await mcpInitialize(BRIDGE_MCP_PORT, BRIDGE_MCP_TOKEN);
+	});
+
+	it("vault_search matches real content and excludes non-matching files", async function () {
+		const res = await mcpCallTool(session, "vault_search", { query: "beta" });
+		expect(res.isError).toBe(false);
+		// The real simple-search scorer matches both files whose body has "beta"
+		// and excludes the one that doesn't (alpha.md), proving real content
+		// matching rather than the canned scorer used in unit tests.
+		expect(res.text).toContain("mixed.md");
+		expect(res.text).not.toContain("alpha.md");
+	});
+
+	it("vault_search_fuzzy ranks with the real fuzzy scorer", async function () {
+		const res = await mcpCallTool(session, "vault_search_fuzzy", { query: "alpha" });
+		expect(res.isError).toBe(false);
+		expect(res.text).toContain("alpha.md");
+	});
+
+	it("vault_backlinks resolves against the real metadata graph", async function () {
+		await waitForBacklinks("alpha.md", 1);
+		const res = await mcpCallTool(session, "vault_backlinks", { path: "alpha.md" });
+		expect(res.isError).toBe(false);
+		expect(res.text).toContain("hub.md");
+	});
+
+	it("vault_graph_neighborhood traverses the real link graph", async function () {
+		await waitForBacklinks("alpha.md", 1);
+		const res = await mcpCallTool(session, "vault_graph_neighborhood", {
+			path: "hub.md",
+			depth: 1,
+		});
+		expect(res.isError).toBe(false);
+		// hub links out to both alpha and mixed.
+		expect(res.text).toContain("alpha.md");
+		expect(res.text).toContain("mixed.md");
 	});
 });
