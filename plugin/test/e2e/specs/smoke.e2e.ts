@@ -36,19 +36,32 @@ describe("Plugin loads", function () {
 		await sandboxItem.waitForExist({ timeout: 10000 });
 	});
 
-	it("registers all expected commands", async function () {
+	it("registers all 12 expected commands", async function () {
 		const commandIds = await browser.executeObsidian(({ app }, pluginId) => {
 			const commands = (app as unknown as { commands: { commands: Record<string, unknown> } })
 				.commands.commands;
 			return Object.keys(commands).filter((id) => id.startsWith(`${pluginId}:`));
 		}, PLUGIN_ID);
 
-		// Spot-check key commands: see main.ts onload for the full list.
-		expect(commandIds).toContain(`${PLUGIN_ID}:open-claude-terminal`);
-		expect(commandIds).toContain(`${PLUGIN_ID}:sandbox-start-container`);
-		expect(commandIds).toContain(`${PLUGIN_ID}:sandbox-stop-container`);
-		expect(commandIds).toContain(`${PLUGIN_ID}:sandbox-toggle-firewall`);
-		expect(commandIds).toContain(`${PLUGIN_ID}:sandbox-toggle-mcp`);
+		// Full command list, mirroring the addCommand() calls in main.ts onload().
+		// QA plan 1.9: every command must be registered exactly once.
+		const expected = [
+			"open-claude-terminal",
+			"sandbox-start-container",
+			"sandbox-stop-container",
+			"sandbox-container-status",
+			"sandbox-restart-container",
+			"sandbox-toggle-firewall",
+			"open-session",
+			"open-browser",
+			"sandbox-toggle-mcp",
+			"sandbox-copy-terminal-connection-log",
+			"sandbox-cleanup-sessions",
+			"sandbox-switch-session",
+		].map((id) => `${PLUGIN_ID}:${id}`);
+
+		const ours = commandIds.sort();
+		expect(ours).toEqual(expected.sort());
 	});
 });
 
