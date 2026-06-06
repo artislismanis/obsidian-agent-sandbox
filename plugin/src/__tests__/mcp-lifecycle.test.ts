@@ -204,12 +204,37 @@ describe("McpLifecycle lifecycle operations", () => {
 		expect(mockStop).not.toHaveBeenCalled();
 	});
 
-	it("restartIfRunning() is a no-op when server is not running", async () => {
-		const { lifecycle } = makeLifecycle();
+	it("restartIfRunning() is a no-op when MCP is disabled", async () => {
+		const { lifecycle } = makeLifecycle({ mcpEnabled: false });
 		mockIsRunning.mockReturnValue(false);
 		await lifecycle.restartIfRunning();
 		expect(mockStop).not.toHaveBeenCalled();
 		expect(mockStart).not.toHaveBeenCalled();
+	});
+
+	it("restartIfRunning() starts the server when enabled but not running (recovery)", async () => {
+		const { lifecycle } = makeLifecycle({ mcpEnabled: true });
+		mockIsRunning.mockReturnValue(false);
+		await lifecycle.restartIfRunning();
+		expect(mockStart).toHaveBeenCalledTimes(1);
+	});
+
+	it("a start failure during restart does not disable or persist mcpEnabled", async () => {
+		const saveSettings = vi.fn();
+		const settings: AgentSandboxSettings = { ...DEFAULT_SETTINGS, mcpEnabled: true };
+		const app = { vault: { configDir: ".obsidian" }, workspace: {} } as never;
+		const lifecycle = new McpLifecycle(app, () => settings, {
+			saveSettings,
+			updateTooltip: vi.fn(),
+			onActivity: vi.fn(),
+			clearActivity: vi.fn(),
+		});
+		// Server currently running; the in-place restart's start() fails.
+		mockIsRunning.mockReturnValue(true);
+		mockStart.mockRejectedValueOnce(new Error("EADDRNOTAVAIL"));
+		await lifecycle.restartIfRunning();
+		expect(settings.mcpEnabled).toBe(true);
+		expect(saveSettings).not.toHaveBeenCalled();
 	});
 
 	it("shutdown() resolves without error when no server is running", async () => {
