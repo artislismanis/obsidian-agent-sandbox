@@ -69,10 +69,13 @@ export class McpLifecycle {
 		});
 	}
 
+	// Reconciles the server to the desired state (mcpEnabled), not just the
+	// current one: if enabled but not running (e.g. a prior start failed), this
+	// recovers it. Called after any hot-swappable MCP setting changes.
 	async restartIfRunning(): Promise<void> {
 		await this.queueOp(async () => {
-			if (!this.server?.isRunning()) return;
-			await this.stopServer();
+			if (!this.getSettings().mcpEnabled) return;
+			if (this.server?.isRunning()) await this.stopServer();
 			await this.startServer();
 		});
 	}
@@ -141,10 +144,10 @@ export class McpLifecycle {
 				/* nothing usable started */
 			}
 			this.server = null;
-			if (this.getSettings().mcpEnabled) {
-				this.getSettings().mcpEnabled = false;
-				this.cb.saveSettings();
-			}
+			// Leave mcpEnabled untouched: it records user intent, not runtime
+			// state. A transient start failure (e.g. a bad bind address or a
+			// socket still closing from the previous stop) must not silently
+			// flip and persist the toggle off. The next reconcile retries.
 			new Notice(`MCP server failed to start: ${errMsg(error)}`);
 		}
 	}

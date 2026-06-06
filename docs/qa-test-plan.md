@@ -162,7 +162,7 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 
 **1.7b: MCP port reactive failure (server start)**
 
-- **What it exercises:** `McpLifecycle.startServer` catch path (`mcp-lifecycle.ts:137`): `listen()` fails, plugin shows Notice (`:148`) and **persists `mcpEnabled = false`** (`:145`).
+- **What it exercises:** `McpLifecycle.startServer` catch path (`mcp-lifecycle.ts`): `listen()` fails, plugin shows a Notice and tears down the half-started server, but **leaves `mcpEnabled` untouched** - the toggle records user intent, not runtime state, so a transient start failure must not silently flip and persist it off.
 - **MCP runs in the plugin process on the Obsidian host** (not inside Docker/WSL). Occupy the port on the **Windows host** (not inside a WSL shell) on WSL2 setups.
 - **Setup:**
   1. Container running.
@@ -171,9 +171,9 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 - **Steps:** Command palette → **Sandbox: Toggle MCP Server** (starts MCP because it is stopped).
 - **Expected:**
   - Notice: `MCP server failed to start: …` (error will mention address in use).
-  - Settings → MCP → **Enable MCP server** is now **OFF** (auto-disabled and persisted; reopen settings to confirm).
+  - Settings → MCP → **Enable MCP server** stays **ON** (not auto-disabled, nothing persisted; reopen settings to confirm). The status bar shows MCP not running (`MCP: off`).
   - Container itself remains running.
-- **Recovery sub-step (recommended):** Release the port → toggle MCP on again → should start cleanly. Confirms the half-state cleanup in the catch block.
+- **Recovery sub-step (recommended):** Release the port, then trigger a restart - toggle MCP off then on, **or** change a hot-swap MCP setting (e.g. bind address). `restartMcpIfRunning` reconciles the enabled-but-stopped server and it starts cleanly. Confirms the half-state cleanup in the catch block.
 - **Cleanup:** `$l.Stop()` / Ctrl+C.
 - **Notes:** P0. Host-process path: must fire on all platforms.
 
