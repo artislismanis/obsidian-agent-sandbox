@@ -41,6 +41,13 @@ Exit code `0` means the suite passed. Any non-zero code = one or more failures. 
   sudo apt install xvfb
   # macOS: not needed, Obsidian uses the native display
   ```
+- **Native libraries for Electron/Chrome** (Linux/WSL only): the bundled Obsidian/chromedriver needs
+  NSS and ALSA shared libs to launch, or the browser session fails with "Unable to connect to browser
+  driver". macOS ships these.
+  ```bash
+  # Ubuntu / Debian / WSL (Ubuntu < 24.04: libasound2 instead of libasound2t64)
+  sudo apt install libnss3 libnspr4 libasound2t64
+  ```
 - **Built plugin artifacts**: run `npm run build` before `npm run test:e2e`; `dist/main.js`, `dist/manifest.json`, `dist/styles.css` must exist before the suite launches Obsidian
 
 On first run, wdio downloads Obsidian from GitHub releases into `plugin/.obsidian-cache/`. Network errors are transient; retry.
