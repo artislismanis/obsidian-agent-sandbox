@@ -315,9 +315,22 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 ### 2.19 Custom sudo password
 
 - **Setup:** Container not running.
-- **Steps:** Set Sudo password in Advanced. Restart container. In a terminal: `sudo -k && sudo apt-get update` (enter new password when prompted).
-- **Expected:** Accepts new password; `apt-get update` runs. Setting password to empty then restarting disables sudo entirely (`sudo apt-get update` should refuse without the error mentioning `no-new-privileges`).
-- **Notes:** P1. Reset to default afterwards. Sudoers is restricted to `apt-get`/`apt` only; other `sudo` commands are rejected regardless of password. The password is stored on the host at `~/.config/obsidian-agent-sandbox/secrets.json` (mode 0600, directory mode 0700); this path is **not** mounted inside the container, so the agent cannot read it. Toggling the sudo password between empty and non-empty changes the container's `security_opt` set, so the next start/restart recreates the container (compose detects the config drift). New container ID expected.
+- **Steps:** In Advanced → Sudo password, use the secret component to create/select a secret holding a memorable sentinel value (e.g. `oas-qa-sentinel-9173`). Restart container. In a terminal: `sudo -k && sudo apt-get update` (enter the sentinel when prompted).
+- **Expected:** Accepts the password; `apt-get update` runs. Setting the field back to empty (no secret selected) then restarting disables sudo entirely (`sudo apt-get update` should refuse without the error mentioning `no-new-privileges`).
+- **Notes:** P1. Reset to default afterwards. Sudoers is restricted to `apt-get`/`apt` only; other `sudo` commands are rejected regardless of password. The password is stored via Obsidian secret storage (app-level local storage, outside the vault mount); it is **not** mounted inside the container, so the agent cannot read it. Toggling the sudo password between empty and non-empty changes the container's `security_opt` set, so the next start/restart recreates the container (compose detects the config drift). New container ID expected.
+
+### 2.19a Sudo password secret storage (isolation + persistence)
+
+- **Setup:** Sudo password set to a unique sentinel via 2.19 (e.g. `oas-qa-sentinel-9173`).
+- **Steps:**
+  1. **Settings hold only the name:** open `<vault>/.obsidian/plugins/obsidian-agent-sandbox/data.json` and inspect `sudoSecretId`.
+  2. **Value never lands in the vault:** from the host, run `grep -rIl 'oas-qa-sentinel-9173' <vault-path>` (the whole vault, including `.obsidian/`).
+  3. **Persists across restart:** fully quit and reopen Obsidian, then run sudo in a container terminal as in 2.19 (no re-entry of the password in settings).
+- **Expected:**
+  1. `data.json` contains `"sudoSecretId": "<the secret's name>"` — **not** the sentinel value.
+  2. The `grep` returns **nothing** (the plaintext sentinel is absent from the vault tree the container mounts). It *does* live in Obsidian's app-level local storage (outside the vault, e.g. `~/.config/obsidian/…` on Linux), which the container does not mount.
+  3. After restart the password still gates sudo — the value survived via secret storage, not a re-entry.
+- **Notes:** P1. Step 2 is the load-bearing security check; treat step 3 (sudo actually works post-restart) as proof the value is genuinely persisted, since a clean grep alone would also pass if no value were stored at all. As of Obsidian 1.11.4 the value is plaintext at rest in local storage (parity with the prior `secrets.json`); isolation from the container, not at-rest encryption, is the property under test.
 
 ---
 

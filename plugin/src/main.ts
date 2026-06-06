@@ -1,6 +1,3 @@
-import { promises as fsp } from "fs";
-import { homedir } from "os";
-import { dirname, join } from "path";
 import type { TFile, WorkspaceLeaf } from "obsidian";
 import { Menu, Notice, Plugin, debounce } from "obsidian";
 import { getVaultBasePath } from "./obsidian-internals";
@@ -42,7 +39,6 @@ const FIREWALL_EVENT_THROTTLE = 10_000;
 
 export default class AgentSandboxPlugin extends Plugin {
 	settings: AgentSandboxSettings = { ...DEFAULT_SETTINGS };
-	sudoPassword: string = "";
 	// `!` definite-assignment: onload assigns each field synchronously
 	// before any await, so all later code paths (including onunload) see
 	// them initialized. The `?.` in onunload is defensive against a future
@@ -92,7 +88,6 @@ export default class AgentSandboxPlugin extends Plugin {
 		resetTerminalConnectionLog();
 		resetTemplaterSuppression();
 		await this.loadSettings();
-		await this.loadSudoPassword();
 		this.addSettingTab(new AgentSandboxSettingTab(this.app, this));
 
 		this.docker = new DockerManager(() => {
@@ -511,36 +506,15 @@ export default class AgentSandboxPlugin extends Plugin {
 		setLogLevel(this.settings.logLevel);
 	}
 
-	private secretsFilePath(): string {
-		return join(homedir(), ".config", "obsidian-agent-sandbox", "secrets.json");
-	}
-
-	async loadSudoPassword(): Promise<void> {
-		try {
-			const raw = await fsp.readFile(this.secretsFilePath(), "utf8");
-			this.sudoPassword = (JSON.parse(raw) as { sudoPassword?: string }).sudoPassword ?? "";
-		} catch (e: unknown) {
-			if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
-				logger.warn("Plugin", "Could not read secrets file", e);
-			}
-			this.sudoPassword = "";
-		}
-	}
-
-	saveSudoPassword(): void {
-		const filePath = this.secretsFilePath();
-		const dir = dirname(filePath);
-		fsp.mkdir(dir, { recursive: true, mode: 0o700 })
-			.then(() =>
-				fsp.writeFile(filePath, JSON.stringify({ sudoPassword: this.sudoPassword }), {
-					encoding: "utf8",
-					mode: 0o600,
-				}),
-			)
-			.catch((e) => {
-				logger.error("Plugin", "Could not save secrets file", e);
-				new Notice(`Failed to save sudo password: ${errMsg(e)}`);
-			});
+	/**
+	 * The sudo password, resolved from Obsidian secret storage. The settings
+	 * hold only the secret's name (`sudoSecretId`); the value lives in app-level
+	 * localStorage keyed to the vault, outside the vault tree the container
+	 * mounts. `getSecret` is synchronous, so readers can treat this like a field.
+	 */
+	get sudoPassword(): string {
+		const id = this.settings.sudoSecretId;
+		return id ? (this.app.secretStorage.getSecret(id) ?? "") : "";
 	}
 
 	saveSettings() {

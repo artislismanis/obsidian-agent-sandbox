@@ -69,7 +69,7 @@ Neither layer prevents malicious use. They make it visible after the fact.
 - You (the user) running Obsidian on your machine.
 - Claude as an agent, under the observation of a human in the loop.
 
-**Sudo password isolation.** The optional sudo password (used to gate `apt-get` inside the container) is stored on the host at `~/.config/obsidian-agent-sandbox/secrets.json` (mode 0600, directory mode 0700). This path is not mounted inside the container, so the agent cannot read or modify the password.
+**Sudo password isolation.** The optional sudo password (used to gate `apt-get` inside the container) is stored via Obsidian's secret storage (`app.secretStorage`), which keeps the value in app-level local storage keyed to the vault — outside the vault tree the container mounts. The agent therefore cannot read or modify the password. Note that, as of Obsidian 1.11.4, secret storage holds the value as plaintext at rest (OS-keychain encryption is planned but not yet shipped); isolation from the container, not at-rest encryption, is the property relied on here.
 
 **Not trusted**:
 - Arbitrary code the agent might execute or download.

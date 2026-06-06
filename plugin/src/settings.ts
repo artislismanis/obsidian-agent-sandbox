@@ -1,5 +1,5 @@
 import type { App } from "obsidian";
-import { Notice, PluginSettingTab, Setting } from "obsidian";
+import { Notice, PluginSettingTab, SecretComponent, Setting } from "obsidian";
 import { confirmModal, inputModal } from "./modals";
 import type AgentSandboxPlugin from "./main";
 import { setLogLevel, errMsg } from "./logger";
@@ -45,6 +45,8 @@ export interface AgentSandboxSettings {
 	additionalFirewallDomains: string;
 	containerMemory: string;
 	containerCpus: string;
+	/** Name of the Obsidian secret holding the container sudo password; the value lives in secret storage, not here. */
+	sudoSecretId: string;
 	autoEnableFirewall: boolean;
 	mcpEnabled: boolean;
 	mcpPort: number;
@@ -124,6 +126,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	additionalFirewallDomains: "",
 	containerMemory: "4G",
 	containerCpus: "2",
+	sudoSecretId: "",
 	autoEnableFirewall: true,
 	mcpEnabled: true,
 	mcpPort: 28080,
@@ -1089,18 +1092,18 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			.setDesc(
 				"Password for the narrow apt-get/apt sudo inside the container. " +
 					"Used by humans during interactive sessions to test-install tools. " +
-					"Stored outside the vault so the container cannot read it from disk." +
+					"Stored via Obsidian secret storage, outside the vault the container mounts." +
 					RESTART_CONTAINER_SUFFIX,
 			)
-			.addText((text) => {
-				text.setPlaceholder("(use container/.env value)")
-					.setValue(this.plugin.sudoPassword)
+			.addComponent((c) =>
+				new SecretComponent(this.app, c)
+					.setValue(this.plugin.settings.sudoSecretId)
 					.onChange((value) => {
-						this.plugin.sudoPassword = value;
-						this.plugin.saveSudoPassword();
+						this.plugin.settings.sudoSecretId = value;
+						this.plugin.saveSettings();
 						sudoIndicator.style.display = this.isSudoRestartDirty() ? "" : "none";
-					});
-			});
+					}),
+			);
 		const sudoIndicator = this.restartIndicator(sudoSetting, this.isSudoRestartDirty());
 	}
 }
