@@ -105,7 +105,7 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 - **Steps:** Command palette → **Sandbox: Start Container**.
 - **Expected:**
   - **Linux native Docker / macOS Docker Desktop / WSL2 mirrored mode:** Notice `Port conflict: 7681 already in use on 127.0.0.1. Stop the other process or change the port in settings.` Container does not start. *(Note: Notice always says `127.0.0.1` even if Bind address is set to something else, a known cosmetic bug.)*
-  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns. Container starts; terminal tab spins without connecting; no Notice. **Record this as a known gap**, not a pass. See `docs/proposals/port-conflict-detection-improvements.md` Task 1.
+  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns, so the container starts without blocking. Within ~5 s, `checkTtydReachability` (`main.ts:705`) polls the port and fires a 10 s Notice: `Sandbox started but terminal isn't reachable on 127.0.0.1:<port>. Check for a port conflict or run 'docker compose logs' to investigate.` Terminal tab will spin until a manual start/stop cycle resolves the conflict. See `docs/proposals/port-conflict-detection-improvements.md` Task 1 for a planned improvement to the pre-flight probe.
 - **Cleanup:** Release the port. Restart container if it started in the NAT-mode gap case.
 - **Notes:** P1 on platforms where pre-flight works. Known gap on WSL2 NAT.
 
@@ -224,7 +224,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
   - `Sandbox: ⚠ Error`: stop the Docker daemon while the plugin polls; next poll surfaces this state.
   - `Sandbox: 🔍 Checking`: emitted only during `backgroundStartup()`. Re-observe by disabling then re-enabling the plugin, or restarting Obsidian with auto-start on.
   - `🛡 FW`: firewall pill; appears when firewall is enabled.
-- **Notes:** P1. Font fallback issues here are platform-specific (esp. older Windows). Awaiting-input badge (trailing ` ⚠` on the sandbox pill) requires an authenticated Claude session (see 3.20).
+- **Notes:** P1. Font fallback issues here are platform-specific (esp. older Windows). Awaiting-input badge (trailing ` 🔔` on the sandbox pill) requires an authenticated Claude session (see 3.11).
 
 ### 2.8 Terminal themes
 
@@ -429,6 +429,14 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 - **Expected:** Sandbox pill in the status bar gains a trailing ` 🔔` while the agent is awaiting input: `Sandbox: ▶ Running 🔔`. Badge clears when the session is no longer awaiting input.
 - **Notes:** P2. Driven by `agent_status_set` tool in `mcp-tools.ts`; requires authenticated Claude. This is why it doesn't belong in Stage 2.
 
+### 3.12 MCP proxy: one diagnostic per unreachable burst
+
+- **Setup:** Active Claude session with MCP on. `docker compose logs -f sandbox` open in a host terminal to watch container stderr in real time.
+- **Steps:** With a container Claude session attached, toggle MCP off via **Sandbox: Toggle MCP Server**. Immediately run a vault tool call in the terminal (e.g. `claude -p "List vault files"`). Wait a few seconds, then toggle MCP back on.
+- **Expected:** In `docker compose logs`, the proxy (`workspace/.claude/scripts/obsidian-mcp-proxy.js`) emits **exactly one** structured stderr line during the unreachable window — not a line per retry. The line names the resolved host/port and a reason (`TIMEOUT_2S`, `ECONNREFUSED`, or a DNS reason). The line does **not** contain the MCP bearer token (`OAS_MCP_TOKEN`). Once MCP is re-enabled and reachable, no further diagnostic lines appear for the same host/port.
+- **Cleanup:** Confirm MCP is back on (status bar tooltip or Settings → MCP → Enable MCP server).
+- **Notes:** P2. Only exercisable with a live proxy process. Verifies the burst-suppression behaviour introduced in commit `6b8de46`: the proxy emits once per availability flip, not once per failed probe.
+
 ---
 
 ## Stage 4: Human-in-the-loop review modals
@@ -489,7 +497,7 @@ Unit tests verify the gate fires; humans verify the modal renders right.
 
 - **Setup:** Open terminal, attach to named session `work`, run `claude` interactively.
 - **Steps:** Submit a long-running prompt. Then submit one that triggers an approval question (or use `writeReviewed`).
-- **Expected:** While working → tab title `⚙ Session: work`. Idle between prompts → `Session: work`. Awaiting input → `❓ Session: work` AND status bar pill grows a `⚠` badge with tooltip "1 session awaiting input: work".
+- **Expected:** While working → tab title `⚙ Session: work`. Idle between prompts → `Session: work`. Awaiting input → `❓ Session: work` AND status bar pill grows a `🔔` badge with tooltip "1 session awaiting input: work".
 - **Notes:** P0. Close+reopen Obsidian → badge clears (activity is ephemeral).
 
 ### 5.2 Multi-session independence
@@ -503,7 +511,7 @@ Unit tests verify the gate fires; humans verify the modal renders right.
 
 - **Setup:** Session `a` in awaiting-input state.
 - **Steps:** Answer the question; wait for transition to idle. Hover status bar pill.
-- **Expected:** `⚠` badge gone; tooltip back to default running tooltip. No stale "1 session(s) awaiting input: a" string.
+- **Expected:** `🔔` badge gone; tooltip back to default running tooltip. No stale "1 session(s) awaiting input: a" string.
 - **Notes:** P1.
 
 ### 5.4 Toggle MCP off clears awaiting-input state
@@ -774,6 +782,14 @@ These require specific host hardware/OS. Run on each supported platform before r
 - **Steps:** Stage 1–3 smoke.
 - **Expected:** All pass. SELinux/AppArmor labels don't break vault mount.
 - **Notes:** P0 on Linux.
+
+### 10.5 WSL2: MASQ network recreation on networking-mode change
+
+- **Setup:** Windows host, WSL2 with Docker Engine. Confirm the current networking mode: `wsl --status` or check `%USERPROFILE%\.wslconfig` for `networkingMode=mirrored`; absence means NAT (default).
+- **Steps:** 1) Note the current `enable_ip_masquerade` value of the existing docker network: `docker network inspect oas_default --format '{{index .Options "com.docker.network.bridge.enable_ip_masquerade"}}'` (expect `true` for NAT, `false` for mirrored, or `not found` if no network exists yet). 2) Force MASQ drift: either change `networkingMode` in `.wslconfig` and run `wsl --shutdown` then reopen, or delete the network manually while the container is stopped (`docker compose down && docker network rm oas_default`) to force a fresh creation with the opposite setting. 3) Restart the container via **Sandbox: Restart Container**.
+- **Expected:** The plugin detects the MASQ drift in `DockerManager.verifyAndMaybeRecreateNetwork` and recreates the network before starting. After restart, `docker network inspect oas_default --format '{{index .Options "com.docker.network.bridge.enable_ip_masquerade"}}'` shows the value matches the current WSL networking mode (`false` for mirrored, `true` for NAT). Container health and MCP connectivity are normal.
+- **Cleanup:** Revert `.wslconfig` if modified; `wsl --shutdown` then reopen WSL.
+- **Notes:** P2. WSL2 only. The `parseDockerNetworkMasq` parser is unit-tested (`docker.test.ts`); this scenario verifies the end-to-end observable outcome — network recreated with the correct MASQ value — not the parser logic.
 
 ---
 
