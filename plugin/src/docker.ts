@@ -598,8 +598,13 @@ export class DockerManager {
 		try {
 			// quiet=true: a "no such network" stderr on a fresh setup is
 			// expected, not an operator-visible failure.
+			// Double-quote the template: it contains a space (`json .Options`),
+			// so unquoted it word-splits into two args and docker reports
+			// "unclosed action". Double quotes survive both the bash escaper
+			// (escapeForOuterDoubleQuote) and cmd.exe; single quotes are literal
+			// in cmd.exe and would corrupt the arg in Windows-local Docker mode.
 			stdout = await this.run(
-				`docker network inspect ${NETWORK_NAME} --format {{json .Options}}`,
+				`docker network inspect ${NETWORK_NAME} --format "{{json .Options}}"`,
 				EXEC_TIMEOUT,
 				true,
 			);

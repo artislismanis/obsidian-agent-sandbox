@@ -107,6 +107,28 @@ describe("buildWslCommand", () => {
 		expect(cmd).toContain("cd '/home/user/it'\\\\''s a test'");
 	});
 
+	// Regression: a Go-template --format arg with an internal space (json .Options)
+	// must stay double-quoted through both shells, else it word-splits and docker
+	// reports "unclosed action". See docker.ts verifyAndMaybeRecreateNetwork.
+	it("keeps a spaced Go-template --format arg quoted for bash", () => {
+		const cmd = buildWslCommand(
+			"/p",
+			"Ubuntu",
+			'docker network inspect oas_default --format "{{json .Options}}"',
+		);
+		// Outer bash -c "..." escapes the inner quotes to \" so bash regroups the arg.
+		expect(cmd).toContain('--format \\"{{json .Options}}\\"');
+	});
+
+	it("keeps a spaced Go-template --format arg quoted for cmd.exe", () => {
+		const cmd = buildLocalWindowsCommand(
+			"C:/p",
+			'docker network inspect oas_default --format "{{json .Options}}"',
+		);
+		// cmd.exe groups double-quoted args natively; quotes pass through verbatim.
+		expect(cmd).toContain('--format "{{json .Options}}"');
+	});
+
 	it("escapes double quotes in path for cmd.exe", () => {
 		const cmd = buildWslCommand('/home/user/"quoted"', "Ubuntu", "docker compose up -d");
 		expect(cmd).toContain('\\"quoted\\"');
