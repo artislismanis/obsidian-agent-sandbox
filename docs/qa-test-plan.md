@@ -38,10 +38,10 @@ This stage exercises the settings UI, error/fallback paths before any container 
 - **Setup:** Plugin freshly enabled (toggle off then on in Community Plugins). DevTools open (Ctrl+Shift+I) before clicking, to catch transient errors.
 - **Steps:** Open Settings → Agent Sandbox. Visit all four tabs in order: **General, Terminal, MCP, Advanced**. For each, verify fields appear in the order listed below with the stated defaults and "Requires container restart." labels where noted.
 - **Expected:**
-  - **General** (top to bottom): Docker mode = `WSL (Windows)` *(Requires container restart.)*; Docker Compose path = empty *(Requires container restart.)*; WSL distribution = empty with placeholder `Ubuntu` *(Requires container restart., visible only when Docker mode = WSL)*; Vault write directory = `agent-workspace` *(Requires container restart.)*; Memory file name = `memory.json` *(Requires container restart.)*; Auto-start on load = off *(no label)*; Auto-stop on exit = off *(no label)*; Notify on agent output = `New files only (default)` *(no label)*.
-  - **Terminal** (top to bottom): Port = `7681` *(Requires container restart.)*; Bind address = `127.0.0.1` *(Requires container restart.)*; Terminal theme = `Follow Obsidian theme` *(no label)*; Terminal font = empty *(no label)*; Font size = `14` *(no label)*; Scrollback = `10000` *(no label)*; Auto-copy on selection = on *(no label)*.
-  - **MCP** (top to bottom): Enable MCP server = on *(no label)*; MCP port = `28080` *(Requires container restart.)*; MCP bind address = `127.0.0.1` *(no label, hot-swap)*; Auth token = auto-generated value *(no label)*; Vault-wide writes = `None` *(no label)*; Navigate / Manage / Extensions tiers = off *(no label each)*; Allowed paths = empty *(no label)*; Blocked paths = empty *(no label)*; Tool timeout = `10` *(no label)*; Review timeout = `180` *(no label)*.
-  - **Advanced** (top to bottom): Log level = `Warn` *(no label)*; Memory limit = `4G` *(Requires container restart.)*; CPU limit = `2` *(Requires container restart.)*; Auto-enable firewall on start = **on** *(no label)*; Allowed private hosts = empty *(Requires container restart.)*; Additional firewall domains = empty *(Requires container restart.)*; Effective allowlist (Refresh button, no input) *(no label)*; Sudo password = empty *(Requires container restart.)*.
+  - **General** (top to bottom): Docker mode = `WSL (Windows)` *(Requires container restart.)*; Docker Compose path = empty *(Requires container restart.)*; WSL distribution = empty with placeholder `Ubuntu` *(Requires container restart., visible only when Docker mode = WSL)*; Vault write directory = `agent-workspace` *(Requires container restart.)*; Memory file name = `memory.json` *(Requires container restart.)*; Auto-start on load = off *(no label)*; Auto-stop on exit = off *(no label)*; **Agent output notifications** *(heading)*; Notify on file created = on *(no label)*; Notify on file edited = off *(no label)*; Notify on file deleted = on *(no label)*; Notify on file renamed/moved = on *(no label)*; Vault-wide scope = off *(no label)*.
+  - **Terminal** (top to bottom): Port = `7681` *(Requires container restart.)*; Bind address = `127.0.0.1` *(Requires container restart.)*; **Appearance** *(heading)*; Terminal theme = `Follow Obsidian theme` *(no label)*; Terminal font = empty *(no label)*; Font size = `14` *(no label)*; Scrollback = `10000` *(no label)*; Auto-copy on selection = on *(no label)*.
+  - **MCP** (top to bottom): **Server** *(heading)*; Enable MCP server = on *(no label)*; MCP port = `28080` *(Requires container restart.)*; MCP bind address = `127.0.0.1` *(no label, hot-swap - applies without container restart)*; Auth token = auto-generated value, with **Regenerate** button *(Requires container restart.)*; **Always enabled** *(heading, with a two-item info list, no controls)*; **Escalations** *(heading)*; Vault-wide writes = `None` *(no label)*; Navigate / Manage / Extensions tiers = off *(no label each)*; **Path restrictions** *(heading)*; Allowed paths = empty *(no label)*; Allowlist mode = off *(no label)*; Blocked paths = empty *(no label)*; **Timeouts** *(heading)*; Tool timeout (seconds) = `10` *(no label)*; Review timeout (seconds) = `180` *(no label)*; User edit suppression window (seconds) = `10` *(no label)*.
+  - **Advanced** (top to bottom): **Diagnostics** *(heading)*; Log level = `Warn` *(no label)*; **Resource limits** *(heading)*; Memory limit = `4G` *(Requires container restart.)*; CPU limit = `2` *(Requires container restart.)*; **Security** *(heading)*; Auto-enable firewall on start = **on** *(no label)*; Allowed private hosts = empty, list editor with **Add** button *(Requires container restart.)*; Additional firewall domains = empty, list editor with **Add** button *(Requires container restart.)*; Effective allowlist (Refresh button, no input) *(no label)*; Sudo password = empty *(Requires container restart.)*.
   - No red console errors on any tab. A `[Violation] Forced reflow …` yellow warning on plugin enable/disable is known and benign.
 - **Notes:** P1. This inventory is the authoritative list: field order, defaults, and label presence all matter. Update this scenario when settings change.
 
@@ -100,11 +100,11 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 
 **1.7a: ttyd port pre-flight (container start)**
 
-- **What it exercises:** `checkStartupPortConflicts` (`main.ts:1010`) → `DockerManager.checkPortConflicts` (`docker.ts:699`) probes `Settings → Terminal → Bind address` + `Port` inside the **plugin process (Obsidian host netns)** before invoking Docker.
+- **What it exercises:** `checkStartupPortConflicts` (`main.ts:1051`) → `DockerManager.checkStartupConflicts` (`docker.ts:879`), which dispatches to `checkPortConflicts` (`docker.ts:829`) or `checkPortConflictsWsl` (`docker.ts:890`), probes `Settings → Terminal → Bind address` + `Port` inside the **plugin process (Obsidian host netns)** before invoking Docker.
 - **Setup:** On the **Obsidian host**, occupy `<ttydBindAddress>:<ttydPort>` (default `127.0.0.1:7681`) using the table above. **On WSL2**: the plugin probes the Windows host netns; compose binds inside WSL2's netns. These are the same only in WSL2 mirrored mode (see expected outcomes below).
 - **Steps:** Command palette → **Sandbox: Start Container**.
 - **Expected:**
-  - **Linux native Docker / macOS Docker Desktop / WSL2 mirrored mode:** Notice `Port conflict: 7681 already in use on 127.0.0.1. Stop the other process or change the port in settings.` Container does not start. *(Note: Notice always says `127.0.0.1` even if Bind address is set to something else, a known cosmetic bug.)*
+  - **Linux native Docker / macOS Docker Desktop / WSL2 mirrored mode:** Notice `Port conflict: 7681 already in use on 127.0.0.1. Stop the other process or change the port in settings.` Container does not start. *(The Notice interpolates the configured Bind address; `127.0.0.1` shown here is the default, not a hardcoded value.)*
   - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns, so the container starts without blocking. Within ~5 s, `checkTtydReachability` (`main.ts:705`) polls the port and fires a 10 s Notice: `Sandbox started but terminal isn't reachable on 127.0.0.1:<port>. Check for a port conflict or run 'docker compose logs' to investigate.` Terminal tab will spin until a manual start/stop cycle resolves the conflict. See `docs/proposals/port-conflict-detection-improvements.md` Task 1 for a planned improvement to the pre-flight probe.
 - **Cleanup:** Release the port. Restart container if it started in the NAT-mode gap case.
 - **Notes:** P1 on platforms where pre-flight works. Known gap on WSL2 NAT.
@@ -113,7 +113,7 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 
 **1.7b: MCP port reactive failure (server start)**
 
-- **What it exercises:** `startMcpServer` catch path (`main.ts:783`): `listen()` fails, plugin shows Notice and **persists `mcpEnabled = false`**.
+- **What it exercises:** `McpLifecycle.startServer` catch path (`mcp-lifecycle.ts:137`): `listen()` fails, plugin shows Notice (`:148`) and **persists `mcpEnabled = false`** (`:145`).
 - **MCP runs in the plugin process on the Obsidian host** (not inside Docker/WSL). Occupy the port on the **Windows host** (not inside a WSL shell) on WSL2 setups.
 - **Setup:**
   1. Container running.
@@ -154,7 +154,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 - **Setup:** Auto-start enabled. Container stopped. Obsidian closed.
 - **Steps:** Open Obsidian.
-- **Expected:** Status bar transitions through Starting → Running within ~30 s. Tooltip detail cycles "Starting: checking Docker availability…" → "probing WSL…" → "probing container status…" → "docker compose up -d (auto-start)…". On Linux/macOS the WSL probe should still appear briefly but resolve to "not WSL".
+- **Expected:** Status bar transitions through Starting → Running within ~30 s. Tooltip detail cycles "Starting: checking Docker availability…" → "Starting: probing WSL (5s fast-fail)…" → "Starting: probing container status…" → "Starting: docker compose up -d (auto-start)…". On Linux/macOS the WSL probe should still appear briefly but resolve to "not WSL".
 - **Notes:** P0.
 
 ### 2.2 Auto-stop on Obsidian close
@@ -330,7 +330,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 **Tier model (`src/permission-tiers.ts`):**
 - Always-on when MCP is enabled: `read`, `writeScoped`, `agent`.
 - Toggled per-tier: `navigate`, `manage`, `extensions`.
-- Vault write mode (dropdown): `none` (default) / `reviewed` (`writeReviewed` tier, diff modal per change) / `full` (`writeVault` tier, unrestricted, no review).
+- Vault-wide writes (dropdown, labels `None` / `Reviewed` / `Full (no review)`): `None` (default, stored value `scoped`, no extra tier) / `Reviewed` (`writeReviewed` tier, diff modal per change) / `Full (no review)` (`writeVault` tier, unrestricted, no review).
 
 ### 3.1 Permission cells matrix
 
@@ -360,7 +360,7 @@ Each cell is a specific combination of plugin settings. Run [mcp-capability-test
 Repeat for each cell before handing the capability test to Claude:
 
 1. **Settings → MCP**: confirm `Enable MCP server` is on.
-2. In the **Permissions** section: set the Navigate / Manage / Extensions toggles and the Vault-wide writes dropdown to match the cell's row in the matrix above.
+2. In the **Escalations** section: set the Navigate / Manage / Extensions toggles and the Vault-wide writes dropdown to match the cell's row in the matrix above.
 3. **Sandbox: Toggle MCP Server** (command palette): off, then on, so the server re-publishes the tool list with the new settings.
 4. Verify in a terminal: `claude -p "Call mcp_capabilities and tell me which tier tags are enabled."` Confirm the response matches the cell's "Active tier tags" column exactly.
 5. Open `docs/mcp-capability-test.md` and hand it to the in-container Claude session. Save the run to `workspace/mcp-testing/<YYYY-MM-DD>-cell-<letter>-<short-name>.md`.
@@ -376,8 +376,8 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 ### 3.4 Always-on tiers have no toggle
 
 - **Setup:** Settings → MCP, with MCP enabled.
-- **Steps:** Inspect the permissions section.
-- **Expected:** Three toggles only (Navigate, Manage, Extensions) and one dropdown (Vault write mode: `none` / `reviewed` / `full (no review)`). No UI control for `read`, `writeScoped`, or `agent`; their tools always appear in `vault_*` listings while MCP is on.
+- **Steps:** Inspect the Escalations section.
+- **Expected:** Three toggles only (Navigate, Manage, Extensions) and one dropdown (**Vault-wide writes**: `None` / `Reviewed` / `Full (no review)`). No UI control for `read`, `writeScoped`, or `agent`; their tools always appear in `vault_*` listings while MCP is on.
 - **Notes:** P2. Confirms `docs/reference/settings.md` matches reality.
 
 ### 3.5 Navigate tier: active tab changes (UI assertion)
@@ -441,7 +441,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ## Stage 4: Human-in-the-loop review modals
 
-**Setup carried forward:** Stage 0–3, plus Settings → MCP → **Vault write mode = Reviewed**.
+**Setup carried forward:** Stage 0–3, plus Settings → MCP → **Vault-wide writes = Reviewed**.
 
 Unit tests verify the gate fires; humans verify the modal renders right.
 
@@ -497,7 +497,7 @@ Unit tests verify the gate fires; humans verify the modal renders right.
 
 - **Setup:** Open terminal, attach to named session `work`, run `claude` interactively.
 - **Steps:** Submit a long-running prompt. Then submit one that triggers an approval question (or use `writeReviewed`).
-- **Expected:** While working → tab title `⚙ Session: work`. Idle between prompts → `Session: work`. Awaiting input → `❓ Session: work` AND status bar pill grows a `🔔` badge with tooltip "1 session awaiting input: work".
+- **Expected:** While working → tab title `⚙ Session: work`. Idle between prompts (after a turn completes, the Stop hook sets `idle`) → `✓ Session: work`; the bare `Session: work` with no symbol only appears for a terminal that has not yet run Claude. Awaiting input → `❓ Session: work` AND status bar pill grows a `🔔` badge whose tooltip reads `Sandbox running. 1 session(s) awaiting input: work` followed by a `Click for options` line.
 - **Notes:** P0. Close+reopen Obsidian → badge clears (activity is ephemeral).
 
 ### 5.2 Multi-session independence
@@ -530,28 +530,28 @@ Unit tests verify the gate fires; humans verify the modal renders right.
 
 ### 5.6 Agent output Notice: debounced bursts
 
-- **Setup:** `Notify on agent output` = `new`.
+- **Setup:** General → Agent output notifications → `Notify on file created` = on (the default).
 - **Steps:** `claude -p "Create three files under agent-workspace/: a.md b.md c.md each with just 'x'."`
 - **Expected:** A single Notice ~2 s after the last create: "Agent output: 3 created" (not three notices).
 - **Notes:** P1.
 
 ### 5.7 Agent output Notice: rate-limit doesn't drop
 
-- **Setup:** Same setting. First burst fired.
+- **Setup:** Same toggle (`Notify on file created` = on). First burst fired.
 - **Steps:** Within ~3 s, prompt another batch of 2 files.
 - **Expected:** ~5 s after the first Notice, a second Notice appears for the batched remainder ("Agent output: 2 created"). Not silently dropped.
 - **Notes:** P1.
 
-### 5.8 `new_or_modified` mode includes modifies
+### 5.8 `Notify on file edited` fires for modifies
 
-- **Setup:** Switch setting to `new_or_modified`.
+- **Setup:** Enable `Notify on file edited` (off by default).
 - **Steps:** Prompt Claude to modify two existing files.
 - **Expected:** Notice fires for the modifies.
 - **Notes:** P2.
 
-### 5.9 `off` mode silent
+### 5.9 All notify toggles off → silent
 
-- **Steps:** Switch setting to `off`. Trigger creates/modifies.
+- **Steps:** Turn off all four `Notify on file created / edited / deleted / renamed-moved` toggles. Trigger creates/modifies.
 - **Expected:** No Notices.
 - **Notes:** P2.
 
@@ -559,7 +559,7 @@ Unit tests verify the gate fires; humans verify the modal renders right.
 
 - **Setup:** Three terminal tabs: two named (`work`, `research`), one unnamed.
 - **Steps:** Command palette → **Sandbox: Switch to Sandbox session…**. Type to filter. Enter on a result.
-- **Expected:** Modal lists `Session: work`, `Session: research`, and `Sandbox Terminal <N>` for the unnamed one. Filter narrows. Selecting activates the matching tab.
+- **Expected:** Modal lists `Session: work`, `Session: research`, and `Session: (unnamed)` for the unnamed one. Filter narrows. Selecting activates the matching tab.
 - **Notes:** P1.
 
 ### 5.11 Session switcher handles closed tabs mid-modal
@@ -573,7 +573,7 @@ Unit tests verify the gate fires; humans verify the modal renders right.
 
 - **Setup:** Two tmux sessions created, one attached in Obsidian, one detached.
 - **Steps:** Command palette → **Sandbox: Clean up detached sessions**. Modal appears.
-- **Expected:** Only the detached one listed. Uncheck to keep / check to kill. Kill selected → Notice "1/1 killed".
+- **Expected:** Only the detached one listed. Uncheck to keep / check to kill. Kill selected → Notice "Killed 1/1 session(s).".
 - **Notes:** P1.
 
 ### 5.13 Failed kill is logged, not swallowed
@@ -585,7 +585,7 @@ Unit tests verify the gate fires; humans verify the modal renders right.
   tmux rename-session -t tempname "bad name"
   ```
 - **Steps:** Command palette → **Sandbox: Clean up detached sessions**. Check both sessions in the modal → Kill selected.
-- **Expected:** `validname` is killed. `bad name` fails name-validation; the failure is logged to DevTools console as `[Agent Sandbox] [sessions] failed to kill tmux session 'bad name': …`. Aggregate Notice reports `1/2 session(s) killed`.
+- **Expected:** `validname` is killed. `bad name` fails name-validation; the failure is logged to DevTools console as `[Agent Sandbox] [sessions] failed to kill tmux session 'bad name': …`. Aggregate Notice reports `Killed 1/2 session(s).`.
 - **Cleanup:** `tmux kill-session -t "bad name"` inside the container if it survived the failed kill.
 - **Notes:** P2.
 
@@ -612,7 +612,7 @@ Unit tests verify the gate fires; humans verify the modal renders right.
 
 - **Setup:** `<vault>/.oas/prompts/` populated with the four shipped templates (copy from `workspace/.claude/prompts/` if needed).
 - **Steps:** Right-click a vault note → **Analyse in Sandbox**.
-- **Expected:** Submenu shows Summarize, Critique, Explain, Extract TODOs, plus "Custom prompt…". Picking one opens a new terminal and seeds the prompt.
+- **Expected:** Submenu shows the four template labels sorted alphabetically — Critique, Explain, Extract TODOs, Summarise (note British spelling, the label is the template file's first line) — plus "Custom prompt…". Picking one opens a new terminal and seeds the prompt.
 - **Notes:** P1. Templates are loaded from `<vault>/.oas/prompts/` at plugin load; changes there require an Obsidian reload to take effect.
 
 ### 6.4 Templates render on first right-click after reload
@@ -651,7 +651,7 @@ Unit tests cover `isRealPathWithinBase` with mocked realpath. These verify the O
   ln -s /etc/hosts /workspace/vault/$OAS_VAULT_WRITE_DIR/evil.md
   ```
 - **Steps:** `claude -p "Use vault_read to read agent-workspace/evil.md"`. Instruct Claude to use MCP, not direct filesystem read.
-- **Expected:** `vault_read` returns "File not found" or "Path resolves outside the vault." Real `/etc/hosts` is never returned.
+- **Expected:** `vault_read` returns "File not found." (the escaping symlink resolves outside the vault, so the read path treats it as absent). Real `/etc/hosts` is never returned.
 - **Cleanup:** `rm /workspace/vault/$OAS_VAULT_WRITE_DIR/evil.md`.
 - **Notes:** P0. The vault root is mounted `:ro` inside the container, so create symlinks in `$OAS_VAULT_WRITE_DIR` (`:rw`) instead. Direct filesystem access by Claude is not under test here; the instruction must trigger an MCP `vault_read` call so `isRealPathWithinBase` is exercised.
 
@@ -714,7 +714,7 @@ Unit tests cover `isRealPathWithinBase` with mocked realpath. These verify the O
 ### 8.4 --list-sources tagging
 
 - **Steps:** `docker compose exec sandbox /usr/local/bin/init-firewall.sh --list-sources` (or run as `claude` user, read-only path).
-- **Expected:** Lines tagged `[baseline]`, `[plugin]`, `[file]`. Matches Settings → Firewall → Effective allowlist (Refresh).
+- **Expected:** Lines tagged `[baseline]`, `[plugin]`, `[file]`. Matches Settings → Advanced → Security → Effective allowlist (Refresh).
 - **Notes:** P1.
 
 ### 8.5 Effective allowlist refresh button
