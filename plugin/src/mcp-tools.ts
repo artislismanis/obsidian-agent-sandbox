@@ -11,7 +11,7 @@ import {
 	withTemplaterHookSuppressed,
 } from "./templater-adapter";
 import { errMsg, logger } from "./logger";
-import { isVaultPathSafe } from "./obsidian-internals";
+import { isVaultPathSafe, type MomentFactory } from "./obsidian-internals";
 
 export type { WriteOperation };
 
@@ -2534,8 +2534,8 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 				"if they differ, pass an explicit `date` param derived from `localIso` rather than relying on your own clock.",
 			inputSchema: {},
 			handler: async () => {
-				// TS6 + bundler resolution: Obsidian's moment re-export loses its call signature.
-				const m = (moment as any)();
+				// Obsidian's moment re-export loses its call signature under bundler resolution.
+				const m = (moment as unknown as MomentFactory)();
 				return text(
 					JSON.stringify({
 						localIso: m.format(),

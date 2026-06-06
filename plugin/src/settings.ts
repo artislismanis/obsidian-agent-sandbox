@@ -380,19 +380,26 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 	 * setting. Each entry gets its own row with a × remove button. An "Add"
 	 * button opens an inputModal to capture and validate a new entry.
 	 */
-	private renderFirewallListEditor(
+	private renderListEditor(
 		containerEl: HTMLElement,
 		opts: {
 			name: string;
 			desc: string;
-			key: "additionalFirewallDomains" | "allowedPrivateHosts";
+			key:
+				| "additionalFirewallDomains"
+				| "allowedPrivateHosts"
+				| "mcpPathAllowlist"
+				| "mcpPathBlocklist";
 			validator: (v: string) => boolean;
 			placeholder: string;
+			requiresRestart?: boolean;
+			onChange?: () => void;
 		},
 	): void {
 		const save = (entries: string[]) => {
 			(this.plugin.settings[opts.key] as string) = entries.join(",");
 			void this.plugin.saveSettings();
+			opts.onChange?.();
 			this.display();
 		};
 
@@ -405,8 +412,8 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		const infoEl = wrapper.createDiv({ cls: "setting-item-info" });
 		infoEl.createDiv({ cls: "setting-item-name", text: opts.name });
 		const descDiv = infoEl.createDiv({ cls: "setting-item-description" });
-		descDiv.appendText(opts.desc + RESTART_CONTAINER_SUFFIX);
-		if (this.isRestartDirty(opts.key)) {
+		descDiv.appendText(opts.requiresRestart ? opts.desc + RESTART_CONTAINER_SUFFIX : opts.desc);
+		if (opts.requiresRestart && this.isRestartDirty(opts.key)) {
 			descDiv.createEl("span", {
 				cls: "sandbox-settings-restart-indicator",
 				text: "↺ Pending restart",
@@ -903,17 +910,17 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			)
 			.setHeading();
 
-		this.addValidatedTextSetting(el, {
+		this.renderListEditor(el, {
 			name: "Allowed paths",
 			desc:
-				"Comma-separated vault path prefixes the agent may access outside the vault write " +
+				"Vault path prefixes the agent may access outside the vault write " +
 				"directory. A more-specific allow entry overrides a block entry - e.g. add " +
 				"'.obsidian/plugins/my-plugin/' to permit that plugin's data while the rest of " +
 				"the vault config folder stays blocked. Without 'Allowlist mode' below, allow " +
 				"entries only matter when they override a block.",
 			key: "mcpPathAllowlist",
 			validator: isValidPathPrefixList,
-			placeholder: "notes/,projects/",
+			placeholder: "notes/",
 			onChange: () => void this.plugin.restartMcpIfRunning(),
 		});
 
@@ -926,16 +933,16 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			onChange: () => void this.plugin.restartMcpIfRunning(),
 		});
 
-		this.addValidatedTextSetting(el, {
+		this.renderListEditor(el, {
 			name: "Blocked paths",
 			desc:
-				"Comma-separated vault path prefixes denied outside the vault write directory. " +
+				"Vault path prefixes denied outside the vault write directory. " +
 				"Use the allow list above to permit a specific subtree; a more-specific allow entry " +
 				"takes precedence (most-specific prefix wins). " +
 				"The vault config folder ('.obsidian/') is always blocked.",
 			key: "mcpPathBlocklist",
 			validator: isValidPathPrefixList,
-			placeholder: "private/,secrets/",
+			placeholder: "private/",
 			onChange: () => void this.plugin.restartMcpIfRunning(),
 		});
 
@@ -1029,7 +1036,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			key: "autoEnableFirewall",
 		});
 
-		this.renderFirewallListEditor(el, {
+		this.renderListEditor(el, {
 			name: "Allowed private hosts",
 			desc:
 				"IPs or CIDRs allowed through the firewall. " +
@@ -1038,9 +1045,10 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			key: "allowedPrivateHosts",
 			validator: isValidPrivateHosts,
 			placeholder: "e.g. 192.168.1.100 or 10.0.0.0/8",
+			requiresRestart: true,
 		});
 
-		this.renderFirewallListEditor(el, {
+		this.renderListEditor(el, {
 			name: "Additional firewall domains",
 			desc:
 				"Domains to add to the firewall allowlist. " +
@@ -1049,6 +1057,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			key: "additionalFirewallDomains",
 			validator: isValidDomainList,
 			placeholder: "e.g. api.atlassian.com",
+			requiresRestart: true,
 		});
 
 		const sourcesBox = el.createDiv({ cls: "setting-item sandbox-settings-sources" });

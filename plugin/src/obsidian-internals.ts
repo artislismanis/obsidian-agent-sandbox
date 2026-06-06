@@ -10,8 +10,22 @@
 
 import type { App, Menu, MenuItem, WorkspaceLeaf } from "obsidian";
 import { FileSystemAdapter } from "obsidian";
+import type * as Moment from "moment";
 import { isRealPathWithinBase } from "./validation";
 import { logger } from "./logger";
+
+/**
+ * Call signature of the moment factory. Obsidian re-exports moment as
+ * `export const moment: typeof Moment`, where `Moment` is a namespace import -
+ * under `moduleResolution: bundler` that namespace form drops the call
+ * signature, so callers must cast `moment` (`as unknown as MomentFactory`)
+ * before invoking it. Type-only, so it adds no runtime obsidian dependency here.
+ */
+export type MomentFactory = (
+	inp?: Moment.MomentInput,
+	format?: Moment.MomentFormatSpecification,
+	strict?: boolean,
+) => Moment.Moment;
 
 /** Vault filesystem base path on desktop, or null on mobile/test adapters. */
 export function getVaultBasePath(app: App): string | null {

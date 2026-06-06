@@ -24,7 +24,7 @@ import {
 	assertUnchangedDuringReview,
 } from "./mcp-tools";
 import { logger, errMsg } from "./logger";
-import { getInstalledPlugin, isVaultPathSafe } from "./obsidian-internals";
+import { getInstalledPlugin, isVaultPathSafe, type MomentFactory } from "./obsidian-internals";
 import { isPathWithinDir, pathHasParentSegment } from "./validation";
 
 type ToolPusher = (tool: McpToolDef) => void;
@@ -841,10 +841,9 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 				// the input date don't shift across local-TZ DST boundaries (which
 				// `new Date(dateArg + "T00:00:00")` does in non-UTC locales).
 				// Trim the input - moment strict mode treats " 2024-01-01" as invalid.
-				// TS6 + bundler resolution: Obsidian's moment re-export loses its call signature.
-				const m = dateArg
-					? (moment as any)(dateArg.trim(), "YYYY-MM-DD", true)
-					: (moment as any)();
+				// Obsidian's moment re-export loses its call signature under bundler resolution.
+				const mf = moment as unknown as MomentFactory;
+				const m = dateArg ? mf(dateArg.trim(), "YYYY-MM-DD", true) : mf();
 				if (!m.isValid()) return error(`Invalid date: ${dateArg}`);
 
 				const filename = m.format(periodicSettings.format || defaultFormat(periodicity));
