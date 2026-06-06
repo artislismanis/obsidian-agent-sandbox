@@ -123,7 +123,7 @@ describe.skipIf(SKIP_NO_IMAGE)("Container", () => {
 	it("claude binary is a symlink to the versioned native binary", () => {
 		// Native self-contained install: ~/.local/bin/claude → ~/.local/share/claude/versions/<ver>/claude
 		// This makes `claude update` an atomic symlink swap without needing npm or root.
-		const target = containerExec("readlink -f ~/.local/bin/claude");
+		const target = containerExec("readlink -f /home/claude/.local/bin/claude");
 		expect(target).toMatch(/\.local\/share\/claude\/versions\//);
 	});
 });
