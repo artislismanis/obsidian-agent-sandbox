@@ -11,7 +11,8 @@ npm install               # one-time, installs all test tooling
 npm run test              # Layer 1: unit tests               (~1.5s,   no deps)
 npm run test:integration  # Layer 2: container integration    (~30s,    needs Docker)
 npm run test:e2e          # Layer 3: real Obsidian UI         (~25s,    needs display / xvfb)
-npm run test:e2e:headless # same as above but wrapped in xvfb-run
+npm run test:e2e:headless # same as above but wrapped in xvfb-run (includes the Docker-free bridge spec)
+npm run test:e2e:bridge   # Layer 3b: bridge container tier   (~10s,    needs display + Docker)
 npm run check             # lint + format:check + tsc + unit tests with coverage (run before committing)
 ```
 
@@ -132,6 +133,23 @@ Test matrix: set `OBSIDIAN_VERSIONS` to target multiple versions:
 OBSIDIAN_VERSIONS="latest/latest earliest/earliest" npm run test:e2e
 ```
 
+### Layer 3b: bridge (real plugin MCP server, driven end-to-end)
+
+The bridge specs drive the **real plugin's MCP server** running inside a wdio-launched Obsidian, then assert the resulting UI via `executeObsidian`. Two tiers:
+
+```bash
+# Docker-free: lives in test/e2e/specs/bridge.e2e.ts, runs with the normal e2e suite.
+npm run test:e2e:headless
+
+# Container tier: needs Docker + the oas-sandbox image. Brings up an isolated
+# oas-test container so a container can call back into the host plugin's MCP server.
+npm run test:e2e:bridge          # local dev (needs a display)
+npm run test:e2e:bridge:headless # CI / SSH (xvfb)
+```
+
+- **Docker-free tier** (`bridge.e2e.ts`): the wdio worker POSTs MCP tool calls to the plugin's server over loopback (no container needed — the tools act on the Obsidian-open vault). Covers navigate→active-tab, the review modals end-to-end (approve/reject/rename-affected-links/batch), and the awaiting-input badge.
+- **Container tier** (`wdio.bridge.conf.mts` → `test/e2e/container/bridge-container.e2e.ts`): brings up the isolated `oas-test` container and proves the host↔container MCP round-trip — the container reaches the plugin's MCP server (bound to `0.0.0.0`) via `host.docker.internal`, with bearer-token auth. Skips with exit 0 when Docker or the image is absent, like the integration suite. Settings don't persist in the harness (the plugin is loaded out-of-tree), so the bridge configures the MCP port/token/bind at runtime via `executeObsidian` + `restartMcpIfRunning`.
+
 ### Claude Code authentication for integration tests
 
 The Claude Code tests in `test/integration/claude-code.test.ts` need an authenticated subscription. Rather than burning API tokens, they **borrow auth from your live container** if available.
@@ -161,13 +179,14 @@ After that, `npm run test:integration` will include the four Claude tests (`clau
 | **Unit** | `src/__tests__/*.test.ts` | Input validation (write dir, private hosts, memory, CPUs, bind address, memory file name, path-prefix lists; numeric range checks like port / font size / scrollback are inline in `settings.ts` via `addNumberSetting` rather than a named validator), WSL + Windows shell escaping (incl. `$`/backtick neutralisation), WSL path conversion, env var injection, `parseIsRunning` state machine, ttyd polling / URL construction, status bar state transitions, firewall status bar, timing-safe MCP auth, path traversal protection, every MCP tool handler |
 | **Integration** | `test/integration/*.test.ts` | Container health + `verify.sh`, vault ro/rw mounts + mount isolation, narrow sudo scope + `OAS_SUDO_PASSWORD` unset after drop-privileges, MCP env var injection, MCP HTTP auth / routing / CORS, Docker resource naming (`oas-test` prefix), named volumes (`oas-test-claude-config`, `oas-test-shell-history`, `oas-test-user-config`), native claude binary symlink layout, firewall enable / allowlist / disable, tmux session create + list + persist, ttyd port remapping, Claude Code auth + `claude -p` execution + memory MCP tool use + filesystem `Read` tool |
 | **E2E** | `test/e2e/specs/*.e2e.ts` | Plugin loads and is enabled, ribbon icon present, status bar renders, the full set of all 12 commands registered, settings tabs render, MCP permission tiers visible with correct defaults, MCP token auto-generates and regenerates, numeric/text setting validation adds/removes `sandbox-input-error` class (incl. the vault-write-directory escape-path rejection), both ttyd and MCP bind-address security warnings toggle dynamically, per-setting "Requires container restart" labels appear on restart-needing settings only |
+| **Bridge** | `test/e2e/specs/bridge.e2e.ts` (Docker-free), `test/e2e/container/bridge-container.e2e.ts` (Docker) | Drives the **real plugin's MCP server** in a wdio-launched Obsidian: navigate tool changes the active tab (3.5); review modals end-to-end — content-diff approve + reject, frontmatter JSON diff, rename affected-links list, batch checkboxes (4.1–4.5); awaiting-input badge toggles the status-bar bell (3.11). Container tier proves the host↔container MCP round-trip: a live `oas-test` container reaches the host plugin's MCP server via `host.docker.internal`, bearer-token accepted/rejected, and a `vault_list` from the container returns the host vault's files |
 
 ## What's NOT covered (and why)
 
 Some scenarios can't be reliably automated in this harness:
 
 - **Settings persistence across full Obsidian restart** and **plugin disable/enable cycle via the UI** — both blocked by the same root cause: `wdio-obsidian-service` loads the built plugin **out-of-tree** (a diagnostic confirmed `<vault>/.obsidian/plugins/<id>/main.js` is absent even while the plugin is loaded and working at boot). Consequences: (a) in-session `saveData` never reaches `data.json`, and a `reloadObsidian()` reboot resets settings to defaults; (b) `enablePlugin()` after `disablePlugin()` is a silent no-op (no on-disk `main.js` to reload), so the plugin never returns. Both have a reproducible, skipped probe in `test/e2e/specs/harness-probe.e2e.ts` — un-skip and re-classify if a future service version installs the plugin on disk. Until then: durable persistence is Obsidian's own `saveData`/`loadData` responsibility (the in-memory save path is covered by validation tests), and unload cleanup is covered by unit tests on `StatusBarManager.destroy()`, `FirewallStatusBar.destroy()`, etc.
-- **Interactive Claude conversations against the plugin's running MCP server**: integration tests cover `claude -p` against memory + filesystem MCP servers, but the plugin's own Obsidian MCP server needs a real Obsidian instance listening. See the manual checklist below.
+- **Interactive Claude *conversations* against the plugin's MCP server**: the bridge layer (Layer 3b) now drives the plugin's own MCP server end-to-end — over loopback and from a live container — so tool calls, review modals, the activity badge, and the host↔container round-trip are automated. What remains manual is a real multi-turn Claude **conversation** (LLM behaviour and judgement): the permission-cell capability sweep (`mcp-capability-test.md`) and recurring-task semantics (9.3).
 - **Cross-platform Docker edges (WSL path conversion, Rancher Desktop, Docker Desktop on Windows)**: shell escaping and path conversion are unit-tested, but the full round-trip through `wsl.exe` / Docker Desktop only runs on actual Windows hosts.
 - **Visual rendering**: xterm themes, status bar icons, font fallback, terminal resize. Xvfb can't judge "does it look right".
 
