@@ -115,7 +115,15 @@ describe.skipIf(SKIP_NO_IMAGE)("Container", () => {
 		);
 		// claude-config is an external volume: no compose project prefix
 		expect(mounts).toContain("oas-test-claude-config");
-		// shell-history is compose-managed: gets the oas-test project prefix
+		// shell-history and user-config are compose-managed: get the oas-test project prefix
 		expect(mounts).toContain("oas-test_oas-test-shell-history");
+		expect(mounts).toContain("oas-test_oas-test-user-config");
+	});
+
+	it("claude binary is a symlink to the versioned native binary", () => {
+		// Native self-contained install: ~/.local/bin/claude → ~/.local/share/claude/versions/<ver>/claude
+		// This makes `claude update` an atomic symlink swap without needing npm or root.
+		const target = containerExec("readlink -f /home/claude/.local/bin/claude");
+		expect(target).toMatch(/\.local\/share\/claude\/versions\//);
 	});
 });

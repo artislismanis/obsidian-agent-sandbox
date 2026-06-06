@@ -148,7 +148,7 @@ After that, `npm run test:integration` will include the four Claude tests (`clau
 | Suite | Path | What's covered |
 |-------|------|----------------|
 | **Unit** | `src/__tests__/*.test.ts` | Input validation (write dir, private hosts, memory, CPUs, bind address, memory file name, path-prefix lists; numeric range checks like port / font size / scrollback are inline in `settings.ts` via `addNumberSetting` rather than a named validator), WSL + Windows shell escaping (incl. `$`/backtick neutralisation), WSL path conversion, env var injection, `parseIsRunning` state machine, ttyd polling / URL construction, status bar state transitions, firewall status bar, timing-safe MCP auth, path traversal protection, every MCP tool handler |
-| **Integration** | `test/integration/*.test.ts` | Container health + `verify.sh`, vault ro/rw mounts + mount isolation, narrow sudo scope + `OAS_SUDO_PASSWORD` unset after drop-privileges, MCP env var injection, MCP HTTP auth / routing / CORS, Docker resource naming (`oas-test` prefix), firewall enable / allowlist / disable, tmux session create + list + persist, ttyd port remapping, Claude Code auth + `claude -p` execution + memory MCP tool use + filesystem `Read` tool |
+| **Integration** | `test/integration/*.test.ts` | Container health + `verify.sh`, vault ro/rw mounts + mount isolation, narrow sudo scope + `OAS_SUDO_PASSWORD` unset after drop-privileges, MCP env var injection, MCP HTTP auth / routing / CORS, Docker resource naming (`oas-test` prefix), named volumes (`oas-test-claude-config`, `oas-test-shell-history`, `oas-test-user-config`), native claude binary symlink layout, firewall enable / allowlist / disable, tmux session create + list + persist, ttyd port remapping, Claude Code auth + `claude -p` execution + memory MCP tool use + filesystem `Read` tool |
 | **E2E** | `test/e2e/specs/*.e2e.ts` | Plugin loads and is enabled, ribbon icon present, status bar renders, all commands registered, settings tabs render, MCP permission tiers visible with correct defaults, MCP token auto-generates and regenerates, numeric/text setting validation adds/removes `sandbox-input-error` class, bind address security warning toggles dynamically, per-setting "Requires container restart" labels appear on restart-needing settings only |
 
 ## What's NOT covered (and why)
@@ -246,6 +246,6 @@ The integration harness cleans up its own `oas-test-*` resources via `globalSetu
 
 ```bash
 docker rm -f oas-test-sandbox
-docker volume rm oas-test-claude-config oas-test_oas-test-shell-history
+docker volume rm oas-test-claude-config oas-test_oas-test-shell-history oas-test_oas-test-user-config
 docker network rm oas-test_default
 ```

@@ -233,6 +233,7 @@ Only run if `navigate` is in S0.1's `enabledTiers`.
 | S7.1 | `agent_status_set` | `{ status: "working", detail: "mcp test" }`: `status` is the enum `idle` / `working` / `awaiting_input`; the message argument is `detail` (not `note`) |
 | S7.2 | `agent_status_set` (clear) | `{ status: "idle" }` |
 | S7.3 | `mcp_capabilities` (second call) | `{}`: diff against S0.1; capture any drift |
+| S7.4 | `agent_time` | `{}`: record the returned `localIso` and UTC offset fields verbatim. Confirms the host clock is reachable from inside the container and lets you spot container/host clock skew — relevant when `vault_periodic_note` resolves relative dates using this same host clock. |
 
 ---
 
@@ -426,6 +427,7 @@ Intentional behaviours that differ from naive expectations. Anomalies matching t
 - **`vault_periodic_note` uses the Obsidian host clock.** The default date is `moment()` from the plugin process (host machine), not the container's clock. Pass `{ date: "YYYY-MM-DD" }` to target a specific date explicitly.
 - **MCP server force-closes connections on toggle-off.** `closeAllConnections()` terminates all active SSE sessions when MCP is toggled off. Claude CLI sessions see a connection error and must run `/mcp` to reconnect after MCP is re-enabled. Intentional: prevents EADDRINUSE on next start.
 - **Sandbox folder materialises via explicit `createFolder` calls.** The `vault_create` handler creates any missing intermediate directories before writing, so creating a file at `${SANDBOX}/x.md` produces the `${SANDBOX}` folder even without an explicit `vault_create_folder` call.
+- **`agent_time` returns the Obsidian host clock, not the container clock.** The returned `localIso` string reflects the host process's timezone and date. When the container and host are in different timezones (e.g. UTC container, local-timezone host), the UTC offset field reveals the skew. Date-sensitive tools such as `vault_periodic_note` derive their default date from this same host clock; if the clocks disagree, pass an explicit `date` param derived from `agent_time`'s `localIso`.
 
 ---
 
