@@ -2,9 +2,6 @@ import { browser, expect } from "@wdio/globals";
 import { describe, it, before, after } from "mocha";
 import { obsidianPage } from "wdio-obsidian-service";
 import { execSync } from "child_process";
-import { writeFileSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
 import {
 	isDockerAvailable,
 	isImageBuilt,
@@ -110,10 +107,7 @@ function initStatusFromContainer(token: string): number {
 	// plugin's open vault and returns real content (not the proxy's empty stub).
 	it("runs a vault tool end-to-end from the container", async function () {
 		this.timeout(30000);
-		const probe = join(tmpdir(), "oas-bridge-probe.mjs");
-		writeFileSync(
-			probe,
-			`
+		const probeScript = `
 import http from "node:http";
 const PORT = process.env.OAS_MCP_PORT, TOKEN = process.env.OAS_MCP_TOKEN, HOST = "host.docker.internal";
 function post(body, sid) {
@@ -130,9 +124,13 @@ function post(body, sid) {
 const init = await post({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "probe", version: "1" } } });
 const list = await post({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "vault_list", arguments: {} } }, init.sid);
 console.log(JSON.stringify({ initStatus: init.status, listStatus: list.status, listBody: list.body }));
-`,
-		);
-		execSync(`docker cp ${probe} ${CONTAINER}:/tmp/probe.mjs`, { timeout: 15000 });
+`;
+		// Pipe the probe into the container over stdin — no host temp file
+		// (avoids the predictable-temp-path footgun CodeQL flags).
+		execSync(`docker exec -i ${CONTAINER} sh -c 'cat > /tmp/probe.mjs'`, {
+			input: probeScript,
+			timeout: 15000,
+		});
 		const out = execSync(
 			`docker exec -e OAS_MCP_PORT=${MCP_PORT} -e OAS_MCP_TOKEN=${MCP_TOKEN} ${CONTAINER} node /tmp/probe.mjs`,
 			{ encoding: "utf-8", timeout: 20000 },
