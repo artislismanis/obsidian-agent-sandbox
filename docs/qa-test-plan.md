@@ -187,7 +187,19 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 ### 1.9 Command palette entries present
 
 - **Setup:** Plugin enabled.
-- **Steps:** Open command palette and search "Sandbox". Confirm all 12 commands are listed by their display names: **Sandbox: Open Terminal**, **Sandbox: Start Container**, **Sandbox: Stop Container**, **Sandbox: Container Status**, **Sandbox: Restart Container**, **Sandbox: Toggle Firewall**, **Sandbox: Open Session...**, **Sandbox: Open in Browser**, **Sandbox: Toggle MCP Server**, **Sandbox: Copy terminal connection log**, **Sandbox: Clean up detached sessions**, **Sandbox: Switch to Sandbox session…** (command IDs: `open-claude-terminal`, `sandbox-start-container`, `sandbox-stop-container`, `sandbox-container-status`, `sandbox-restart-container`, `sandbox-toggle-firewall`, `open-session`, `open-browser`, `sandbox-toggle-mcp`, `sandbox-copy-terminal-connection-log`, `sandbox-cleanup-sessions`, `sandbox-switch-session`).
+- **Steps:** Open command palette and search "Sandbox". Confirm all 12 commands are listed by their display names (command IDs in parentheses):
+  - **Sandbox: Open Terminal** (`open-claude-terminal`)
+  - **Sandbox: Start Container** (`sandbox-start-container`)
+  - **Sandbox: Stop Container** (`sandbox-stop-container`)
+  - **Sandbox: Container Status** (`sandbox-container-status`)
+  - **Sandbox: Restart Container** (`sandbox-restart-container`)
+  - **Sandbox: Toggle Firewall** (`sandbox-toggle-firewall`)
+  - **Sandbox: Open Session...** (`open-session`)
+  - **Sandbox: Open in Browser** (`open-browser`)
+  - **Sandbox: Toggle MCP Server** (`sandbox-toggle-mcp`)
+  - **Sandbox: Copy terminal connection log** (`sandbox-copy-terminal-connection-log`)
+  - **Sandbox: Clean up detached sessions** (`sandbox-cleanup-sessions`)
+  - **Sandbox: Switch to Sandbox session…** (`sandbox-switch-session`)
 - **Expected:** All 12 visible. Each runs without throwing when invoked in this state (most should no-op with a Notice).
 - **Notes:** P2. Quick smoke check. Use `plugin/src/main.ts` as the canonical source if the count changes.
 
