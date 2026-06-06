@@ -15,7 +15,10 @@ function shouldLog(level: LogLevel): boolean {
 }
 
 function sanitize(s: string): string {
-	return s.replace(/[\r\n]+/g, " ");
+	// CWE-117 (log injection): replace CR/LF so attacker-controlled values can't
+	// forge new log lines. The \n|\r alternation mirrors CodeQL's js/log-injection
+	// barrier model so static analysis recognises the guard.
+	return s.replace(/\n|\r/g, " ");
 }
 
 function fmt(component: string, msg: string): string {
