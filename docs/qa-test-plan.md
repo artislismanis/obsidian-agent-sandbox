@@ -72,9 +72,9 @@ This stage exercises the settings UI, error/fallback paths before any container 
       - Vault-wide writes = `None` *(no label)*
       - Navigate / Manage / Extensions tiers = off *(no label each)*
     - **Path restrictions** *(heading)*
-      - Allowed paths = empty *(no label)*
+      - Allowed paths = empty, list editor with **Add** button *(no label)*
       - Allowlist mode = off *(no label)*
-      - Blocked paths = empty *(no label)*
+      - Blocked paths = empty, list editor with **Add** button *(no label)*
     - **Timeouts** *(heading)*
       - Tool timeout (seconds) = `10` *(no label)*
       - Review timeout (seconds) = `180` *(no label)*
@@ -154,7 +154,7 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 - **Steps:** Command palette → **Sandbox: Start Container**.
 - **Expected:**
   - **Linux native Docker / macOS Docker Desktop / WSL2 mirrored mode:** Notice `Port conflict: 7681 already in use on 127.0.0.1. Stop the other process or change the port in settings.` Container does not start. *(The Notice interpolates the configured Bind address; `127.0.0.1` shown here is the default, not a hardcoded value.)*
-  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns, so the container starts without blocking. Within ~5 s, `checkTtydReachability` (`main.ts:705`) polls the port and fires a 10 s Notice: `Sandbox started but terminal isn't reachable on 127.0.0.1:<port>. Check for a port conflict or run 'docker compose logs' to investigate.` Terminal tab will spin until a manual start/stop cycle resolves the conflict. See `docs/proposals/port-conflict-detection-improvements.md` Task 1 for a planned improvement to the pre-flight probe.
+  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns, so the container starts without blocking. Within ~5 s, `checkTtydReachability` (`main.ts:705`) polls the port and fires a 10 s Notice: `Sandbox started but terminal isn't reachable on 127.0.0.1:<port>. Check for a port conflict or run 'docker compose logs' to investigate.` Terminal tab will spin until a manual start/stop cycle resolves the conflict.
 - **Cleanup:** Release the port. Restart container if it started in the NAT-mode gap case.
 - **Notes:** P1 on platforms where pre-flight works. Known gap on WSL2 NAT.
 
