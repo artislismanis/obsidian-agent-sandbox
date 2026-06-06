@@ -435,13 +435,11 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 3.5 Navigate tier: active tab changes (UI assertion)
 
-- **Setup:** Cell A active (Navigate on). MCP toggled off then on.
-- **Steps:** `claude -p "Open Welcome.md in the editor"` (use any real vault file).
-- **Expected:** The active tab in Obsidian changes to that file. The `vault_open` call itself is covered by S6.1 in the capability test.
-- **Notes:** P1.
+- **✅ Automated** — `test/e2e/specs/bridge.e2e.ts` ("drives a real UI effect: vault_open changes the active file") POSTs a navigate-tier `vault_open` to the real plugin and asserts the active tab changes. The LLM-driven invocation (`claude -p "Open …"`) is an optional manual sanity check.
 
 ### 3.6 MCP token rotation kicks live connections
 
+- **Partially automated** — the container tier (`test/e2e/container/bridge-container.e2e.ts`) proves a **wrong bearer token is rejected (401)** from inside a live container, and a correct one is accepted (200). The full live-rotation flow (Regenerate while a Claude session is connected, then `/mcp` reconnect) stays manual.
 - **Setup:** Active Claude session connected to MCP.
 - **Steps:** Click Regenerate token in plugin settings. In the same terminal, try another tool call.
 - **Expected:** The next call fails auth. Restarting the container per the regenerate-button description, then restarting Claude, restores tool access.
@@ -477,10 +475,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 3.11 Awaiting-input badge
 
-- **Setup:** Active Claude session (terminal open, Claude running). `agent` tier enabled (always-on when MCP is on).
-- **Steps:** Trigger a tool call that causes Claude to pause awaiting human input (e.g. a reviewed-write that opens the diff modal, or a direct `agent_status_set` call via MCP).
-- **Expected:** Sandbox pill in the status bar gains a trailing ` 🔔` while the agent is awaiting input: `Sandbox: ▶ Running 🔔`. Badge clears when the session is no longer awaiting input.
-- **Notes:** P2. Driven by `agent_status_set` tool in `mcp-tools.ts`; requires authenticated Claude. This is why it doesn't belong in Stage 2.
+- **✅ Automated** — `test/e2e/specs/bridge.e2e.ts` ("3.11 agent_status_set awaiting_input toggles the status-bar bell") calls `agent_status_set` against the real plugin and asserts the status-bar pill gains then clears the trailing ` 🔔`.
 
 ### 3.12 MCP proxy: one diagnostic per unreachable burst
 
@@ -496,42 +491,28 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 **Setup carried forward:** Stage 0–3, plus Settings → MCP → **Vault-wide writes = Reviewed**.
 
-Unit tests verify the gate fires; humans verify the modal renders right.
+**✅ Automated (4.1, 4.2, 4.4, 4.5; 4.3 modal render)** — the bridge layer (`test/e2e/specs/bridge.e2e.ts`, see `docs/testing.md` → Layer 3b) drives these end-to-end against the real plugin: it POSTs a reviewed-tier tool call over loopback, drives the modal in real Obsidian, then asserts the file outcome. The scenarios below are the reference spec + the manual residual (4.6 responsiveness; the rename *apply* — see 4.3).
 
 ### 4.1 Content diff modal
 
-- **Setup:** A note `notes/example.md` with ≥5 lines of stable content.
-- **Steps:** `claude -p "Modify notes/example.md: change line 3 to 'EDITED'."`
-- **Expected:** Modal "Review: Modify file" appears with unified diff: context lines `  `, removed lines `- ` (red), added lines `+ ` (green). Scrollable if tall. Approve → file changes. Reject → file untouched, Claude told "Change rejected by user."
-- **Notes:** P0.
+- **✅ Automated** — `bridge.e2e.ts` ("4.1 … Approve applies the edit" / "4.5 … Reject leaves the file untouched") fires `vault_modify_reviewed`, asserts the diff renders added/removed lines, then Approve writes the file and Reject leaves it untouched with "Change rejected by user." Manual only for the visual quality of the diff (colour, scrolling).
 
 ### 4.2 Frontmatter JSON diff
 
-- **Setup:** `notes/fm.md` with frontmatter `status: draft`.
-- **Steps:** `claude -p "Set frontmatter 'tags' to ['a', 'b'] on notes/fm.md"`.
-- **Expected:** Modal "Review: Set frontmatter" shows JSON old vs new (FM block only, not body). Approve → FM set, body untouched.
-- **Notes:** P1.
+- **✅ Automated** — `bridge.e2e.ts` ("4.2 frontmatter diff — Approve sets the property") fires `vault_frontmatter_set_reviewed`, asserts the "Set frontmatter" modal, then Approve writes the YAML.
 
 ### 4.3 Rename/move affected-links list
 
-- **Setup:** Manage + reviewed on. `notes/old.md` with two notes linking to it.
-- **Steps:** `claude -p "Rename notes/old.md to notes/new.md"`.
-- **Expected:** Modal "Review: Rename file"; description `Rename notes/old.md → notes/new.md`; below it `2 note(s) link here:` listing both. Approve → renamed and backlinks rewritten.
+- **✅ Automated (modal + affected-links) / manual (apply)** — `bridge.e2e.ts` ("4.3 rename — affected-links list lists the backlinks") seeds two linking notes, fires `vault_rename`, and asserts the "Review: Rename file" modal lists exactly the 2 backlinks. The actual rename apply (`app.fileManager.renameFile`) does not settle under the headless wdio harness, so the spec takes the Reject path; verify the rename + backlink rewrite by hand (the apply path is unit-tested).
 - **Notes:** P0.
 
 ### 4.4 Batch review checkboxes
 
-- **Setup:** Three notes tagged `#test`.
-- **Steps:** `claude -p "Use vault_batch_frontmatter to set property status=review on all files matching '#test' (dryRun false)."`
-- **Expected:** `BatchReviewModal` lists all 3 with checkboxes (default checked). Uncheck one. Approve selected → only the 2 checked files updated.
-- **Notes:** P1.
+- **✅ Automated** — `bridge.e2e.ts` ("4.4 batch review — uncheck one, approve the rest") fires `vault_batch_frontmatter` over a seeded folder, unchecks one row in `BatchReviewModal`, and asserts only the still-checked files are updated.
 
 ### 4.5 Reject persists in conversation
 
-- **Setup:** Active Claude session.
-- **Steps:** Modify a file via reviewed tier, reject.
-- **Expected:** Claude's response acknowledges the rejection ("Change rejected by user") and doesn't retry silently. File untouched.
-- **Notes:** P1.
+- **✅ Automated (tool result)** — `bridge.e2e.ts` asserts a rejected reviewed write returns isError "Change rejected by user." with the file untouched. That a real Claude *conversation* then doesn't silently retry is LLM behaviour and stays a manual spot-check.
 
 ### 4.6 Approve on big diff stays responsive
 

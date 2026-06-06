@@ -15,6 +15,8 @@
 		"test:integration": "vitest run --config vitest.integration.config.ts",
 		"test:e2e": "wdio run ./wdio.conf.mts",
 		"test:e2e:headless": "xvfb-run -a wdio run ./wdio.conf.mts",
+		"test:e2e:bridge": "wdio run ./wdio.bridge.conf.mts",
+		"test:e2e:bridge:headless": "xvfb-run -a wdio run ./wdio.bridge.conf.mts",
 		"check": "npm run lint && npm run format:check && tsc -noEmit -skipLibCheck && npm run test:coverage",
 		"docs:gen": "UPDATE_SCHEMAS=1 vitest run mcp-schemas-doc",
 		"version": "node version-bump.mjs",
