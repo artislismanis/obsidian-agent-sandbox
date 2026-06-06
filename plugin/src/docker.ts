@@ -597,9 +597,11 @@ export class DockerManager {
 		let stdout: string;
 		try {
 			// quiet=true: a "no such network" stderr on a fresh setup is
-			// expected, not an operator-visible failure.
+			// expected, not an operator-visible failure. The template is
+			// double-quoted (single quotes are literal in cmd.exe); unquoted
+			// it word-splits on the space and docker reports "unclosed action".
 			stdout = await this.run(
-				`docker network inspect ${NETWORK_NAME} --format {{json .Options}}`,
+				`docker network inspect ${NETWORK_NAME} --format "{{json .Options}}"`,
 				EXEC_TIMEOUT,
 				true,
 			);

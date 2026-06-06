@@ -107,6 +107,25 @@ describe("buildWslCommand", () => {
 		expect(cmd).toContain("cd '/home/user/it'\\\\''s a test'");
 	});
 
+	// A --format template with an internal space must stay quoted, else it
+	// word-splits and docker reports "unclosed action".
+	it("keeps a spaced --format template quoted for bash", () => {
+		const cmd = buildWslCommand(
+			"/p",
+			"Ubuntu",
+			'docker network inspect oas_default --format "{{json .Options}}"',
+		);
+		expect(cmd).toContain('--format \\"{{json .Options}}\\"');
+	});
+
+	it("keeps a spaced --format template quoted for cmd.exe", () => {
+		const cmd = buildLocalWindowsCommand(
+			"C:/p",
+			'docker network inspect oas_default --format "{{json .Options}}"',
+		);
+		expect(cmd).toContain('--format "{{json .Options}}"');
+	});
+
 	it("escapes double quotes in path for cmd.exe", () => {
 		const cmd = buildWslCommand('/home/user/"quoted"', "Ubuntu", "docker compose up -d");
 		expect(cmd).toContain('\\"quoted\\"');
