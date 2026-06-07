@@ -126,11 +126,13 @@ describe("Settings: restart-required modal (QA 1.2)", function () {
 		const later = $("button=Later");
 		await later.waitForExist({ timeout: 3000 });
 		await later.click();
-		await browser.pause(200);
+		await browser.waitUntil(async () => !(await restartModalOpen()), {
+			timeout: 3000,
+			timeoutMsg: "modal did not dismiss after clicking Later",
+		});
 
 		expect(await restartCalls()).toBe(0);
 		expect(await readSetting("vaultWriteDir")).toBe(CHANGED);
-		expect(await restartModalOpen()).toBe(false);
 	});
 
 	it("Restart: dispatches restartContainer() exactly once and dismisses", async function () {
@@ -145,7 +147,10 @@ describe("Settings: restart-required modal (QA 1.2)", function () {
 			timeout: 3000,
 			timeoutMsg: "restartContainer() was not called after clicking Restart",
 		});
-		await browser.pause(200);
+		await browser.waitUntil(async () => !(await restartModalOpen()), {
+			timeout: 3000,
+			timeoutMsg: "modal did not dismiss after clicking Restart",
+		});
 		expect(await restartModalOpen()).toBe(false);
 	});
 

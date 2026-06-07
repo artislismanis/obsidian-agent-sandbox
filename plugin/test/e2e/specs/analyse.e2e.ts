@@ -56,7 +56,10 @@ async function closeTerminals(): Promise<void> {
 	await browser.executeObsidian(({ app }, viewType: string) => {
 		(app as unknown as AppShim).workspace.getLeavesOfType(viewType).forEach((l) => l.detach());
 	}, VIEW_TYPE_TERMINAL);
-	await browser.pause(100);
+	await browser.waitUntil(async () => (await terminalLeafCount()) === 0, {
+		timeout: 3000,
+		timeoutMsg: "terminal leaves did not detach",
+	});
 }
 
 async function setTextarea(value: string): Promise<void> {
@@ -84,9 +87,12 @@ describe("Analyse custom-prompt modal (QA 6.6)", function () {
 		await openCustomPrompt();
 		// Leave the textarea empty and click Run.
 		await $("button=Run").click();
-		await browser.pause(300);
+		// Empty input trims to a cancel: the modal closes and no terminal opens.
+		await browser.waitUntil(
+			async () => !(await $(".sandbox-modal-input-multiline").isExisting()),
+			{ timeout: 3000, timeoutMsg: "custom-prompt modal did not close on empty Run" },
+		);
 		expect(await terminalLeafCount()).toBe(0);
-		expect(await $(".sandbox-modal-input-multiline").isExisting()).toBe(false);
 	});
 
 	it("a long prompt with shell metacharacters opens a terminal tab without truncation", async function () {

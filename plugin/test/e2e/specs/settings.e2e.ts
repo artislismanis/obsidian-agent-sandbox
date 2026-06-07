@@ -8,6 +8,8 @@ import {
 	settingInput,
 	settingDesc,
 	settingWarning,
+	waitForInputError,
+	waitForDescContains,
 } from "../settings-helpers";
 
 describe("Settings: validation and warnings", function () {
@@ -51,16 +53,13 @@ describe("Settings: validation and warnings", function () {
 			await writeDirInput.waitForExist({ timeout: 3000 });
 
 			await writeDirInput.setValue("../escape");
-			await browser.pause(200);
-			expect(await writeDirInput.getAttribute("class")).toContain("sandbox-input-error");
+			await waitForInputError("Vault write directory", true);
 
 			await writeDirInput.setValue("/root/forbidden");
-			await browser.pause(200);
-			expect(await writeDirInput.getAttribute("class")).toContain("sandbox-input-error");
+			await waitForInputError("Vault write directory", true);
 
 			await writeDirInput.setValue("agent-workspace");
-			await browser.pause(200);
-			expect(await writeDirInput.getAttribute("class")).not.toContain("sandbox-input-error");
+			await waitForInputError("Vault write directory", false);
 		});
 	});
 
@@ -79,12 +78,10 @@ describe("Settings: validation and warnings", function () {
 			await fontSizeInput.waitForExist({ timeout: 3000 });
 
 			await fontSizeInput.setValue("50");
-			await browser.pause(200);
-			expect(await fontSizeInput.getAttribute("class")).toContain("sandbox-input-error");
+			await waitForInputError("Font size", true);
 
 			await fontSizeInput.setValue("14");
-			await browser.pause(200);
-			expect(await fontSizeInput.getAttribute("class")).not.toContain("sandbox-input-error");
+			await waitForInputError("Font size", false);
 		});
 
 		it("scrollback validates range 100-100000", async function () {
@@ -92,27 +89,23 @@ describe("Settings: validation and warnings", function () {
 			await scrollInput.waitForExist({ timeout: 3000 });
 
 			await scrollInput.setValue("50");
-			await browser.pause(200);
-			expect(await scrollInput.getAttribute("class")).toContain("sandbox-input-error");
+			await waitForInputError("Scrollback", true);
 
 			await scrollInput.setValue("10000");
-			await browser.pause(200);
-			expect(await scrollInput.getAttribute("class")).not.toContain("sandbox-input-error");
+			await waitForInputError("Scrollback", false);
 		});
 
 		it("bind address 0.0.0.0 shows security warning", async function () {
 			const bindInput = settingInput("Bind address");
 			await bindInput.waitForExist({ timeout: 3000 });
 			await bindInput.setValue("0.0.0.0");
-			await browser.pause(500);
 
 			// Settings re-renders on bind address change, so the element is stale.
-			// Re-query the description each time.
-			expect(await settingDesc("Bind address").getText()).toContain("exposes ttyd");
+			// waitForDescContains re-queries the description each poll.
+			await waitForDescContains("Bind address", "exposes ttyd", true);
 
 			await settingInput("Bind address").setValue("127.0.0.1");
-			await browser.pause(500);
-			expect(await settingDesc("Bind address").getText()).not.toContain("exposes ttyd");
+			await waitForDescContains("Bind address", "exposes ttyd", false);
 		});
 
 		// QA plan 1.4 (visual half, 🎨): the warning isn't just text — it renders
@@ -121,7 +114,7 @@ describe("Settings: validation and warnings", function () {
 		// without pixel-baseline visual-regression infrastructure.
 		it("bind address warning renders the amber left-border", async function () {
 			await settingInput("Bind address").setValue("0.0.0.0");
-			await browser.pause(500);
+			await waitForDescContains("Bind address", "exposes ttyd", true);
 
 			const warning = settingWarning("Bind address");
 			await warning.waitForExist({ timeout: 3000 });
@@ -137,7 +130,7 @@ describe("Settings: validation and warnings", function () {
 			expect(style.value).toBe("solid");
 
 			await settingInput("Bind address").setValue("127.0.0.1");
-			await browser.pause(500);
+			await waitForDescContains("Bind address", "exposes ttyd", false);
 		});
 
 		it("theme and font have no restart labels", async function () {
@@ -186,34 +179,33 @@ describe("Settings: validation and warnings", function () {
 		});
 
 		it("token regenerate produces a new value", async function () {
-			const tokenBefore = await browser.executeObsidian(({ app }) => {
-				const plugins = (
-					app as unknown as {
-						plugins: {
-							plugins: Record<string, { settings: { mcpToken: string } }>;
-						};
-					}
-				).plugins.plugins;
-				return plugins["obsidian-agent-sandbox"]?.settings?.mcpToken ?? "";
-			});
+			const readToken = () =>
+				browser.executeObsidian(({ app }) => {
+					const plugins = (
+						app as unknown as {
+							plugins: {
+								plugins: Record<string, { settings: { mcpToken: string } }>;
+							};
+						}
+					).plugins.plugins;
+					return plugins["obsidian-agent-sandbox"]?.settings?.mcpToken ?? "";
+				});
+
+			const tokenBefore = await readToken();
 
 			const regenButton = $("button=Regenerate");
 			await regenButton.waitForExist({ timeout: 3000 });
 			await regenButton.click();
-			await browser.pause(500);
 
-			const tokenAfter = await browser.executeObsidian(({ app }) => {
-				const plugins = (
-					app as unknown as {
-						plugins: {
-							plugins: Record<string, { settings: { mcpToken: string } }>;
-						};
-					}
-				).plugins.plugins;
-				return plugins["obsidian-agent-sandbox"]?.settings?.mcpToken ?? "";
-			});
+			let tokenAfter = "";
+			await browser.waitUntil(
+				async () => {
+					tokenAfter = await readToken();
+					return tokenAfter !== "" && tokenAfter !== tokenBefore;
+				},
+				{ timeout: 3000, timeoutMsg: "MCP token never changed after Regenerate" },
+			);
 
-			expect(tokenAfter).not.toBe(tokenBefore);
 			expect(tokenAfter).toMatch(/^[a-f0-9]{32}$/);
 		});
 
@@ -222,12 +214,10 @@ describe("Settings: validation and warnings", function () {
 			await portInput.waitForExist({ timeout: 3000 });
 
 			await portInput.setValue("abc");
-			await browser.pause(200);
-			expect(await portInput.getAttribute("class")).toContain("sandbox-input-error");
+			await waitForInputError("MCP port", true);
 
 			await portInput.setValue("28080");
-			await browser.pause(200);
-			expect(await portInput.getAttribute("class")).not.toContain("sandbox-input-error");
+			await waitForInputError("MCP port", false);
 		});
 
 		// QA plan 1.4 (MCP half): the MCP bind-address field shows a distinct
@@ -238,12 +228,10 @@ describe("Settings: validation and warnings", function () {
 			const bindInput = settingInput("MCP bind address");
 			await bindInput.waitForExist({ timeout: 3000 });
 			await bindInput.setValue("0.0.0.0");
-			await browser.pause(500);
-			expect(await settingDesc("MCP bind address").getText()).toContain("exposes MCP");
+			await waitForDescContains("MCP bind address", "exposes MCP", true);
 
 			await settingInput("MCP bind address").setValue("127.0.0.1");
-			await browser.pause(500);
-			expect(await settingDesc("MCP bind address").getText()).not.toContain("exposes MCP");
+			await waitForDescContains("MCP bind address", "exposes MCP", false);
 		});
 	});
 
@@ -253,13 +241,9 @@ describe("Settings: validation and warnings", function () {
 });
 
 // Note on tests that are NOT here:
-// - "settings persist across Obsidian reload": the wdio-obsidian-service
-//   uses an ephemeral vault copy per Obsidian launch, so data.json written
-//   during one launch is wiped before the next. Persistence is Obsidian's
-//   responsibility (saveData/loadData).
-// - "plugin survives disable/enable cycle": the service installs the
-//   plugin via in-memory mechanisms; after disablePluginAndSave() the
-//   main.js file is absent from the vault's plugin directory, so
-//   enablePlugin() fails with ENOENT. This is a harness limitation,
-//   not a plugin bug. onunload cleanup is covered by unit tests on
-//   StatusBarManager.destroy(), FirewallStatusBar.destroy(), etc.
+// - "settings persist across reload" and "plugin survives disable/enable":
+//   the current CI Obsidian installs the plugin on disk, so these now live in
+//   harness-probe.e2e.ts (reloadObsidian() persistence + disable/enable
+//   no-debris) rather than being blocked by the old out-of-tree harness.
+//   A genuine OS-level quit/relaunch stays manual (Obsidian's own
+//   saveData/loadData responsibility).
