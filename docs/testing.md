@@ -233,17 +233,13 @@ Cache `plugin/.obsidian-cache/` by the key printed at the start of an e2e run (`
 
 ## Security and stress smoke
 
-Two host-runnable bash scripts cover the shell-verifiable scenarios from `qa-test-plan.md`. Requires: live container, a test vault, and `jq` on the host.
+Stage 7 (symlink/path-traversal) and Stage 8 (firewall) now run in CI, not via a host script:
 
-**`container/test-scripts/security-checks.sh`**: Stage 7 (symlink/path-traversal boundary), Stage 8 (firewall egress, list-sources tagging, MCP path isolation), and Stage 9 tool-bug regression probes (string→bool/number coercion, periodic-note default, canvas changes validation). Firewall must be enabled with `example.com` in Additional firewall domains.
+- **Stage 7** → `test/e2e/specs/security.e2e.ts` (denials 7.1–7.3 against the real plugin MCP server) + `src/__tests__/mcp-symlink.test.ts` (the realpath guard incl. the 7.4 allow-path).
+- **Stage 8** → `test/integration/firewall.test.ts` (extras read/write-protection, enable/disable/status, `--list-sources` tags, egress allow/block, off-restores-egress).
+- **Stage 9 arg-coercion** (string→bool/number) → `src/__tests__/mcp-tools.test.ts` (`coercedBoolean` + `z.coerce.number`).
 
-```bash
-bash container/test-scripts/security-checks.sh /path/to/test-vault
-# Firewall-off egress probe (toggle firewall off in Obsidian first):
-bash container/test-scripts/security-checks.sh /path/to/test-vault --firewall-off
-```
-
-**`container/test-scripts/stress-checks.sh`**: Stage 12 stress scenarios: unicode vault path, large-file read (~5 MB), oas-test-* teardown debris check. The daemon-stop probe (`--with-daemon-stop`) is host-disruptive and optional for routine runs.
+`container/test-scripts/stress-checks.sh` remains the one host-runnable smoke script — Stage 12 stress scenarios: unicode vault path, large-file read (~5 MB), oas-test-* teardown debris check. Requires a live container, a test vault, and `jq` on the host. The daemon-stop probe (`--with-daemon-stop`) is host-disruptive and optional for routine runs.
 
 ```bash
 bash container/test-scripts/stress-checks.sh /path/to/test-vault
@@ -251,7 +247,7 @@ bash container/test-scripts/stress-checks.sh /path/to/test-vault
 bash container/test-scripts/stress-checks.sh /path/to/test-vault --with-daemon-stop
 ```
 
-Both scripts complement but do not replace the `mcp-capability-test.md` cell sweep. Stage 7 bodies are in `qa-test-plan.md` for reference; Stage 9 is reduced to one human-only scenario (9.3 Tasks recurring semantics); Stage 12 UI-bound scenarios (12.4–12.6, 12.7) remain in the QA plan.
+It complements but does not replace the `mcp-capability-test.md` cell sweep. Stage 9 residual is one human-only scenario (9.3 Tasks recurring semantics); the canvas object-vs-string and periodic-default probes are accepted gaps (need a live Canvas/Periodic Notes plugin; the `changes: z.string()` typing that rejects objects is enforced by the tool schema). Stage 12 UI-bound scenarios (12.4–12.6, 12.7) remain in the QA plan.
 
 ## Manual test scenarios
 
