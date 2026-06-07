@@ -684,7 +684,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 **Setup carried forward:** Stage 0–3.
 
-**✅ Automated** — `container/test-scripts/security-checks.sh` runs 7.1–7.4 against a live container (real symlink creation + `vault_read` / `vault_create` / `vault_list` MCP calls), and `src/__tests__/mcp-symlink.test.ts` unit-tests `isRealPathWithinBase`. The scenario bodies below are retained as the reference spec for that script — run them by hand only when debugging a script failure or on a platform without the script.
+**✅ Automated** — `test/e2e/specs/security.e2e.ts` runs 7.1–7.4 in CI against the real plugin MCP server inside wdio-Obsidian (real symlink fixtures on disk + `vault_read` / `vault_create` / `vault_list` calls over loopback), and `src/__tests__/mcp-symlink.test.ts` unit-tests `isRealPathWithinBase`. The scenario bodies below are retained as the reference spec for that suite — run them by hand only when debugging a failure or on a platform the e2e suite can't reach.
 
 ### 7.1 Read of escaping symlink is denied
 
