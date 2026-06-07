@@ -6,6 +6,7 @@ import {
 	isImageBuilt,
 	containerUp,
 	containerDown,
+	containerExec,
 	waitForHealth,
 	TTYD_PORT,
 } from "../../integration/helpers";
@@ -74,8 +75,30 @@ async function openTerminals(n: number): Promise<void> {
 	}, n);
 }
 
+/** Open one terminal seeded with an initial Claude prompt (the Analyse path). */
+async function openTerminalWithPrompt(prompt: string): Promise<void> {
+	await browser.executeObsidian(async ({ app }, p: string) => {
+		const plugin = (
+			app as unknown as {
+				plugins: {
+					plugins: Record<
+						string,
+						{
+							activateTerminalView: (
+								name?: string,
+								initialPrompt?: string,
+							) => Promise<unknown>;
+						}
+					>;
+				};
+			}
+		).plugins.plugins["obsidian-agent-sandbox"];
+		await plugin.activateTerminalView(undefined, p);
+	}, prompt);
+}
+
 (dockerReady ? describe : describe.skip)(
-	"Terminal attach + render against real ttyd (QA 2.7 / 12.4)",
+	"Terminal attach + render against real ttyd (QA 2.7 / 12.4 / 6.6)",
 	function () {
 		before(async function () {
 			this.timeout(180000);
@@ -140,6 +163,39 @@ async function openTerminals(n: number): Promise<void> {
 				timeoutMsg: "not all five terminals attached/rendered",
 			});
 			expect(await renderedTerminalCount()).toBe(5);
+		});
+
+		// QA plan 6.6 (security): a seeded prompt is injected as `claude '<escaped>'`,
+		// so shell metacharacters must reach claude as a single argument and never
+		// execute on open. We seed a payload whose command-substitution and
+		// quote-break attempts would each touch a sentinel file IF the single-quote
+		// escaping were wrong, attach to the real container shell, and assert the
+		// container produced neither file.
+		it("6.6: shell metacharacters in a seeded prompt do not execute on open", async function () {
+			this.timeout(40000);
+			const SUBST = "/tmp/oas_pwn_subst";
+			const QUOTE = "/tmp/oas_pwn_quote";
+			// $(touch …) → command substitution; '; touch …; ' → quote-break.
+			const payload = `hello $(touch ${SUBST}) world'; touch ${QUOTE}; echo '`;
+
+			await openTerminalWithPrompt(payload);
+			// Wait for attach/render so the injected `claude '<…>'` line has been sent.
+			await browser.waitUntil(async () => (await renderedTerminalCount()) >= 1, {
+				timeout: 30000,
+				interval: 1000,
+				timeoutMsg: "terminal never attached, so the prompt was never injected",
+			});
+			// Give the injected command time to land and bash to parse it.
+			await browser.pause(3000);
+
+			// Probe existence via distinct sentinels (a bare `ls` would echo the
+			// missing paths into its error text and false-positive the assertion).
+			const out = containerExec(
+				`sh -c 'test -e ${SUBST} && echo SUBST_EXISTS; test -e ${QUOTE} && echo QUOTE_EXISTS; echo PROBE_DONE'`,
+			);
+			expect(out).toContain("PROBE_DONE"); // the probe actually ran
+			expect(out).not.toContain("SUBST_EXISTS");
+			expect(out).not.toContain("QUOTE_EXISTS");
 		});
 	},
 );
