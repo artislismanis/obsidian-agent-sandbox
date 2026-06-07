@@ -109,7 +109,7 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.4 Bind address security warning toggle
 
-- **✅ Automated** — `test/e2e/specs/settings.e2e.ts` asserts the network-exposure warning appears at `0.0.0.0` and clears on revert, for **both** the Terminal (ttyd) and MCP bind-address fields. No manual step. (Purely visual styling — amber left-border — is a 🎨 visual-regression candidate, not asserted.)
+- **✅ Automated** — `test/e2e/specs/settings.e2e.ts` asserts the network-exposure warning appears at `0.0.0.0` and clears on revert, for **both** the Terminal (ttyd) and MCP bind-address fields. The warning's styling (amber `#ffc107` 3px solid left-border) is asserted via `getCSSProperty` ("bind address warning renders the amber left-border") — a deterministic computed-style check rather than pixel visual-regression. No manual step.
 
 ### 1.5 Start with Docker daemon stopped
 
