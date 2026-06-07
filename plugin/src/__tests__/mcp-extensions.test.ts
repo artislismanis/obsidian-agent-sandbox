@@ -393,6 +393,31 @@ describe("Tasks integration", () => {
 		expect(written).toContain("- [x] thing");
 	});
 
+	// QA plan 9.3 — recurring tasks. The Tasks plugin's engine returns BOTH the
+	// completed original and a freshly-generated next occurrence as a multi-line
+	// string; vault_tasks_toggle must split that block and insert every line at
+	// the task's position, preserving the surrounding lines. The recurrence
+	// semantics themselves belong to the Tasks plugin (mocked here); what this
+	// asserts is the plugin's own multi-line insertion, which the single-line
+	// delegate test above does not exercise.
+	it("vault_tasks_toggle 9.3: a recurring toggle inserts the completed line plus the next occurrence", async () => {
+		const original = "- [ ] weekly thing 🔁 every week 📅 2026-04-19";
+		const completed = "- [x] weekly thing 🔁 every week 📅 2026-04-19 ✅ 2026-06-07";
+		const next = "- [ ] weekly thing 🔁 every week 📅 2026-04-26";
+		// Tasks returns the next occurrence above the completed line, both at once.
+		const toggle = vi.fn(() => `${next}\n${completed}`);
+		const { app, modify } = appWithTasks({
+			files: { "r.md": `header\n${original}\nfooter\n` },
+			toggle,
+		});
+		const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
+		const r = await getTool(tools, "vault_tasks_toggle").handler({ path: "r.md", line: 2 });
+		expect(r.isError ?? false).toBe(false);
+		const written = (modify.mock.calls[0] as unknown as [TFile, string])[1];
+		// Both lines present, both surrounding lines preserved, order intact.
+		expect(written.split("\n")).toEqual(["header", next, completed, "footer", ""]);
+	});
+
 	it("vault_tasks_toggle rejects a non-task line", async () => {
 		const toggle = vi.fn((line: string) => line);
 		const { app } = appWithTasks({
