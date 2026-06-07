@@ -363,6 +363,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.18 Workspace persistence
 
+- **✅ Automated (named-volume persistence)** — `test/integration/container-restart.test.ts` writes a marker into the shell-history named volume, runs `docker restart oas-test-sandbox`, waits for ttyd to come back healthy, and asserts the marker survives. It targets a **named volume** (the meaningful ephemeral-vs-persistent property); the literal `/workspace/.claude/...` path in the steps below is a host **bind mount** that persists trivially, so the manual run is only worth it to confirm the bind-mount path specifically.
 - **Setup:** Container running, terminal open.
 - **Steps:** In the container: `echo "marker $(date +%s)" >> /workspace/.claude/persist-check.md`. Restart container. New terminal: `cat /workspace/.claude/persist-check.md`.
 - **Expected:** File and marker line present after restart.
@@ -498,6 +499,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 3.12 MCP proxy: one diagnostic per unreachable burst
 
+- **✅ Automated** — `test/integration/proxy.test.ts` spawns `obsidian-mcp-proxy.js` against a dead upstream port with a token set, feeds it two JSON-RPC requests, and asserts **exactly one** `[obsidian-mcp-proxy] unreachable` stderr line (burst suppression), that it names the host/port + `reason=ECONNREFUSED`, that the bearer token never appears, and that the client still gets an empty tool list. Pure Node — it never touches the container, so it also runs when Docker is unavailable. The live toggle-MCP-off-mid-session flow stays a manual spot-check.
 - **Setup:** Active Claude session with MCP on. `docker compose logs -f sandbox` open in a host terminal to watch container stderr in real time.
 - **Steps:** With a container Claude session attached, toggle MCP off via **Sandbox: Toggle MCP Server**. Immediately run a vault tool call in the terminal (e.g. `claude -p "List vault files"`). Wait a few seconds, then toggle MCP back on.
 - **Expected:** In `docker compose logs`, the proxy (`workspace/.claude/scripts/obsidian-mcp-proxy.js`) emits **exactly one** structured stderr line during the unreachable window — not a line per retry. The line names the resolved host/port and a reason (`TIMEOUT_2S`, `ECONNREFUSED`, or a DNS reason). The line does **not** contain the MCP bearer token (`OAS_MCP_TOKEN`). Once MCP is re-enabled and reachable, no further diagnostic lines appear for the same host/port.
