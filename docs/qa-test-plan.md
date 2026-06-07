@@ -152,6 +152,7 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 
 **1.7a: ttyd port pre-flight (container start)**
 
+- **🟡 Partially automated (conflict surfacing)** — `test/e2e/specs/lifecycle.e2e.ts` ("1.7a") stubs `checkStartupConflicts` to report `[7681]` and asserts `startContainer()` aborts with the "Port conflict: 7681 already in use on 127.0.0.1" Notice and never calls `start()`. The real OS-level bind race and the WSL-NAT-netns blindness stay manual.
 - **What it exercises:** `checkStartupPortConflicts` (`main.ts:1051`) → `DockerManager.checkStartupConflicts` (`docker.ts:879`), which dispatches to `checkPortConflicts` (`docker.ts:829`) or `checkPortConflictsWsl` (`docker.ts:890`), probes `Settings → Terminal → Bind address` + `Port` inside the **plugin process (Obsidian host netns)** before invoking Docker.
 - **Setup:** On the **Obsidian host**, occupy `<ttydBindAddress>:<ttydPort>` (default `127.0.0.1:7681`) using the table above. **On WSL2**: the plugin probes the Windows host netns; compose binds inside WSL2's netns. These are the same only in WSL2 mirrored mode (see expected outcomes below).
 - **Steps:** Command palette → **Sandbox: Start Container**.
@@ -165,6 +166,7 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 
 **1.7b: MCP port reactive failure (server start)**
 
+- **🟡 Partially automated (reactive failure + invariant)** — `test/e2e/specs/mcp-failure.e2e.ts` occupies the MCP port from the test process, asks the plugin to start MCP onto it, and asserts the "MCP server failed to start" Notice fires, `mcpEnabled` stays **ON** (intent, not runtime state), and the half-started server is torn down (`isRunning()` false). The CLI-side `/mcp` reconnect dance stays manual.
 - **What it exercises:** `McpLifecycle.startServer` catch path (`mcp-lifecycle.ts`): `listen()` fails, plugin shows a Notice and tears down the half-started server, but **leaves `mcpEnabled` untouched** - the toggle records user intent, not runtime state, so a transient start failure must not silently flip and persist it off.
 - **MCP runs in the plugin process on the Obsidian host** (not inside Docker/WSL). Occupy the port on the **Windows host** (not inside a WSL shell) on WSL2 setups.
 - **Setup:**
@@ -202,6 +204,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.1 Auto-start on Obsidian launch
 
+- **🟡 Partially automated (orchestration)** — `test/e2e/specs/lifecycle.e2e.ts` drives `backgroundStartup()` with a stubbed DockerManager and asserts auto-start transitions the status bar to Running through the ordered phase tooltips, and that with auto-start off it stays stopped and `start()` is never called. The real `docker compose up` round-trip on launch stays manual (the command-building is unit-tested; named-volume bring-up is integration-tested).
 - **Setup:** Auto-start enabled. Container stopped. Obsidian closed.
 - **Steps:** Open Obsidian.
 - **Expected:** Status bar transitions through Starting → Running within ~30 s. Tooltip detail cycles "Starting: checking Docker availability…" → "Starting: probing WSL (5s fast-fail)…" → "Starting: probing container status…" → "Starting: docker compose up -d (auto-start)…". On Linux/macOS the WSL probe should still appear briefly but resolve to "not WSL".
@@ -209,6 +212,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.2 Auto-stop on Obsidian close
 
+- **🟡 Partially automated (quit-hook wiring)** — `test/e2e/specs/lifecycle.e2e.ts` ("2.2") fires the workspace `quit` event with auto-stop on and asserts `docker.stop()` is invoked. The real `docker ps` showing no container stays manual (covered structurally by the integration teardown).
 - **Setup:** Auto-stop enabled.
 - **Steps:** Close Obsidian completely.
 - **Expected:** `docker ps` shows no `oas-sandbox` within ~10 s.
@@ -216,6 +220,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.3 Auto-stop off: survives close
 
+- **🟡 Partially automated (quit-hook wiring)** — `test/e2e/specs/lifecycle.e2e.ts` ("2.3") fires the `quit` event with auto-stop off and asserts `docker.stop()` is **not** called. The real "same container ID after reopen" observation stays manual.
 - **Setup:** Auto-stop disabled. Note container ID from status bar.
 - **Steps:** Close Obsidian. Reopen.
 - **Expected:** `docker ps` still shows `oas-sandbox` (same ID) while Obsidian is closed. After reopen, status bar shows Running immediately with the same ID.
@@ -223,6 +228,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.4 Config change triggers recreate
 
+- **🟡 Partially automated (recreate handling)** — `test/e2e/specs/recreate-detection.e2e.ts` ("2.4") drives `restartContainer()` with a stubbed DockerManager and asserts the new container id is captured as the drift baseline, the state lands Running, and the "Sandbox container restarted." Notice fires. The real `docker compose down/up` recreate is integration-tested (`container-restart.test.ts`); observing a fresh container ID by hand stays manual.
 - **Setup:** Container running.
 - **Steps:** In settings, change Write directory. Close the settings tab. In the **Restart Container?** modal that appears (covered in 1.2), click Restart. (If you chose "Later" earlier, the modal won't reappear; use **Sandbox: Restart Container** from the command palette instead.)
 - **Expected:** New container ID appears in status bar. Old container is gone.
@@ -230,6 +236,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.5 Plugin disable stops the container
 
+- **🟡 Partially automated (disable stops container)** — `test/e2e/specs/lifecycle.e2e.ts` ("2.5") stubs `docker.stopDetached`, runs a real `disablePlugin` cycle, and asserts the container stop is invoked exactly once. Re-enabling/auto-start and the real `docker ps` round-trip stay manual.
 - **Setup:** Container running, regardless of auto-stop setting.
 - **Steps:** Settings → Community Plugins → disable "Agent Sandbox".
 - **Expected:** Container stops within ~10 s. Re-enabling brings it back (per auto-start).
@@ -302,7 +309,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.11 Connection retry / exponential backoff
 
-- **🟡 Partially automated (backoff sequence)** — the delay curve (500 ms × 1.5^n, capped at 5 s) is unit-tested in `src/__tests__/ttyd-client.test.ts` ("exponentialBackoff"). The live in-terminal "attempt N/15, retry in Xs" rendering stays manual.
+- **✅ Automated** — the delay curve (500 ms × 1.5^n, capped at 5 s) is unit-tested in `src/__tests__/ttyd-client.test.ts` ("exponentialBackoff"), and `test/e2e/specs/terminal-retry.e2e.ts` points a terminal at a dead port and asserts the `.sandbox-terminal-loading` element renders "Connecting to terminal… (attempt N/15, retry in Xs)". No manual step.
 - **Setup:** Container running, one Sandbox terminal tab open.
 - **Steps:**
   1. Run **Sandbox: Stop Container** from the command palette.
@@ -313,6 +320,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.11a Startup progress indicator detail
 
+- **✅ Automated** — `test/e2e/specs/lifecycle.e2e.ts` drives `backgroundStartup()` with a stubbed DockerManager and asserts the four phase tooltips fire in order ("checking Docker availability…" → "probing WSL…" → "probing container status…" → "docker compose up -d (auto-start)…") via the live `statusBar.setDetails` calls. The sub-second hover timing on a warm system stays a manual spot-check.
 - **Setup:** Obsidian closed, container stopped, auto-start on.
 - **Steps:** Open Obsidian. During startup, hover the status bar pill repeatedly. Also open DevTools (Ctrl+Shift+I) → Console tab and filter by "Agent Sandbox" to catch debug-level log entries.
 - **Expected:** Status bar pill tooltip cycles through all four phase strings in order: "Starting: checking Docker availability…" → "Starting: probing WSL (5s fast-fail)…" → "Starting: probing container status…" → "Starting: docker compose up -d (auto-start)…". On warm systems the transitions are sub-second, so you may catch only one or two phases via hover; the DevTools console confirms all four fired. Phase 4 fires only when `autoStartContainer` is on and the container is not already running.
@@ -320,6 +328,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.12 Out-of-band recreate detection
 
+- **🟡 Partially automated (drift handling)** — `test/e2e/specs/recreate-detection.e2e.ts` ("2.12") stubs `docker.getContainerId` to return a changed id and asserts `checkContainerIdDrift()` fires the "recreated outside the plugin" Notice, detaches stale terminal leaves, and rebaselines the id (warns once, not every poll); the unchanged-id case is a clean no-op. The real out-of-band `docker compose down/up` round-trip is integration-tested; observing the live detach by hand stays manual.
 - **Setup:** Container running, no terminals open yet OR one terminal open.
 - **Steps:** From host: `cd container && docker compose down && docker compose up -d`.
 - **Expected:** Within 30 s, Notice: "Sandbox container was recreated outside the plugin. Terminal sessions may be disconnected; reopen to reconnect." Existing terminals detach gracefully.
@@ -373,6 +382,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.19 Custom sudo password
 
+- **🟡 Partially automated (env + compose wiring)** — `src/__tests__/docker-command.test.ts` ("sudo password env + compose-file wiring") drives `DockerManager.probeStatus()` against the mocked exec and asserts the compose command carries the `docker-compose.no-new-privileges-off.override.yml` file and an exported `OAS_SUDO_PASSWORD` only when a password is set, and neither when empty/undefined. The live `sudo apt-get` round-trip inside the container stays manual. Secret isolation is covered separately in 2.19a.
 - **Setup:** Container not running.
 - **Steps:** In Advanced → Sudo password, use the secret component to create/select a secret holding a memorable sentinel value (e.g. `oas-qa-sentinel-9173`). Restart container. In a terminal: `sudo -k && sudo apt-get update` (enter the sentinel when prompted).
 - **Expected:** Accepts the password; `apt-get update` runs. Setting the field back to empty (no secret selected) then restarting disables sudo entirely (`sudo apt-get update` should refuse without the error mentioning `no-new-privileges`).
@@ -473,7 +483,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 3.8 MCP cache invalidates on live edits
 
-- **✅ Automated (graph cache)** — `test/e2e/specs/bridge.e2e.ts` ("3.8 vault_backlinks reflects a live link added after the first read") reads `vault_backlinks`, adds a backlink live in Obsidian, waits for the `resolved` event, and asserts the next call reflects it. `VaultCache` keys the **link graph and tag/property counts** (not raw file content) and clears wholesale on `resolved`, so backlinks is the meaningful target. The content-read freshness below (`version A` → `version B`) is a separate non-cached path and stays a manual spot-check.
+- **✅ Automated** — `test/e2e/specs/bridge.e2e.ts` covers both halves: ("3.8 vault_backlinks reflects a live link added after the first read") reads `vault_backlinks`, adds a backlink live in Obsidian, waits for the `resolved` event, and asserts the next call reflects it (the cached link graph); and ("3.8 vault_read returns content edited live in Obsidian (version A → version B)") asserts the non-cached content-read path picks up a live edit. `VaultCache` keys the **link graph and tag/property counts** (not raw file content) and clears wholesale on `resolved`. No manual step.
 - **Setup:** `notes/cache.md` with first line `version A`. Vault open in Obsidian.
 - **Steps:** 1) `claude -p "Read notes/cache.md and quote the first line"`. 2) In Obsidian, edit the note's first line to `version B` (Obsidian saves continuously, no explicit save needed). 3) Shortly after editing, re-read via Claude.
 - **Expected:** Second read returns `version B`. The cache invalidates on Obsidian's `metadataCache.resolved` event, typically within a second or two of the file changing. If the second read still returns `version A`, wait 5 s and retry once; document any lag >5 s.
@@ -553,7 +563,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.1 Tab title + badge on Claude state
 
-- **🟡 Partially automated (title composition + badge tooltip)** — the tab-title string (⚙/✓/❓ prefix + `Session: <name>` / `Sandbox Terminal <n>` base) is unit-tested in `src/__tests__/terminal-view.test.ts` ("composeTabTitle"); the badge logic is in `bridge.e2e.ts` (see 5.2); and the status-bar badge's awaiting-input **tooltip text** ("1 session(s) awaiting input: work" in the pill `aria-label`) is asserted in `status-bar.e2e.ts` (see 5.3). The live **tab** repaint on a Claude state change (⚙/✓/❓ on the leaf header) still needs a running Claude session and stays manual.
+- **✅ Automated** — the tab-title string (⚙/✓/❓ prefix + `Session: <name>` / `Sandbox Terminal <n>` base) is unit-tested in `src/__tests__/terminal-view.test.ts` ("composeTabTitle"); the badge logic + tooltip text are in `bridge.e2e.ts`/`status-bar.e2e.ts` (see 5.2/5.3); and the live **tab** repaint is covered by `bridge.e2e.ts` ("5.1 working → ⚙, awaiting_input → ❓, idle → ✓ on the live terminal tab"), which opens a real terminal leaf, drives `agent_status_set`, and asserts the leaf's `getDisplayText()` recomposes with each prefix. The live trigger from a real Claude session stays a trivial spot-check.
 - **Setup:** Open terminal, attach to named session `work`, run `claude` interactively.
 - **Steps:** Submit a long-running prompt. Then submit one that triggers an approval question (or use `writeReviewed`).
 - **Expected:** While working → tab title `⚙ Session: work`. Idle between prompts (after a turn completes, the Stop hook sets `idle`) → `✓ Session: work`; the bare `Session: work` with no symbol only appears for a terminal that has not yet run Claude. Awaiting input → `❓ Session: work` AND status bar pill grows a `🔔` badge whose tooltip reads `Sandbox running. 1 session(s) awaiting input: work` followed by a `Click for options` line.
@@ -648,7 +658,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.13 Failed kill is logged, not swallowed
 
-- **🟡 Partially automated (name validation)** — the load-bearing half (a space/metachar session name is rejected, so the kill fails and is counted rather than silently swallowed) is unit-tested via `isValidSessionName` in `src/__tests__/validation.test.ts` ("rejects whitespace", "rejects semicolon", "rejects newline (terminal injection)", …). The modal flow + aggregate "Killed 1/2 session(s)." Notice stay manual.
+- **✅ Automated** — the name validation is unit-tested via `isValidSessionName` in `src/__tests__/validation.test.ts` ("rejects whitespace", "rejects semicolon", "rejects newline (terminal injection)", …), and `test/e2e/specs/sessions.e2e.ts` ("5.13: an invalid session name fails its kill …") drives the cleanup modal with one valid + one invalid name (the stub mirrors `assertSafeSessionName`'s regex) and asserts only the valid one is killed and the aggregate Notice reads "Killed 1/2 session(s).". No manual step.
 - **Setup:** Create two detached tmux sessions inside a container terminal, one with a valid name and one with an invalid name (space character, which `assertSafeSessionName` in `docker.ts` rejects against `[\w.-]+`):
   ```bash
   tmux new-session -d -s validname
@@ -682,6 +692,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 6.3 Context menu → Analyse in Sandbox
 
+- **✅ Automated** — `src/__tests__/analyse.test.ts` drives the real `AnalyseManager.attachFileMenu` with a fake Menu/MenuItem and asserts the submenu lists the templates sorted alphabetically plus a trailing "Custom prompt…", and that clicking a template entry opens a terminal seeded with the `{{file}}`-substituted prompt. The submenu's on-screen DOM rendering stays a trivial spot-check.
 - **Setup:** `<vault>/.oas/prompts/` populated with the four shipped templates (copy from `workspace/.claude/prompts/` if needed).
 - **Steps:** Right-click a vault note → **Analyse in Sandbox**.
 - **Expected:** Submenu shows the four template labels sorted alphabetically — Critique, Explain, Extract TODOs, Summarise (note British spelling, the label is the template file's first line) — plus "Custom prompt…". Picking one opens a new terminal and seeds the prompt.
@@ -697,6 +708,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 6.5 Empty prompts dir collapses submenu
 
+- **✅ Automated** — `src/__tests__/analyse.test.ts` ("6.5: with no templates the submenu collapses to just Custom prompt") asserts `attachFileMenu` adds only the "Custom prompt…" entry when no templates are present. No manual step.
 - **Setup:** Move `<vault>/.oas/prompts/*` aside (or delete the folder).
 - **Steps:** Reload Obsidian. Right-click a note → Analyse in Sandbox.
 - **Expected:** Submenu shows only "Custom prompt…", which opens a modal. Typing text and clicking Run → new terminal with the one-off prompt.
@@ -704,7 +716,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 6.6 Custom prompt modal edge inputs
 
-- **🟡 Partially automated (modal mechanics)** — `test/e2e/specs/analyse.e2e.ts` drives the real `inputModal` opened by `runAnalyseCustom` and asserts cases 1/3/4: an empty input is trimmed to a cancel (no terminal opens), and a 2000-char prompt containing shell metacharacters opens a terminal tab without truncation. The load-bearing **security** half — that the metacharacters reach `claude` as a single argument and `id`/`whoami` never execute on open — needs a real container shell (Stage 3) and stays manual.
+- **✅ Automated** — `test/e2e/specs/analyse.e2e.ts` drives the real `inputModal` opened by `runAnalyseCustom` (cases 1/3/4: empty-trims-to-cancel; a 2000-char metachar prompt opens a terminal without truncation), and the load-bearing **security** half is covered by `test/e2e/container/terminal-container.e2e.ts` ("6.6: shell metacharacters in a seeded prompt do not execute on open") — it seeds a `$(touch …)` + quote-break payload, attaches to the real `oas-test` container shell, and asserts neither sentinel file was created (the `claude '<escaped>'` injection passes metacharacters as one argument).
 - **Setup:** Templates present.
 - **Steps:** Right-click → Analyse in Sandbox → Custom prompt. In turn: 1) empty + Run, 2) Cancel, 3) ~2000-character prompt, 4) prompt with shell metacharacters: `` echo `id`; $(whoami) && rm -rf /tmp/nope ``.
 - **Expected:** 1) Treated as a cancel — `inputModal` trims the value, so an empty/whitespace input resolves to nothing and no terminal opens (no separate validation hint). 2) Modal closes; no terminal. 3) Terminal opens with full text seeded, no truncation. 4) Metacharacters passed to `claude` as a single argument; `id` / `whoami` must not execute on open.
@@ -803,7 +815,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 8.5 Effective allowlist refresh button
 
-- **Manual** — the Settings refresh control fetches the live allowlist from the container; no automation (UI-bound, needs a running container).
+- **🟡 Partially automated (refresh UI wiring)** — `test/e2e/specs/firewall-allowlist.e2e.ts` stubs `plugin.firewallSources()` and asserts the Refresh button renders the fetched allowlist (with `[baseline]`/`[plugin]`/`[file]` tags) into the `<pre>`, and that a failed fetch surfaces a readable "Error: … Is the container running?" instead of a blank box. The real container `--list-sources` round-trip is integration-tested (`firewall.test.ts`); fetching against a live container by hand stays the residual.
 - **Setup:** Firewall on.
 - **Steps:** Settings → Advanced → Security section → Refresh (the "Click Refresh to fetch the effective firewall allowlist from the container" control).
 - **Expected:** UI updates to current allowlist including any extras added since last refresh.
@@ -826,7 +838,7 @@ Most Stage 9 scenarios are covered exhaustively by [mcp-capability-test.md](./mc
 
 ### 9.3 Tasks toggle with recurring
 
-- **Manual** (automatable, deferred) — the extensions-tier tools (Dataview / Templater / Tasks / Canvas) don't register in the e2e vault because those community plugins aren't installed, so neither this scenario nor extensions-tier gating (see Stage 3 note) is covered in CI. Both could be automated by vendoring the Tasks community plugin into the e2e vault fixture (`wdio-obsidian-service` enables plugins copied into `.obsidian/plugins/`) and asserting `vault_tasks_toggle` produces both the completed line and the next occurrence. Deferred: it pins a third-party build and adds fixture weight + flakiness.
+- **🟡 Partially automated (multi-line insertion)** — `src/__tests__/mcp-extensions.test.ts` ("9.3: a recurring toggle inserts the completed line plus the next occurrence") mocks the Tasks `apiV1.executeToggleTaskDoneCommand` to return the completed original **and** a fresh next occurrence as a multi-line block, and asserts `vault_tasks_toggle` splits it and inserts every line at the task's position with surrounding lines preserved — the part the plugin owns. The recurrence semantics themselves belong to the Tasks plugin, so this does **not** vendor a third-party build into the e2e fixture (the original deferral reason); end-to-end against the real Tasks engine stays manual.
 - **Setup:** Tasks plugin enabled. A note with `- [ ] weekly thing 🔁 every week 📅 2026-04-19`.
 - **Steps:** `claude -p "Toggle the task at notes/recurring.md line 5"`.
 - **Expected:** File now contains both the completed original and a fresh next occurrence (Tasks' recurring semantics).
@@ -911,6 +923,7 @@ These require specific host hardware/OS. Run on each supported platform before r
 
 ### 11.5 `manifest.json` ↔ `versions.json` consistency
 
+- **✅ Automated** — `src/__tests__/release-consistency.test.ts` asserts `package.json` and `manifest.json` versions agree, `versions.json` has an entry for the current version, `versions.json[version]` matches `manifest.minAppVersion`, and every key/value is semver-shaped. Runs on every `npm run test` (the release workflow re-checks the same against the pushed tag). No manual step.
 - **Setup:** Latest release artifacts (BRAT cache or downloaded).
 - **Steps:** Compare release tag, `manifest.json.version`, and `versions.json` keys. Confirm `versions.json[manifest.version].minAppVersion` matches `manifest.json.minAppVersion`.
 - **Expected:** All three agree.
