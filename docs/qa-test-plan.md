@@ -118,7 +118,7 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.5 Start with Docker daemon stopped
 
-- **🟡 Partially automated (error classification)** — `DockerManager.classifyCommandError` maps a stopped daemon's stderr (Linux socket, Windows named pipe) and the other start failures (WSL missing, bad distro, missing compose file, timeout) to the user-facing message, unit-tested in `src/__tests__/docker.test.ts` ("classifyCommandError"). Stopping the real host daemon and observing the live Notice + errored status bar stays manual.
+- **🟡 Partially automated (error classification + UI surfacing)** — `DockerManager.classifyCommandError` maps a stopped daemon's stderr (Linux socket, Windows named pipe) and the other start failures (WSL missing, bad distro, missing compose file, timeout) to the user-facing message, unit-tested in `src/__tests__/docker.test.ts` ("classifyCommandError"). The **surfacing** — a start failure firing a "Failed to start container" Notice and driving the status bar to the `⚠ Error` state — is e2e-tested in `test/e2e/specs/notices.e2e.ts` ("1.5: a start failure surfaces …") by stubbing `docker.start()` to throw. Stopping the **real** host daemon and observing the live round-trip stays manual.
 - **Setup:** Stop Docker on the host. On Linux with systemd: `sudo systemctl stop docker.socket docker.service`. On macOS/Windows: quit Docker Desktop or Rancher Desktop.
 - **Steps:** Command palette → **Sandbox: Start Container**.
 - **Expected:** Clear Notice within ~5 s naming the failure ("Docker not available", "Cannot connect to Docker daemon", etc.). No infinite spinner. Status bar settles to a stopped/errored state with a useful tooltip.
@@ -126,11 +126,11 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.6 Write directory validation in settings
 
-- **✅ Automated (keystroke rejection)** — `settings.e2e.ts` ("write directory rejects escaping paths") covers typed `../escape` / `/root/forbidden` → `sandbox-input-error`; `validation.test.ts` unit-tests the validator. Manual residual below covers only the *stored-escape* path.
+- **✅ Automated** — `settings.e2e.ts` ("write directory rejects escaping paths") covers the typed `../escape` / `/root/forbidden` → `sandbox-input-error` path; `validation.test.ts` unit-tests the validator; and `persistence-reload.e2e.ts` ("1.6: a stored escaping write directory renders in the error state on load") covers the **stored-escape** path — it persists `vaultWriteDir = "../escape"` to `data.json`, reloads, and asserts the settings field renders with `sandbox-input-error` without any keystroke (the validator runs at render time in `addValidatedTextSetting`).
 - **Setup:** Plugin enabled.
 - **Steps:** Manually edit the vault's `data.json` (`.obsidian/plugins/obsidian-agent-sandbox/data.json`) to set `vaultWriteDir` to a path that escapes the vault, then reload the plugin (toggle off/on in Community Plugins).
 - **Expected:** On load the settings tab shows the field in error state (red border / `sandbox-input-error` class). The stored value is **not** auto-corrected; attempting to start the container while the invalid value is stored emits a Notice and fails to start.
-- **Notes:** P1. Only the stored-escape half is manual: the e2e harness loads the plugin out-of-tree, so it cannot seed `data.json` and reload (see the skipped probe in `test/e2e/specs/harness-probe.e2e.ts`).
+- **Notes:** P1. Historically the stored-escape half was manual because the harness loaded the plugin out-of-tree; on the current CI Obsidian the plugin installs on disk and `data.json` persists across `reloadObsidian()`, so it is now automated (see `harness-probe.e2e.ts` for the capability proof).
 
 ### 1.7 Port conflict detection
 
@@ -237,17 +237,19 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.5a Plugin disable/enable cycle leaves no debris
 
+- **✅ Automated** — `test/e2e/specs/harness-probe.e2e.ts` ("re-enables cleanly after a disable/enable cycle") calls `disablePlugin` then `enablePlugin` against the real plugin and asserts all 12 commands re-register and exactly one ribbon icon and one status-bar pill remain (no duplicates). This now runs because the current CI Obsidian installs the plugin on disk, so `enablePlugin()` reloads it (it was a silent no-op on the older out-of-tree harness). Unload cleanup is also unit-tested via `StatusBarManager.destroy()` / `FirewallStatusBar.destroy()`.
 - **Setup:** Container running. DevTools console open.
 - **Steps:** Disable "Agent Sandbox", wait 2 s, re-enable it.
 - **Expected:** Plugin loads cleanly: ribbon icon present, all 12 commands re-registered in command palette, settings tab renders, no red errors in console. No duplicate status bar pills or ribbon icons.
-- **Notes:** P0. Genuinely manual — not reachable in e2e: with the plugin loaded out-of-tree, `disablePlugin`/`enablePlugin` can't round-trip in the harness (skipped probe in `test/e2e/specs/harness-probe.e2e.ts`). Unload cleanup is unit-tested via `StatusBarManager.destroy()` / `FirewallStatusBar.destroy()`.
+- **Notes:** P0. The "no red console errors" sweep stays a manual spot-check; the structural no-debris assertions are automated.
 
 ### 2.6 Settings persist across full Obsidian restart
 
+- **✅ Automated** — `test/e2e/specs/harness-probe.e2e.ts` ("persists a saved setting across reloadObsidian()") asserts the plugin's `main.js` is installed on disk under the vault, then sets `terminalFontSize = 18`, `saveData`, `reloadObsidian()`, and asserts the value survives. The full quit/relaunch (vs `reloadObsidian()`) is Obsidian's own `saveData`/`loadData` responsibility and stays a manual spot-check.
 - **Setup:** Container running.
 - **Steps:** Change Terminal font size to 18. Quit Obsidian fully (not reload). Reopen.
 - **Expected:** Setting still shows 18. Open a terminal: font reflects it.
-- **Notes:** P0. Genuinely manual — not reachable in e2e: `wdio-obsidian-service` loads the plugin out-of-tree, so settings never reach `data.json` and a reboot resets them to defaults (see the skipped probe in `test/e2e/specs/harness-probe.e2e.ts`). Durable persistence is Obsidian's own `saveData`/`loadData` responsibility.
+- **Notes:** P0. Previously blocked by the out-of-tree harness; the current CI Obsidian installs on disk so `reloadObsidian()` exercises the real persistence path.
 
 ### 2.7 Terminal opens, attaches, renders
 
@@ -333,7 +335,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.14 `Sandbox: Container Status` command
 
-- **🟡 Partially automated (notice body)** — the composed status lines (running/ID/image/uptime/MCP/firewall) are unit-tested in `src/__tests__/format.test.ts` ("buildContainerStatusLines"). Firing the command and the stopped-state Notice stay manual.
+- **✅ Automated** — the composed status lines (running/ID/image/uptime/MCP/firewall) are unit-tested in `src/__tests__/format.test.ts` ("buildContainerStatusLines"), and **firing the command end-to-end** — both the running multi-line Notice (ID/image/MCP/firewall) and the stopped-state Notice — is e2e-tested in `test/e2e/specs/notices.e2e.ts` ("2.14 (running)" / "2.14 (stopped)") by stubbing `docker.status`/`getContainerInfo`. No manual step; live runtime values are stubbed but the command→Notice wiring is covered.
 - **Setup:** Container running.
 - **Steps:** Command palette → **Sandbox: Container Status**.
 - **Expected:** Notice with container ID, image, uptime, MCP/firewall state. With container stopped → Notice explicitly says stopped.
@@ -341,6 +343,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.15 `Sandbox: Open Browser` (pop-out terminal)
 
+- **✅ Automated (URL + window.open)** — `test/e2e/specs/notices.e2e.ts` ("2.15: Open in Browser calls window.open …") spies `window.open`, fires the command, and asserts the resolved URL (`resolveTtydBrowserUrl`, also unit-tested in `ttyd-client.test.ts`). The actual external-browser launch (and that the popped-out terminal is interactive) stays a manual spot-check.
 - **Setup:** Container running.
 - **Steps:** Command palette → **Sandbox: Open Browser**.
 - **Expected:** Default browser opens at `http://localhost:7681` (or configured ttyd port/bind), terminal accessible. Note: outside Obsidian sandbox so some integrations (URI handler context) won't apply.
@@ -362,6 +365,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.18 Workspace persistence
 
+- **✅ Automated (named-volume persistence)** — `test/integration/container-restart.test.ts` writes a marker into the shell-history named volume, runs `docker restart oas-test-sandbox`, waits for ttyd to come back healthy, and asserts the marker survives. It targets a **named volume** (the meaningful ephemeral-vs-persistent property); the literal `/workspace/.claude/...` path in the steps below is a host **bind mount** that persists trivially, so the manual run is only worth it to confirm the bind-mount path specifically.
 - **Setup:** Container running, terminal open.
 - **Steps:** In the container: `echo "marker $(date +%s)" >> /workspace/.claude/persist-check.md`. Restart container. New terminal: `cat /workspace/.claude/persist-check.md`.
 - **Expected:** File and marker line present after restart.
@@ -497,6 +501,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 3.12 MCP proxy: one diagnostic per unreachable burst
 
+- **✅ Automated** — `test/integration/proxy.test.ts` spawns `obsidian-mcp-proxy.js` against a dead upstream port with a token set, feeds it two JSON-RPC requests, and asserts **exactly one** `[obsidian-mcp-proxy] unreachable` stderr line (burst suppression), that it names the host/port + `reason=ECONNREFUSED`, that the bearer token never appears, and that the client still gets an empty tool list. Pure Node — it never touches the container, so it also runs when Docker is unavailable. The live toggle-MCP-off-mid-session flow stays a manual spot-check.
 - **Setup:** Active Claude session with MCP on. `docker compose logs -f sandbox` open in a host terminal to watch container stderr in real time.
 - **Steps:** With a container Claude session attached, toggle MCP off via **Sandbox: Toggle MCP Server**. Immediately run a vault tool call in the terminal (e.g. `claude -p "List vault files"`). Wait a few seconds, then toggle MCP back on.
 - **Expected:** In `docker compose logs`, the proxy (`workspace/.claude/scripts/obsidian-mcp-proxy.js`) emits **exactly one** structured stderr line during the unreachable window — not a line per retry. The line names the resolved host/port and a reason (`TIMEOUT_2S`, `ECONNREFUSED`, or a DNS reason). The line does **not** contain the MCP bearer token (`OAS_MCP_TOKEN`). Once MCP is re-enabled and reachable, no further diagnostic lines appear for the same host/port.
@@ -588,7 +593,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.6 Agent output Notice: debounced bursts
 
-- **🟡 Partially automated (debounce/aggregation)** — `src/__tests__/activity.test.ts` ("fires a single notice for one create after debounce elapses", "aggregates burst of creates into one notice") drives `AgentOutputNotifier` with fake timers and asserts the emitted Notice text. The live Claude file-create chain stays manual.
+- **✅ Automated** — `src/__tests__/activity.test.ts` ("fires a single notice for one create after debounce elapses", "aggregates burst of creates into one notice") drives `AgentOutputNotifier` with fake timers, and `test/e2e/specs/agent-output.e2e.ts` ("5.6: a burst of creates aggregates …") exercises the **live wiring** — three real `app.vault.create` events → the registered vault listener → a single "Agent output: 3 created" Notice in the DOM. Driving it from a real Claude run is redundant with the wiring now covered.
 - **Setup:** General → Agent output notifications → `Notify on file created` = on (the default).
 - **Steps:** `claude -p "Create three files under agent-workspace/: a.md b.md c.md each with just 'x'."`
 - **Expected:** A single Notice ~2 s after the last create: "Agent output: 3 created" (not three notices).
@@ -604,7 +609,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.8 `Notify on file edited` fires for modifies
 
-- **🟡 Partially automated (modify gating)** — `src/__tests__/activity.test.ts` ("fires for modify events when notifyEdited is true" / "ignores modify events when notifyEdited is false") covers the toggle. Live Claude modifies stay manual.
+- **✅ Automated** — `src/__tests__/activity.test.ts` ("fires for modify events when notifyEdited is true" / "ignores modify events when notifyEdited is false") covers the toggle, and `test/e2e/specs/agent-output.e2e.ts` ("5.8: with notifyEdited on, a modify fires a Notice") drives a real `app.vault.modify` through the live listener to an "Agent modified …" Notice.
 - **Setup:** Enable `Notify on file edited` (off by default).
 - **Steps:** Prompt Claude to modify two existing files.
 - **Expected:** Notice fires for the modifies.
@@ -612,7 +617,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.9 All notify toggles off → silent
 
-- **🟡 Partially automated (all-off silence)** — `src/__tests__/activity.test.ts` ("all-off suppresses everything") asserts no Notice fires with every toggle off. The live trigger stays manual.
+- **✅ Automated** — `src/__tests__/activity.test.ts` ("all-off suppresses everything") asserts no Notice fires with every toggle off, and `test/e2e/specs/agent-output.e2e.ts` ("5.9: all toggles off → no Notice fires") confirms it through the live vault-event path (create with all toggles off → no "Agent" Notice).
 - **Steps:** Turn off all four `Notify on file created / edited / deleted / renamed-moved` toggles. Trigger creates/modifies.
 - **Expected:** No Notices.
 - **Notes:** P2.
@@ -684,6 +689,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 6.4 Templates render on first right-click after reload
 
+- **🟡 Partially automated (templates load after reload)** — `test/e2e/specs/persistence-reload.e2e.ts` ("6.4: prompt templates seeded on disk are available after a reload") seeds `.oas/prompts/*.md`, calls `reloadObsidian()`, and asserts `analyse.loadTemplates()` returns the seeded labels — i.e. the cache the right-click submenu reads is populated post-reload (the substance of this scenario). The actual submenu **DOM** render on first right-click stays a manual spot-check (menu-building itself is unit-tested).
 - **Setup:** `<vault>/.oas/prompts/` populated with the four shipped templates. Fully reload Obsidian.
 - **Steps:** **Immediately** after Obsidian finishes loading, right-click a vault note → **Analyse in Sandbox**.
 - **Expected:** Submenu already populated, not collapsed to "Custom prompt…" only.
@@ -698,6 +704,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 6.6 Custom prompt modal edge inputs
 
+- **🟡 Partially automated (modal mechanics)** — `test/e2e/specs/analyse.e2e.ts` drives the real `inputModal` opened by `runAnalyseCustom` and asserts cases 1/3/4: an empty input is trimmed to a cancel (no terminal opens), and a 2000-char prompt containing shell metacharacters opens a terminal tab without truncation. The load-bearing **security** half — that the metacharacters reach `claude` as a single argument and `id`/`whoami` never execute on open — needs a real container shell (Stage 3) and stays manual.
 - **Setup:** Templates present.
 - **Steps:** Right-click → Analyse in Sandbox → Custom prompt. In turn: 1) empty + Run, 2) Cancel, 3) ~2000-character prompt, 4) prompt with shell metacharacters: `` echo `id`; $(whoami) && rm -rf /tmp/nope ``.
 - **Expected:** 1) Treated as a cancel — `inputModal` trims the value, so an empty/whitespace input resolves to nothing and no terminal opens (no separate validation hint). 2) Modal closes; no terminal. 3) Terminal opens with full text seeded, no truncation. 4) Metacharacters passed to `claude` as a single argument; `id` / `whoami` must not execute on open.
@@ -766,7 +773,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 8.1 Firewall on/off toggle live
 
-- **🟡 Partially automated (state machine)** — `test/integration/firewall.test.ts` ("reports enabled after a successful apply, disabled after --disable") covers the enable/disable/`--status` transitions. The live status-bar pill, tooltip, and ~2 s UI update stay manual.
+- **🟡 Partially automated (state machine + pill wiring)** — `test/integration/firewall.test.ts` ("reports enabled after a successful apply, disabled after --disable") covers the enable/disable/`--status` transitions, and `test/e2e/specs/notices.e2e.ts` ("8.1: toggling the firewall …") drives the toggle command (with the firewall apply stubbed) and asserts the pill flips to the active state and a Notice fires. The ~2 s update against a **real** container's iptables apply stays manual.
 - **Steps:** Toggle firewall via command palette and via settings; observe status bar firewall icon (🛡️).
 - **Expected:** State updates within ~2 s. Status bar pill tooltip reflects on/off.
 - **Notes:** P1.

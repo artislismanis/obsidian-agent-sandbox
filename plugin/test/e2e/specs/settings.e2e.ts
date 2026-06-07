@@ -45,7 +45,7 @@ describe("Settings: validation and warnings", function () {
 		// vault (leading "/" or ".." segments) by flagging sandbox-input-error,
 		// and clears the flag for a valid relative folder. Mirrors the numeric
 		// validation pattern below. The stored-escape half (seed bad data.json,
-		// reload, assert error state) lives in harness-probe.e2e.ts.
+		// reload, assert error state) lives in persistence-reload.e2e.ts.
 		it("write directory rejects escaping paths", async function () {
 			const writeDirInput = settingInput("Vault write directory");
 			await writeDirInput.waitForExist({ timeout: 3000 });
