@@ -40,7 +40,7 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.1 First-enable settings tab render
 
-- **🟡 Partially automated** — tab rendering, restart-label presence, MCP tier defaults, and numeric / bind-address validation are covered by `test/e2e/specs/smoke.e2e.ts` + `settings.e2e.ts`. The manual value here is the full field-**order** and default-**value** audit below (not asserted exhaustively in e2e).
+- **✅ Automated** — `test/e2e/specs/settings-inventory.e2e.ts` serializes every tab's rendered settings rows in DOM order (field name, control type, default value, dropdown label, "Requires container restart" flag, headings, list editors, buttons) and diffs the whole inventory against a committed reference (`test/e2e/fixtures/settings-inventory.json`). Any added/removed/reordered field, changed default, flipped restart label, or renamed dropdown option fails CI until the reference is deliberately re-blessed (`OAS_UPDATE_SETTINGS_SNAPSHOT=1`, then `prettier --write` the fixture). The MCP auth token value is redacted (auto-generated). The expected inventory below is the human-readable companion to that fixture — keep them in step.
 - **Setup:** Plugin freshly enabled (toggle off then on in Community Plugins). DevTools open (Ctrl+Shift+I) before clicking, to catch transient errors.
 - **Steps:** Open Settings → Agent Sandbox. Visit all four tabs in order: **General, Terminal, MCP, Advanced**. For each, verify fields appear in the order listed below with the stated defaults and "Requires container restart." labels where noted.
 - **Expected:**
