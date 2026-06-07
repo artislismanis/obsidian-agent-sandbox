@@ -1,31 +1,25 @@
 import { browser, expect, $$ } from "@wdio/globals";
-import { describe, it, before } from "mocha";
+import { describe, it } from "mocha";
 import { obsidianPage } from "wdio-obsidian-service";
+import { existsSync } from "node:fs";
+import path from "node:path";
 
-// Harness-limit probes — REPRODUCIBLE EVIDENCE, intentionally skipped.
+// Harness capability: on-disk install + settings persistence + disable/enable.
 //
-// docs/testing.md lists "settings persistence across restart" and "plugin
-// disable/enable via the UI" as un-automatable. Before trusting that, we probed
-// whether the harness APIs the suite hadn't used (reloadObsidian,
-// enablePlugin/disablePlugin) could reach them. They cannot, and the root cause
-// is the same for both:
+// HISTORY: these two specs were previously skipped. On Obsidian 1.12.7 a
+// diagnostic showed wdio-obsidian-service loaded the plugin OUT-OF-TREE
+// (<vault>/.obsidian/plugins/<id>/main.js absent), so in-session saveData never
+// reached data.json, reloadObsidian() reset settings to defaults, and
+// enablePlugin() after disablePlugin() was a silent no-op.
 //
-//   wdio-obsidian-service does NOT install the plugin as real files in the
-//   vault. A diagnostic showed <vault>/.obsidian/plugins/<id>/main.js is absent
-//   even while the plugin is loaded and working at boot — the service loads it
-//   out-of-tree. Consequences observed on obsidian 1.12.7:
-//     * settings written in-session never reach <vault>/.obsidian/.../data.json,
-//       and a reloadObsidian() reboot resets settings to defaults; and
-//     * disablePlugin() then enablePlugin() leaves the plugin disabled — enable
-//       is a silent no-op because there is no on-disk main.js to reload.
-//
-// Both specs below therefore stay skipped. They are the canonical repro: if a
-// future wdio-obsidian-service version installs the plugin on disk (or exposes a
-// persistent-install option), un-skip them and re-classify QA-plan items 2.6
-// (persistence), 2.5a (disable/enable), 1.6 (stored-escape), 6.4 (templates
-// after reload). Unload cleanup itself is covered by unit tests on
-// StatusBarManager.destroy() / FirewallStatusBar.destroy(); durable persistence
-// is Obsidian's own saveData/loadData responsibility.
+// On the current CI Obsidian (default: latest) that no longer holds — an E1 spike
+// confirmed `main.js` IS present on disk under the vault and a saved setting
+// survives reloadObsidian(). So both probes now run and stand as real coverage for
+// QA-plan 2.6 (persistence) and 2.5a (disable/enable). The stored-escape (1.6) and
+// templates-after-reload (6.4) items that depend on the same on-disk-persistence
+// capability are covered in persistence-reload.e2e.ts. If a future Obsidian /
+// service version regresses to out-of-tree loading, the first assertion below
+// (main.js exists) fails loudly rather than silently passing.
 
 const PLUGIN_ID = "obsidian-agent-sandbox";
 
@@ -48,14 +42,25 @@ function isEnabled(): Promise<boolean> {
 	);
 }
 
-describe("Harness probes (skipped — see file header)", function () {
-	before(async function () {
-		await obsidianPage.resetVault();
+function basePath(): Promise<string> {
+	return browser.executeObsidian(({ app }) => {
+		const adapter = app.vault.adapter as unknown as { getBasePath?: () => string };
+		return adapter.getBasePath?.() ?? "";
 	});
+}
 
-	// QA plan 2.6. SKIPPED: reloadObsidian() resets plugin settings to defaults
-	// because the service loads the plugin out-of-tree (no on-disk data.json).
-	it.skip("persists a saved setting across reloadObsidian()", async function () {
+// NOTE: no resetVault() here. resetVault() re-fixtures the vault and drops the
+// on-disk plugin install, which both removes main.js and turns enablePlugin()
+// back into a no-op. These probes run against the initial launched vault, where
+// the service has installed the plugin on disk.
+describe("Harness capability: on-disk install + persistence (QA 2.6 / 2.5a)", function () {
+	// QA plan 2.6 — a saved setting must survive a real reload. Also asserts the
+	// plugin is installed on disk (the precondition that makes persistence work).
+	it("persists a saved setting across reloadObsidian()", async function () {
+		const base = await basePath();
+		const mainJs = path.join(base, ".obsidian", "plugins", PLUGIN_ID, "main.js");
+		expect(existsSync(mainJs)).toBe(true);
+
 		await browser.executeObsidian(async ({ app }) => {
 			const plugin = (
 				app as unknown as {
@@ -79,10 +84,9 @@ describe("Harness probes (skipped — see file header)", function () {
 		expect(await readFontSize()).toBe(18);
 	});
 
-	// QA plan 2.5a. SKIPPED: enablePlugin() after disablePlugin() is a silent
-	// no-op in this harness (no on-disk main.js to reload), so the plugin never
-	// comes back and the no-debris assertions can't run.
-	it.skip("re-enables cleanly after a disable/enable cycle", async function () {
+	// QA plan 2.5a — disable then re-enable leaves no debris: all 12 commands
+	// re-registered, exactly one ribbon icon and one status-bar pill.
+	it("re-enables cleanly after a disable/enable cycle", async function () {
 		await obsidianPage.disablePlugin(PLUGIN_ID);
 		await browser.waitUntil(async () => (await isEnabled()) === false, {
 			timeout: 5000,
