@@ -737,7 +737,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 **Setup carried forward:** Stage 0–3.
 
-**✅ Automated (egress + tagging)** — `container/test-scripts/security-checks.sh` covers 8.2 (plugin-domain reachable / other blocked), 8.3 (extras-file domain reachable + host path not vault-readable), 8.4 (`--list-sources` tag set), and 8.6 (egress restored when off); those bodies below are the reference spec for the script. **Genuinely manual:** 8.1 (live toggle UI) and 8.5 (Effective allowlist refresh button).
+**✅ Automated (egress + tagging)** — `test/integration/firewall.test.ts` runs against the shared test container in CI: 8.3 (extras file readable by the agent but not writable — read-only mount), enable/disable/`--status` transitions, 8.4 (`--list-sources` tags `[baseline]` + `[plugin]`), 8.2 (allowlisted domain reachable, non-allowlisted blocked), and 8.6 (egress restored when disabled). The egress probes inject a `[plugin]` domain via `OAS_ALLOWED_DOMAINS` and self-skip when the CI environment lacks outbound (baseline domains can't resolve). The scenario bodies below are the reference spec. **Manual residual:** the `[file]` tag (needs a non-empty `firewall-extras.txt`, a tracked comments-only file), 8.1 (live toggle UI), and 8.5 (Effective allowlist refresh button).
 
 ### 8.1 Firewall on/off toggle live
 
