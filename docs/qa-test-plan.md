@@ -118,7 +118,7 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.5 Start with Docker daemon stopped
 
-- **🟡 Partially automated (error classification)** — `DockerManager.classifyCommandError` maps a stopped daemon's stderr (Linux socket, Windows named pipe) and the other start failures (WSL missing, bad distro, missing compose file, timeout) to the user-facing message, unit-tested in `src/__tests__/docker.test.ts` ("classifyCommandError"). Stopping the real host daemon and observing the live Notice + errored status bar stays manual.
+- **🟡 Partially automated (error classification + UI surfacing)** — `DockerManager.classifyCommandError` maps a stopped daemon's stderr (Linux socket, Windows named pipe) and the other start failures (WSL missing, bad distro, missing compose file, timeout) to the user-facing message, unit-tested in `src/__tests__/docker.test.ts` ("classifyCommandError"). The **surfacing** — a start failure firing a "Failed to start container" Notice and driving the status bar to the `⚠ Error` state — is e2e-tested in `test/e2e/specs/notices.e2e.ts` ("1.5: a start failure surfaces …") by stubbing `docker.start()` to throw. Stopping the **real** host daemon and observing the live round-trip stays manual.
 - **Setup:** Stop Docker on the host. On Linux with systemd: `sudo systemctl stop docker.socket docker.service`. On macOS/Windows: quit Docker Desktop or Rancher Desktop.
 - **Steps:** Command palette → **Sandbox: Start Container**.
 - **Expected:** Clear Notice within ~5 s naming the failure ("Docker not available", "Cannot connect to Docker daemon", etc.). No infinite spinner. Status bar settles to a stopped/errored state with a useful tooltip.
@@ -333,7 +333,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.14 `Sandbox: Container Status` command
 
-- **🟡 Partially automated (notice body)** — the composed status lines (running/ID/image/uptime/MCP/firewall) are unit-tested in `src/__tests__/format.test.ts` ("buildContainerStatusLines"). Firing the command and the stopped-state Notice stay manual.
+- **✅ Automated** — the composed status lines (running/ID/image/uptime/MCP/firewall) are unit-tested in `src/__tests__/format.test.ts` ("buildContainerStatusLines"), and **firing the command end-to-end** — both the running multi-line Notice (ID/image/MCP/firewall) and the stopped-state Notice — is e2e-tested in `test/e2e/specs/notices.e2e.ts` ("2.14 (running)" / "2.14 (stopped)") by stubbing `docker.status`/`getContainerInfo`. No manual step; live runtime values are stubbed but the command→Notice wiring is covered.
 - **Setup:** Container running.
 - **Steps:** Command palette → **Sandbox: Container Status**.
 - **Expected:** Notice with container ID, image, uptime, MCP/firewall state. With container stopped → Notice explicitly says stopped.
@@ -341,6 +341,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.15 `Sandbox: Open Browser` (pop-out terminal)
 
+- **✅ Automated (URL + window.open)** — `test/e2e/specs/notices.e2e.ts` ("2.15: Open in Browser calls window.open …") spies `window.open`, fires the command, and asserts the resolved URL (`resolveTtydBrowserUrl`, also unit-tested in `ttyd-client.test.ts`). The actual external-browser launch (and that the popped-out terminal is interactive) stays a manual spot-check.
 - **Setup:** Container running.
 - **Steps:** Command palette → **Sandbox: Open Browser**.
 - **Expected:** Default browser opens at `http://localhost:7681` (or configured ttyd port/bind), terminal accessible. Note: outside Obsidian sandbox so some integrations (URI handler context) won't apply.
@@ -766,7 +767,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 8.1 Firewall on/off toggle live
 
-- **🟡 Partially automated (state machine)** — `test/integration/firewall.test.ts` ("reports enabled after a successful apply, disabled after --disable") covers the enable/disable/`--status` transitions. The live status-bar pill, tooltip, and ~2 s UI update stay manual.
+- **🟡 Partially automated (state machine + pill wiring)** — `test/integration/firewall.test.ts` ("reports enabled after a successful apply, disabled after --disable") covers the enable/disable/`--status` transitions, and `test/e2e/specs/notices.e2e.ts` ("8.1: toggling the firewall …") drives the toggle command (with the firewall apply stubbed) and asserts the pill flips to the active state and a Notice fires. The ~2 s update against a **real** container's iptables apply stays manual.
 - **Steps:** Toggle firewall via command palette and via settings; observe status bar firewall icon (🛡️).
 - **Expected:** State updates within ~2 s. Status bar pill tooltip reflects on/off.
 - **Notes:** P1.
