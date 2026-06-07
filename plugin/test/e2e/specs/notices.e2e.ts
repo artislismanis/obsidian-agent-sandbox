@@ -101,11 +101,11 @@ describe("Command → Notice / pill surfacing (QA 1.5 / 2.14 / 2.15 / 8.1)", fun
 		});
 
 		await browser.executeObsidianCommand(START_CMD);
-		await browser.pause(500);
-
-		expect((await noticeTexts()).some((t) => t.includes("Failed to start container"))).toBe(
-			true,
+		await browser.waitUntil(
+			async () => (await noticeTexts()).some((t) => t.includes("Failed to start container")),
+			{ timeout: 4000, timeoutMsg: "'Failed to start container' notice never appeared" },
 		);
+
 		// STATE_DISPLAY.error === "Sandbox: ⚠ Error"
 		await browser.waitUntil(async () => (await sandboxPillText()).includes("Error"), {
 			timeout: 4000,
@@ -125,7 +125,10 @@ describe("Command → Notice / pill surfacing (QA 1.5 / 2.14 / 2.15 / 8.1)", fun
 		});
 
 		await browser.executeObsidianCommand(STATUS_CMD);
-		await browser.pause(500);
+		await browser.waitUntil(
+			async () => (await noticeTexts()).some((t) => t.includes("Sandbox: Running")),
+			{ timeout: 4000, timeoutMsg: "'Sandbox: Running' status notice never appeared" },
+		);
 
 		const notices = await noticeTexts();
 		const status = notices.find((t) => t.includes("Sandbox: Running"));
@@ -143,7 +146,10 @@ describe("Command → Notice / pill surfacing (QA 1.5 / 2.14 / 2.15 / 8.1)", fun
 		});
 
 		await browser.executeObsidianCommand(STATUS_CMD);
-		await browser.pause(500);
+		await browser.waitUntil(
+			async () => (await noticeTexts()).some((t) => t.includes("Sandbox: Stopped")),
+			{ timeout: 4000, timeoutMsg: "'Sandbox: Stopped' status notice never appeared" },
+		);
 
 		expect((await noticeTexts()).some((t) => t.includes("Sandbox: Stopped"))).toBe(true);
 	});
@@ -185,9 +191,11 @@ describe("Command → Notice / pill surfacing (QA 1.5 / 2.14 / 2.15 / 8.1)", fun
 		});
 
 		await browser.executeObsidianCommand(FIREWALL_CMD);
-		await browser.pause(500);
+		await browser.waitUntil(
+			async () => (await noticeTexts()).some((t) => t.includes("Firewall enabled.")),
+			{ timeout: 4000, timeoutMsg: "'Firewall enabled.' notice never appeared" },
+		);
 
-		expect((await noticeTexts()).some((t) => t.includes("Firewall enabled."))).toBe(true);
 		expect(await firewallPillAria()).toContain("Firewall active");
 	});
 });

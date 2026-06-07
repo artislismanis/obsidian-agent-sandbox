@@ -46,3 +46,44 @@ export function settingWarning(name: string) {
 		`${settingItemXPath(name)}//*[contains(concat(' ', normalize-space(@class), ' '), ' sandbox-settings-field-warning ')]`,
 	);
 }
+
+// Validators toggle the `sandbox-input-error` class asynchronously after an
+// input event, so a fixed sleep races the toggle. Wait on the observable
+// post-condition instead. Re-queries by name each poll so it survives the
+// section re-render that bind-address changes trigger (stale handles).
+export async function waitForInputError(
+	name: string,
+	shouldHaveError: boolean,
+	timeout = 3000,
+): Promise<void> {
+	await browser.waitUntil(
+		async () => {
+			const cls = (await settingInput(name).getAttribute("class")) ?? "";
+			return cls.includes("sandbox-input-error") === shouldHaveError;
+		},
+		{
+			timeout,
+			timeoutMsg: `'${name}' input never ${shouldHaveError ? "showed" : "cleared"} sandbox-input-error`,
+		},
+	);
+}
+
+// Bind-address warnings render into the description element and appear/clear
+// asynchronously. Wait on the description text rather than sleeping.
+export async function waitForDescContains(
+	name: string,
+	substring: string,
+	present: boolean,
+	timeout = 3000,
+): Promise<void> {
+	await browser.waitUntil(
+		async () => {
+			const text = (await settingDesc(name).getText()) ?? "";
+			return text.includes(substring) === present;
+		},
+		{
+			timeout,
+			timeoutMsg: `'${name}' description never ${present ? "showed" : "cleared"} "${substring}"`,
+		},
+	);
+}

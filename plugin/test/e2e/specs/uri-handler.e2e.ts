@@ -33,7 +33,6 @@ async function fireOpenTerminalUri(): Promise<void> {
 		const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
 		await plugin.handleOpenTerminalUri();
 	});
-	await browser.pause(300);
 }
 
 async function terminalLeafCount(): Promise<number> {
@@ -52,7 +51,10 @@ async function closeTerminals(): Promise<void> {
 	await browser.executeObsidian(({ app }, viewType: string) => {
 		(app as unknown as AppShim).workspace.getLeavesOfType(viewType).forEach((l) => l.detach());
 	}, VIEW_TYPE_TERMINAL);
-	await browser.pause(100);
+	await browser.waitUntil(async () => (await terminalLeafCount()) === 0, {
+		timeout: 3000,
+		timeoutMsg: "terminal leaves did not detach",
+	});
 }
 
 describe("URI handler: open-terminal (QA 1.8 / 6.1)", function () {
@@ -69,16 +71,21 @@ describe("URI handler: open-terminal (QA 1.8 / 6.1)", function () {
 		await setContainerRunning(false);
 		await fireOpenTerminalUri();
 
+		await browser.waitUntil(
+			async () =>
+				(await noticeTexts()).some((t) => t.includes("Sandbox container is not running.")),
+			{ timeout: 3000, timeoutMsg: "'container is not running' notice never appeared" },
+		);
 		expect(await terminalLeafCount()).toBe(0);
-		expect(
-			(await noticeTexts()).some((t) => t.includes("Sandbox container is not running.")),
-		).toBe(true);
 	});
 
 	it("6.1: with the container running, opens a terminal tab", async function () {
 		await setContainerRunning(true);
 		await fireOpenTerminalUri();
 
-		expect(await terminalLeafCount()).toBe(1);
+		await browser.waitUntil(async () => (await terminalLeafCount()) === 1, {
+			timeout: 3000,
+			timeoutMsg: "terminal tab did not open with the container running",
+		});
 	});
 });

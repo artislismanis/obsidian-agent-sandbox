@@ -39,7 +39,21 @@ async function openTerminals(names: Array<string | undefined>): Promise<void> {
 		const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
 		for (const n of ns) await plugin.activateTerminalView(n);
 	}, names);
-	await browser.pause(300);
+	await browser.waitUntil(async () => (await terminalLeafCount()) === names.length, {
+		timeout: 3000,
+		timeoutMsg: `expected ${names.length} terminal leaves to open`,
+	});
+}
+
+/** Count of open sandbox-terminal leaves. */
+async function terminalLeafCount(): Promise<number> {
+	return browser.executeObsidian(
+		({ app }, viewType: string) =>
+			(
+				app as unknown as { workspace: { getLeavesOfType: (t: string) => unknown[] } }
+			).workspace.getLeavesOfType(viewType).length,
+		VIEW_TYPE_TERMINAL,
+	);
 }
 
 /** Detach every open sandbox-terminal leaf so each test starts clean. */
@@ -52,7 +66,10 @@ async function closeTerminals(): Promise<void> {
 		).workspace;
 		ws.getLeavesOfType(viewType).forEach((l) => l.detach());
 	}, VIEW_TYPE_TERMINAL);
-	await browser.pause(100);
+	await browser.waitUntil(async () => (await terminalLeafCount()) === 0, {
+		timeout: 3000,
+		timeoutMsg: "terminal leaves did not detach",
+	});
 }
 
 async function closeAllModals(): Promise<void> {
@@ -121,10 +138,15 @@ describe("Session switcher (QA 5.10/5.11)", function () {
 		const filter = $(".sandbox-modal-filter");
 		await filter.waitForExist({ timeout: 3000 });
 		await filter.setValue("work");
-		await browser.pause(200);
+		await browser.waitUntil(
+			async () => {
+				const r = await switcherRows();
+				return r.length === 1 && r[0] === "Session: work";
+			},
+			{ timeout: 3000, timeoutMsg: "filter did not narrow to 'Session: work'" },
+		);
 
-		const rows = await switcherRows();
-		expect(rows).toEqual(["Session: work"]);
+		expect(await switcherRows()).toEqual(["Session: work"]);
 	});
 
 	it("selecting a row activates the matching tab", async function () {
@@ -137,7 +159,10 @@ describe("Session switcher (QA 5.10/5.11)", function () {
 			const row = rows.find((r) => (r.textContent ?? "").includes(label));
 			(row as HTMLElement | undefined)?.click();
 		}, "Session: research");
-		await browser.pause(300);
+		await browser.waitUntil(async () => (await activeSessionName()) === "research", {
+			timeout: 3000,
+			timeoutMsg: "clicking the row did not activate the 'research' tab",
+		});
 
 		expect(await activeSessionName()).toBe("research");
 	});
@@ -165,14 +190,20 @@ describe("Session switcher (QA 5.10/5.11)", function () {
 				.find((l) => l.view.getSessionName?.() === "research");
 			leaf?.detach();
 		}, VIEW_TYPE_TERMINAL);
-		await browser.pause(150);
+		await browser.waitUntil(async () => (await terminalLeafCount()) === 1, {
+			timeout: 3000,
+			timeoutMsg: "'research' leaf did not detach from under the modal",
+		});
 
 		await browser.executeObsidian((_app, label: string) => {
 			const rows = Array.from(document.querySelectorAll(".sandbox-modal-row-clickable"));
 			const row = rows.find((r) => (r.textContent ?? "").includes(label));
 			(row as HTMLElement | undefined)?.click();
 		}, "Session: research");
-		await browser.pause(200);
+		await browser.waitUntil(
+			async () => (await noticeTexts()).some((t) => t.includes("That session has closed.")),
+			{ timeout: 3000, timeoutMsg: "'That session has closed.' notice never appeared" },
+		);
 
 		expect((await noticeTexts()).some((t) => t.includes("That session has closed."))).toBe(
 			true,
@@ -232,17 +263,24 @@ describe("Detached-session cleanup (QA 5.12)", function () {
 		const killBtn = $("button=Kill selected");
 		await killBtn.waitForExist({ timeout: 3000 });
 		await killBtn.click();
-		await browser.pause(300);
+		await browser.waitUntil(
+			async () => (await noticeTexts()).some((t) => t.includes("Killed 1/1 session(s).")),
+			{ timeout: 3000, timeoutMsg: "'Killed 1/1 session(s).' notice never appeared" },
+		);
 
-		const killed = await killedNames();
-		expect(killed).toHaveLength(1);
-		expect((await noticeTexts()).some((t) => t.includes("Killed 1/1 session(s)."))).toBe(true);
+		expect(await killedNames()).toHaveLength(1);
 	});
 
 	it("reports no candidates when nothing is detached", async function () {
 		await stubSessions([]);
 		await browser.executeObsidianCommand(CLEANUP_CMD);
-		await browser.pause(300);
+		await browser.waitUntil(
+			async () =>
+				(await noticeTexts()).some((t) =>
+					t.includes("No detached tmux sessions to clean up."),
+				),
+			{ timeout: 3000, timeoutMsg: "'No detached tmux sessions' notice never appeared" },
+		);
 
 		expect(
 			(await noticeTexts()).some((t) => t.includes("No detached tmux sessions to clean up.")),
@@ -278,13 +316,15 @@ describe("Detached-session cleanup (QA 5.12)", function () {
 		const killBtn = $("button=Kill selected");
 		await killBtn.waitForExist({ timeout: 3000 });
 		await killBtn.click();
-		await browser.pause(300);
+		await browser.waitUntil(
+			async () => (await noticeTexts()).some((t) => t.includes("Killed 1/2 session(s).")),
+			{ timeout: 3000, timeoutMsg: "'Killed 1/2 session(s).' notice never appeared" },
+		);
 
 		const killed = await browser.executeObsidian(({ app }) => {
 			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
 			return plugin.__killed ?? [];
 		});
 		expect(killed).toEqual(["validname"]);
-		expect((await noticeTexts()).some((t) => t.includes("Killed 1/2 session(s)."))).toBe(true);
 	});
 });

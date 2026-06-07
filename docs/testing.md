@@ -269,6 +269,9 @@ For an exhaustive sweep of the MCP tool surface (every read/write/manage/extensi
 
 Run the automated suites here first; only fall through to the QA plan or the MCP capability plan for behaviour the harness can't reach (see "What's NOT covered" above for the canonical list of gaps).
 
+For a roadmap of how to *close* those manual residuals — per-scenario approaches, the precondition each
+needs, and the gaps that are deliberately accepted — see [qa-automation-gaps.md](./qa-automation-gaps.md).
+
 ---
 
 ## Teardown
