@@ -327,7 +327,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.13 Status bar tooltip content
 
-- **🟡 Partially automated (tooltip composition)** — the running-tooltip builder (`recomposeRunningTooltip`: container/port/firewall/MCP lines, the pending-restart line, and the awaiting-input override) is unit-tested in `src/__tests__/status-bar.test.ts` ("running tooltip …" / "pending-restart line is suppressed by attention override"). Hovering the live pill and the exact runtime state values stay manual.
+- **✅ Automated** — the running-tooltip builder (`recomposeRunningTooltip`: container/port/firewall/MCP lines, the pending-restart line, and the awaiting-input override) is unit-tested in `src/__tests__/status-bar.test.ts`, and `test/e2e/specs/status-bar.e2e.ts` ("2.13: the running tooltip …") drives the real `StatusBarManager` to the running state and asserts the composed string lands in the live pill's `aria-label` (Container/Port/Firewall/MCP lines). Runtime values are supplied via `setRunningTooltipContext` rather than a live container, but the compose→DOM wiring is covered; hovering with a real container stays a trivial spot-check.
 - **Setup:** Container running, MCP on, firewall on.
 - **Steps:** Hover the sandbox status-bar pill.
 - **Expected:** Tooltip lists container state, MCP state, firewall state. Each line is current (matches command-palette status check).
@@ -553,7 +553,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.1 Tab title + badge on Claude state
 
-- **🟡 Partially automated (title composition)** — the tab-title string (⚙/✓/❓ prefix + `Session: <name>` / `Sandbox Terminal <n>` base) is unit-tested in `src/__tests__/terminal-view.test.ts` ("composeTabTitle"). The live tab repaint on state change and the status-bar badge integration stay manual (badge logic itself is covered by `bridge.e2e.ts`, see 5.2).
+- **🟡 Partially automated (title composition + badge tooltip)** — the tab-title string (⚙/✓/❓ prefix + `Session: <name>` / `Sandbox Terminal <n>` base) is unit-tested in `src/__tests__/terminal-view.test.ts` ("composeTabTitle"); the badge logic is in `bridge.e2e.ts` (see 5.2); and the status-bar badge's awaiting-input **tooltip text** ("1 session(s) awaiting input: work" in the pill `aria-label`) is asserted in `status-bar.e2e.ts` (see 5.3). The live **tab** repaint on a Claude state change (⚙/✓/❓ on the leaf header) still needs a running Claude session and stays manual.
 - **Setup:** Open terminal, attach to named session `work`, run `claude` interactively.
 - **Steps:** Submit a long-running prompt. Then submit one that triggers an approval question (or use `writeReviewed`).
 - **Expected:** While working → tab title `⚙ Session: work`. Idle between prompts (after a turn completes, the Stop hook sets `idle`) → `✓ Session: work`; the bare `Session: work` with no symbol only appears for a terminal that has not yet run Claude. Awaiting input → `❓ Session: work` AND status bar pill grows a `🔔` badge whose tooltip reads `Sandbox running. 1 session(s) awaiting input: work` followed by a `Click for options` line.
@@ -561,7 +561,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.2 Multi-session independence
 
-- **✅ Automated (badge logic)** — `test/e2e/specs/bridge.e2e.ts` ("5.2 idle sessions don't raise the badge; awaiting ones do") sets one session idle and another awaiting via `agent_status_set` and asserts an idle-only session never raises the bell, while an awaiting one does and clears correctly. The running-state tooltip that *names* the waiting sessions only composes when the container is running, so its precise text (and the `⚙` tab-title prefix on a live terminal tab) stays a manual check.
+- **✅ Automated (badge logic)** — `test/e2e/specs/bridge.e2e.ts` ("5.2 idle sessions don't raise the badge; awaiting ones do") sets one session idle and another awaiting via `agent_status_set` and asserts an idle-only session never raises the bell, while an awaiting one does and clears correctly. The running-state tooltip that *names* the waiting sessions is asserted in `status-bar.e2e.ts` (see 5.3); only the `⚙` tab-title prefix on a live terminal tab stays a manual check.
 - **Setup:** Two sessions `work` and `research`, both running Claude.
 - **Steps:** Prompt `work`, leave `research` idle.
 - **Expected:** Only `work` shows `⚙` prefix. Badge count reflects only sessions awaiting input.
@@ -569,6 +569,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.3 Badge tooltip clears when session goes idle
 
+- **✅ Automated** — `test/e2e/specs/status-bar.e2e.ts` ("5.1–5.4 …") sets an awaiting-input attention (bell + "1 session(s) awaiting input: work" in the pill's `aria-label`), then clears it (`setAttention(0, [])`) and asserts the tooltip returns to the default running text with no stale "awaiting input" string and no `🔔` on the pill.
 - **Setup:** Session `a` in awaiting-input state.
 - **Steps:** Answer the question; wait for transition to idle. Hover status bar pill.
 - **Expected:** `🔔` badge gone; tooltip back to default running tooltip. No stale "1 session(s) awaiting input: a" string.
@@ -576,7 +577,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.4 Toggle MCP off clears awaiting-input state
 
-- **✅ Automated (badge clears)** — `test/e2e/specs/bridge.e2e.ts` ("5.4 toggling MCP off clears the awaiting-input badge") sets an awaiting-input status, turns the MCP server off (`applyMcpEnabled(false)` → `clearActivity`), and asserts the bell clears. The tooltip-text half needs a running container (see 5.2) and stays a manual check.
+- **✅ Automated** — `test/e2e/specs/bridge.e2e.ts` ("5.4 toggling MCP off clears the awaiting-input badge") sets an awaiting-input status, turns the MCP server off (`applyMcpEnabled(false)` → `clearActivity`), and asserts the bell clears. The awaiting-input **tooltip text** itself (naming the session) is asserted in `status-bar.e2e.ts` (see 5.3).
 - **Setup:** Session in awaiting-input state.
 - **Steps:** Run **Sandbox: Toggle MCP Server**.
 - **Expected:** Badge AND tooltip both clear.
