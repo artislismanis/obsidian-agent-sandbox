@@ -176,9 +176,9 @@ After that, `npm run test:integration` will include the four Claude tests (`clau
 
 | Suite | Path | What's covered |
 |-------|------|----------------|
-| **Unit** | `src/__tests__/*.test.ts` | Input validation (write dir, private hosts, memory, CPUs, bind address, memory file name, path-prefix lists; numeric range checks like port / font size / scrollback are inline in `settings.ts` via `addNumberSetting` rather than a named validator), WSL + Windows shell escaping (incl. `$`/backtick neutralisation), WSL path conversion, env var injection, `parseIsRunning` state machine, ttyd polling / URL construction, status bar state transitions, firewall status bar, timing-safe MCP auth, path traversal protection, every MCP tool handler |
-| **Integration** | `test/integration/*.test.ts` | Container health + `verify.sh`, vault ro/rw mounts + mount isolation, host-uid ownership of container-written files in the write dir (3.10, Linux-gated), narrow sudo scope + `OAS_SUDO_PASSWORD` unset after drop-privileges, MCP env var injection, MCP HTTP auth / routing / CORS, Docker resource naming (`oas-test` prefix), named volumes (`oas-test-claude-config`, `oas-test-shell-history`, `oas-test-user-config`), native claude binary symlink layout, firewall enable / allowlist / disable, tmux session create + list + persist, ttyd port remapping, Claude Code auth + `claude -p` execution + memory MCP tool use + filesystem `Read` tool |
-| **E2E** | `test/e2e/specs/*.e2e.ts` | Plugin loads and is enabled, ribbon icon present, status bar renders, the full set of all 12 commands registered, settings tabs render, MCP permission tiers visible with correct defaults, MCP token auto-generates and regenerates, numeric/text setting validation adds/removes `sandbox-input-error` class (incl. the vault-write-directory escape-path rejection), both ttyd and MCP bind-address security warnings toggle dynamically, per-setting "Requires container restart" labels appear on restart-needing settings only |
+| **Unit** | `src/__tests__/*.test.ts` | Input validation (write dir, private hosts, memory, CPUs, bind address, memory file name, path-prefix lists; numeric range checks like port / font size / scrollback are inline in `settings.ts` via `addNumberSetting` rather than a named validator), WSL + Windows shell escaping (incl. `$`/backtick neutralisation), WSL path conversion, env var injection, `parseIsRunning` state machine, ttyd polling / URL construction + connection backoff curve (2.11), status bar state transitions + running-tooltip composition (2.13), firewall status bar, container-status notice body (2.14), connection-log formatter (2.16), terminal tab-title composition (5.1), agent-output notice debounce / rate-limit / toggles (5.6–5.9), session-name validation (5.13), MCP arg coercion (`coercedBoolean`, `z.coerce.number`), timing-safe MCP auth, path traversal protection, every MCP tool handler |
+| **Integration** | `test/integration/*.test.ts` | Container health + `verify.sh`, vault ro/rw mounts + mount isolation, host-uid ownership of container-written files in the write dir (3.10, Linux-gated), narrow sudo scope + `OAS_SUDO_PASSWORD` unset after drop-privileges, MCP env var injection, MCP HTTP auth / routing / CORS, Docker resource naming (`oas-test` prefix), named volumes (`oas-test-claude-config`, `oas-test-shell-history`, `oas-test-user-config`), native claude binary symlink layout, firewall enable / disable / `--status` + extras read/write-protection + `--list-sources` tags + egress allow/block (Stage 8, egress probes self-skip without outbound), tmux session create + list + persist, ttyd port remapping, Claude Code auth + `claude -p` execution + memory MCP tool use + filesystem `Read` tool |
+| **E2E** | `test/e2e/specs/*.e2e.ts` | Plugin loads and is enabled, ribbon icon present, status bar renders, the full set of all 12 commands registered, settings tabs render, MCP permission tiers visible with correct defaults, MCP token auto-generates and regenerates, numeric/text setting validation adds/removes `sandbox-input-error` class (incl. the vault-write-directory escape-path rejection), both ttyd and MCP bind-address security warnings toggle dynamically + the warning's amber left-border styling (1.4, via `getCSSProperty`), per-setting "Requires container restart" labels appear on restart-needing settings only, and the Stage 7 symlink / path-traversal denials (7.1–7.3) against the real MCP server (`security.e2e.ts`) |
 | **Bridge** | `test/e2e/specs/bridge.e2e.ts` (Docker-free), `test/e2e/container/bridge-container.e2e.ts` (Docker) | Drives the **real plugin's MCP server** in a wdio-launched Obsidian: navigate tool changes the active tab (3.5); review modals end-to-end — content-diff approve + reject, frontmatter JSON diff, rename affected-links list, batch checkboxes (4.1–4.5); awaiting-input badge + multi-session / MCP-off clearing (3.11, 5.2, 5.4); permission-tier matrix across six cells via `mcp_capabilities` + `tools/list` (3.1/3.2; navigate/manage/write-mode, extensions tier excepted — needs its target plugins); auth lifecycle — token rotation rejects the old token, MCP-off drops connections (3.6, 3.7); graph-cache invalidation on a live edit (3.8); a concurrent tool-call burst (3.9); plus fidelity coverage of read-tier search/graph tools against the real Obsidian scorer + metadata graph. Container tier proves the host↔container MCP round-trip: a live `oas-test` container reaches the host plugin's MCP server via `host.docker.internal`, bearer-token accepted/rejected, and a `vault_list` from the container returns the host vault's files |
 
 ## What's NOT covered (and why)
@@ -233,17 +233,13 @@ Cache `plugin/.obsidian-cache/` by the key printed at the start of an e2e run (`
 
 ## Security and stress smoke
 
-Two host-runnable bash scripts cover the shell-verifiable scenarios from `qa-test-plan.md`. Requires: live container, a test vault, and `jq` on the host.
+Stage 7 (symlink/path-traversal) and Stage 8 (firewall) now run in CI, not via a host script:
 
-**`container/test-scripts/security-checks.sh`**: Stage 7 (symlink/path-traversal boundary), Stage 8 (firewall egress, list-sources tagging, MCP path isolation), and Stage 9 tool-bug regression probes (string→bool/number coercion, periodic-note default, canvas changes validation). Firewall must be enabled with `example.com` in Additional firewall domains.
+- **Stage 7** → `test/e2e/specs/security.e2e.ts` (denials 7.1–7.3 against the real plugin MCP server) + `src/__tests__/mcp-symlink.test.ts` (the realpath guard incl. the 7.4 allow-path).
+- **Stage 8** → `test/integration/firewall.test.ts` (extras read/write-protection, enable/disable/status, `--list-sources` tags, egress allow/block, off-restores-egress).
+- **Stage 9 arg-coercion** (string→bool/number) → `src/__tests__/mcp-tools.test.ts` (`coercedBoolean` + `z.coerce.number`).
 
-```bash
-bash container/test-scripts/security-checks.sh /path/to/test-vault
-# Firewall-off egress probe (toggle firewall off in Obsidian first):
-bash container/test-scripts/security-checks.sh /path/to/test-vault --firewall-off
-```
-
-**`container/test-scripts/stress-checks.sh`**: Stage 12 stress scenarios: unicode vault path, large-file read (~5 MB), oas-test-* teardown debris check. The daemon-stop probe (`--with-daemon-stop`) is host-disruptive and optional for routine runs.
+`container/test-scripts/stress-checks.sh` remains the one host-runnable smoke script — Stage 12 stress scenarios: unicode vault path, large-file read (~5 MB), oas-test-* teardown debris check. Requires a live container, a test vault, and `jq` on the host. The daemon-stop probe (`--with-daemon-stop`) is host-disruptive and optional for routine runs.
 
 ```bash
 bash container/test-scripts/stress-checks.sh /path/to/test-vault
@@ -251,7 +247,7 @@ bash container/test-scripts/stress-checks.sh /path/to/test-vault
 bash container/test-scripts/stress-checks.sh /path/to/test-vault --with-daemon-stop
 ```
 
-Both scripts complement but do not replace the `mcp-capability-test.md` cell sweep. Stage 7 bodies are in `qa-test-plan.md` for reference; Stage 9 is reduced to one human-only scenario (9.3 Tasks recurring semantics); Stage 12 UI-bound scenarios (12.4–12.6, 12.7) remain in the QA plan.
+It complements but does not replace the `mcp-capability-test.md` cell sweep. Stage 9 residual is one human-only scenario (9.3 Tasks recurring semantics); the canvas object-vs-string and periodic-default probes are accepted gaps (need a live Canvas/Periodic Notes plugin; the `changes: z.string()` typing that rejects objects is enforced by the tool schema). Stage 12 UI-bound scenarios (12.4–12.6, 12.7) remain in the QA plan.
 
 ## Manual test scenarios
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for MCP test scripts (security-checks.sh, stress-checks.sh).
+# Shared helpers for MCP test scripts (stress-checks.sh).
 # Source this file after setting VAULT.  It sets MCP_PORT/BIND/BASE/PASS/FAIL,
 # reads MCP_TOKEN, defines helpers, and runs preflight checks.
 

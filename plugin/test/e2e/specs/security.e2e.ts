@@ -15,9 +15,10 @@ import { mcpInitialize, mcpCallTool, type McpSession } from "../mcp-client";
 // Covers the denial cases 7.1-7.3 (the security-critical guarantees). The 7.4
 // allow-path is unit-only — see the note in `before` and mcp-symlink.test.ts.
 //
-// This is the e2e port of container/test-scripts/security-checks.sh T7. The
-// realpath logic itself is unit-tested in mcp-symlink.test.ts; this layer adds
-// real-filesystem resolution through the live MCP server.
+// This is the e2e replacement for the T7 section of the (removed) host script
+// container/test-scripts/security-checks.sh. The realpath logic itself is
+// unit-tested in mcp-symlink.test.ts; this layer adds real-filesystem
+// resolution through the live MCP server.
 
 const SEC_MCP_PORT = 39081; // distinct from the 28080 default and the bridge spec's 39080
 const SEC_MCP_TOKEN = "security-e2e-token";

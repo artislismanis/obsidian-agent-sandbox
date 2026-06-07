@@ -59,13 +59,7 @@ git ls-files '*.md' | xargs lychee --no-progress --max-concurrency 4 \
 
 See `docs/testing.md` "Lint infrastructure" for how to install `shellcheck`, `hadolint`, `actionlint`, and `lychee`.
 
-Security boundary smoke (required before shipping; covers P0 scenarios from Stage 7/8, P1/P2 regressions from Stage 9):
-
-```bash
-# Needs: live container, firewall enabled, example.com in Additional firewall domains,
-#        internal.corp.example in container/firewall-extras.txt, jq on host PATH
-bash container/test-scripts/security-checks.sh /path/to/test-vault
-```
+Security boundary checks (Stage 7/8 + Stage 9 arg-coercion) now run in CI — no host script needed. They are covered by `test/e2e/specs/security.e2e.ts`, `test/integration/firewall.test.ts`, `src/__tests__/mcp-symlink.test.ts`, and `src/__tests__/mcp-tools.test.ts`; a green `check.yml` + `integration.yml` is the release gate for them.
 
 Stress smoke (required before shipping; covers Stage 12 edge cases):
 
