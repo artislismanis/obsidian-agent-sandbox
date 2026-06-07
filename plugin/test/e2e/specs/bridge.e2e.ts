@@ -590,6 +590,32 @@ describe("Bridge C1: cache invalidation (3.8)", function () {
 		expect(second.text).toContain("linker1.md");
 		expect(second.text).toContain("linker2.md");
 	});
+
+	// QA plan 3.8 (content freshness): vault_read is a non-cached path, so an
+	// edit made live in Obsidian must surface on the very next read. The
+	// backlinks test above covers the cached graph; this covers raw content.
+	it("3.8 vault_read returns content edited live in Obsidian (version A → version B)", async function () {
+		await browser.executeObsidian(async ({ app }) => {
+			await app.vault.create("freshness.md", "version A\n");
+		});
+
+		const first = await mcpCallTool(session, "vault_read", { path: "freshness.md" });
+		expect(first.isError).toBe(false);
+		expect(first.text).toContain("version A");
+
+		await browser.executeObsidian(async ({ app }) => {
+			const f = app.vault.getFileByPath("freshness.md");
+			if (f) await app.vault.modify(f, "version B\n");
+		});
+
+		await browser.waitUntil(
+			async () => {
+				const r = await mcpCallTool(session, "vault_read", { path: "freshness.md" });
+				return !r.isError && r.text.includes("version B");
+			},
+			{ timeout: 5000, timeoutMsg: "vault_read never reflected the live edit (version B)" },
+		);
+	});
 });
 
 // ── Concurrent tool calls (QA 3.9) ──────────────────────────────────────────
@@ -675,5 +701,94 @@ describe("Bridge C1: read-tier fidelity (search + graph)", function () {
 		// hub links out to both alpha and mixed.
 		expect(res.text).toContain("alpha.md");
 		expect(res.text).toContain("mixed.md");
+	});
+});
+
+// ── Live terminal tab activity prefix (QA 5.1) ──────────────────────────────
+// composeTabTitle is unit-tested; the residual is the LIVE repaint of an open
+// terminal leaf's tab title when a Claude session changes state. agent_status_set
+// routes to ActivityUi → live leaf.view.setActivityPrefix → getDisplayText()
+// recomposes "⚙/✓/❓ Session: <name>". We open a real terminal leaf (no container
+// needed — the WebSocket attach fails harmlessly), drive the status over MCP,
+// and read getDisplayText() off the leaf's view.
+
+async function openTerminal(name: string): Promise<void> {
+	await browser.executeObsidian(async ({ app }, sessionName: string) => {
+		const plugin = (
+			app as unknown as {
+				plugins: {
+					plugins: Record<
+						string,
+						{ activateTerminalView: (n?: string) => Promise<unknown> }
+					>;
+				};
+			}
+		).plugins.plugins["obsidian-agent-sandbox"];
+		await plugin.activateTerminalView(sessionName);
+	}, name);
+	await browser.pause(300);
+}
+
+async function terminalTitle(sessionName: string): Promise<string | null> {
+	return browser.executeObsidian(({ app }, name: string) => {
+		const leaves = (
+			app as unknown as {
+				workspace: {
+					getLeavesOfType: (t: string) => Array<{
+						view: {
+							getSessionName?: () => string | null;
+							getDisplayText?: () => string;
+						};
+					}>;
+				};
+			}
+		).workspace.getLeavesOfType("agent-sandbox-terminal-view");
+		const leaf = leaves.find((l) => l.view.getSessionName?.() === name);
+		return leaf?.view.getDisplayText?.() ?? null;
+	}, sessionName);
+}
+
+describe("Bridge C1: live terminal tab activity prefix (5.1)", function () {
+	let session: McpSession;
+
+	before(async function () {
+		await obsidianPage.resetVault();
+		await startBridgeMcp({});
+		session = await mcpInitialize(BRIDGE_MCP_PORT, BRIDGE_MCP_TOKEN);
+		await openTerminal("work");
+	});
+
+	after(async function () {
+		await browser.executeObsidian(({ app }) => {
+			(
+				app as unknown as {
+					workspace: { getLeavesOfType: (t: string) => Array<{ detach: () => void }> };
+				}
+			).workspace
+				.getLeavesOfType("agent-sandbox-terminal-view")
+				.forEach((l) => l.detach());
+		});
+	});
+
+	async function expectPrefix(status: string, symbol: string): Promise<void> {
+		await mcpCallTool(session, "agent_status_set", { status, sessionName: "work" });
+		await browser.waitUntil(
+			async () => {
+				const title = await terminalTitle("work");
+				return (
+					title !== null && title.startsWith(symbol) && title.includes("Session: work")
+				);
+			},
+			{
+				timeout: 5000,
+				timeoutMsg: `tab title never showed the ${status} prefix (${symbol})`,
+			},
+		);
+	}
+
+	it("5.1 working → ⚙, awaiting_input → ❓, idle → ✓ on the live terminal tab", async function () {
+		await expectPrefix("working", "⚙");
+		await expectPrefix("awaiting_input", "❓");
+		await expectPrefix("idle", "✓");
 	});
 });
