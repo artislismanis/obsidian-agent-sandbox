@@ -102,10 +102,11 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.2 Restart-required modal on settings close
 
+- **🟡 Partially automated (modal wiring)** — the diff that gates the modal (`restartKeysChanged`, including revert-clears-the-prompt) is unit-tested in `src/__tests__/settings-restart.test.ts`, and the modal wiring (text + two buttons, **Later** = no restart, **Restart** = dispatches `restartContainer()`, revert→no modal, container-down→Notice + `pendingRestartMarker`) is e2e-tested in `test/e2e/specs/restart-modal.e2e.ts`. The real container recreate (`docker compose down/up`) and the changed setting actually taking effect stay manual.
 - **Setup:** Container running.
 - **Steps:** Open Settings → Agent Sandbox. Change any field flagged in 1.1 as "Requires container restart." (e.g. General → Vault write directory). Close the settings tab (click another settings section or close the settings modal entirely).
 - **Expected:** While the settings tab is open, no inline indicator or status bar change appears. On close, a **Restart Container?** modal appears: message reads "You changed settings that require a container restart. Restart now? This will stop all active terminal sessions." Two buttons: **Restart** (restarts container and dismisses) and **Later** (saves settings without restarting and dismisses). Both dismiss the modal cleanly with no console errors. The modal does NOT appear if the container is not running when settings close.
-- **Notes:** P1. Known limitation: editing a restart-required field then reverting the value still triggers the modal (no diff tracking). Field list is single-sourced in 1.1.
+- **Notes:** P1. Reverting a changed restart field to its value **at the time the settings tab was opened**, before closing, skips the prompt — the modal diffs against an open-time snapshot. Cross-session caveat: after a change is saved via **Later** and the tab is reopened, the snapshot rebaselines, so reverting to the *container-start* value will still prompt. Field list is single-sourced in 1.1.
 
 ### 1.3 MCP token regenerate
 
