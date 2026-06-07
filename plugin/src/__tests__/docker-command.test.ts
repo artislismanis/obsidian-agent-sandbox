@@ -85,6 +85,7 @@ vi.mock("child_process", async () => {
 });
 
 import {
+	DockerManager,
 	buildWslCommand,
 	buildLocalCommand,
 	buildLocalWindowsCommand,
@@ -92,6 +93,7 @@ import {
 	getWslHostIp,
 	getWslNetworkingMode,
 } from "../docker";
+import type { DockerManagerSettings } from "../docker";
 
 describe("buildWslCommand", () => {
 	it("builds a basic command", () => {
@@ -526,5 +528,85 @@ describe("getWslNetworkingMode", () => {
 		setPlatform("win32");
 		execState.impl = () => new Error("wslinfo: command not found");
 		expect(await getWslNetworkingMode("Ubuntu")).toBeUndefined();
+	});
+});
+
+// QA 2.19 — the sudo password drives two things in the compose invocation:
+// the OAS_SUDO_PASSWORD env var and the no-new-privileges-off override file
+// (its presence toggles the container's security_opt, forcing a recreate).
+// Both decisions live in DockerManager.run/composeFiles; assert them on the
+// real command string captured from the mocked exec, not a reimplementation.
+describe("sudo password env + compose-file wiring (QA 2.19)", () => {
+	const originalPlatform = process.platform;
+
+	function baseSettings(overrides: Partial<DockerManagerSettings> = {}): DockerManagerSettings {
+		return {
+			dockerMode: "local",
+			composePath: "/opt/oas/container",
+			wslDistro: "",
+			vaultPath: "/home/u/vault",
+			writeDir: "agent-workspace",
+			memoryFileName: "memory.json",
+			ttydPort: 7681,
+			ttydBindAddress: "127.0.0.1",
+			allowedPrivateHosts: "",
+			additionalFirewallDomains: "",
+			containerMemory: "4G",
+			containerCpus: "2",
+			mcpToken: "tok",
+			mcpPort: 28080,
+			...overrides,
+		};
+	}
+
+	let commands: string[];
+
+	beforeEach(() => {
+		// Local command path; on linux getWslNetworkingMode no-ops without an
+		// exec, so the only captured command is the compose invocation.
+		setPlatform("linux");
+		commands = [];
+		execState.impl = (cmd: string) => {
+			commands.push(cmd);
+			return { stdout: "", stderr: "" };
+		};
+	});
+
+	afterEach(() => {
+		setPlatform(originalPlatform);
+		execState.impl = () => new Error("exec not configured");
+	});
+
+	function composeCommand(): string {
+		const c = commands.find((cmd) => cmd.includes("ps --format json"));
+		if (!c) throw new Error(`no compose command captured; got: ${commands.join(" | ")}`);
+		return c;
+	}
+
+	it("adds the no-new-privileges-off override and exports OAS_SUDO_PASSWORD when a password is set", async () => {
+		const docker = new DockerManager(() => baseSettings({ sudoPassword: "s3cret-sentinel" }));
+		await docker.probeStatus();
+		const cmd = composeCommand();
+		expect(cmd).toContain(
+			"-f docker-compose.yml -f docker-compose.no-new-privileges-off.override.yml",
+		);
+		expect(cmd).toContain("OAS_SUDO_PASSWORD='s3cret-sentinel'");
+	});
+
+	it("uses only the base compose file and omits OAS_SUDO_PASSWORD when the password is empty", async () => {
+		const docker = new DockerManager(() => baseSettings({ sudoPassword: "" }));
+		await docker.probeStatus();
+		const cmd = composeCommand();
+		expect(cmd).toContain("-f docker-compose.yml");
+		expect(cmd).not.toContain("no-new-privileges-off");
+		expect(cmd).not.toContain("OAS_SUDO_PASSWORD");
+	});
+
+	it("treats an undefined password the same as empty (no override, no env)", async () => {
+		const docker = new DockerManager(() => baseSettings({ sudoPassword: undefined }));
+		await docker.probeStatus();
+		const cmd = composeCommand();
+		expect(cmd).not.toContain("no-new-privileges-off");
+		expect(cmd).not.toContain("OAS_SUDO_PASSWORD");
 	});
 });
