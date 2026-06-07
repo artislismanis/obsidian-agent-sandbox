@@ -519,48 +519,15 @@ export class DockerManager {
 				});
 			}
 
-			const dockerNotRunningPatterns = [
-				"Cannot connect to the Docker daemon",
-				"//./pipe/docker_engine",
-				"The system cannot find the file specified",
-			];
-			const errorPatterns: Array<[boolean, string]> = [
-				[
-					combined.includes("is not recognized"),
-					"WSL is not available. Please ensure WSL is installed and configured.",
-				],
-				[
-					dockerNotRunningPatterns.some((p) => combined.includes(p)),
-					"Docker is not running. Please start your Docker engine.",
-				],
-				[
-					combined.includes("No such distribution"),
-					`WSL distribution '${wslDistro}' not found. Check Settings > Docker.`,
-				],
-				[
-					combined.includes("no configuration file provided"),
-					"docker-compose.yml not found. Check Settings > Docker Compose path.",
-				],
-				// Only rewrite ENOENT at the Node spawn level (cwd missing →
-				// phrase in err.message, empty stderr). A downstream tool like
-				// tmux reporting "No such file or directory" via stderr keeps
-				// its original error so callers can recognise it.
-				[
-					!err.stderr && (err.message?.includes("No such file or directory") ?? false),
-					"Docker Compose directory not found. Check Settings > Docker Compose path.",
-				],
-				[
-					!!err.killed ||
-						combined.includes("ETIMEDOUT") ||
-						combined.includes("timed out"),
-					"Docker is not responding. It may still be starting - try again in a moment.",
-				],
-			];
-			for (const [match, message] of errorPatterns) {
-				if (match) throw new Error(message);
-			}
+			const classified = DockerManager.classifyCommandError({
+				stderr: err.stderr ?? "",
+				message: err.message ?? "",
+				killed: !!err.killed,
+				wslDistro,
+			});
 			throw new Error(
-				"Unexpected Docker error. Open the developer console (Ctrl+Shift+I) for details.",
+				classified ??
+					"Unexpected Docker error. Open the developer console (Ctrl+Shift+I) for details.",
 			);
 		}
 	}
@@ -1073,6 +1040,61 @@ export class DockerManager {
 		assertSafeSessionName(oldName);
 		assertSafeSessionName(newName);
 		await this.tmuxExec(`rename-session -t "${oldName}" "${newName}"`);
+	}
+
+	/**
+	 * Map a failed exec()'s error fields to a user-facing message, or null when
+	 * no known failure pattern matches (the caller falls back to a generic
+	 * message). Pure - it never spawns Docker - so the daemon-down / WSL-missing
+	 * / bad-path classification is unit-testable without a host daemon (QA 1.5).
+	 */
+	static classifyCommandError(parts: {
+		stderr: string;
+		message: string;
+		killed: boolean;
+		wslDistro: string;
+	}): string | null {
+		const { stderr, message, killed, wslDistro } = parts;
+		const combined = stderr + message;
+		const dockerNotRunningPatterns = [
+			"Cannot connect to the Docker daemon",
+			"//./pipe/docker_engine",
+			"The system cannot find the file specified",
+		];
+		const errorPatterns: Array<[boolean, string]> = [
+			[
+				combined.includes("is not recognized"),
+				"WSL is not available. Please ensure WSL is installed and configured.",
+			],
+			[
+				dockerNotRunningPatterns.some((p) => combined.includes(p)),
+				"Docker is not running. Please start your Docker engine.",
+			],
+			[
+				combined.includes("No such distribution"),
+				`WSL distribution '${wslDistro}' not found. Check Settings > Docker.`,
+			],
+			[
+				combined.includes("no configuration file provided"),
+				"docker-compose.yml not found. Check Settings > Docker Compose path.",
+			],
+			// Only rewrite ENOENT at the Node spawn level (cwd missing →
+			// phrase in err.message, empty stderr). A downstream tool like
+			// tmux reporting "No such file or directory" via stderr keeps
+			// its original error so callers can recognise it.
+			[
+				!stderr && message.includes("No such file or directory"),
+				"Docker Compose directory not found. Check Settings > Docker Compose path.",
+			],
+			[
+				killed || combined.includes("ETIMEDOUT") || combined.includes("timed out"),
+				"Docker is not responding. It may still be starting - try again in a moment.",
+			],
+		];
+		for (const [match, msg] of errorPatterns) {
+			if (match) return msg;
+		}
+		return null;
 	}
 
 	static parseIsRunning(statusOutput: string): boolean {

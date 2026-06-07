@@ -10,7 +10,12 @@ vi.mock("obsidian", () => ({
 vi.mock("@xterm/xterm", () => ({ Terminal: class {} }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class {} }));
 
-import { composeTabTitle, formatConnectionLog } from "../terminal-view";
+import {
+	composeTabTitle,
+	composeFontFamily,
+	shouldAutoCopy,
+	formatConnectionLog,
+} from "../terminal-view";
 import type { TerminalConnectionEvent } from "../terminal-view";
 
 // QA 5.1: terminal tab title reflects activity state via a symbol prefix.
@@ -31,6 +36,58 @@ describe("composeTabTitle", () => {
 
 	it("applies the prefix to unnamed terminals too", () => {
 		expect(composeTabTitle(null, 2, "working")).toBe("⚙ Sandbox Terminal 2");
+	});
+});
+
+// QA 2.7: terminal font precedence (user font → Obsidian mono → portable chain).
+describe("composeFontFamily", () => {
+	it("puts the user font first when set", () => {
+		expect(composeFontFamily("Fira Code", "MyMono")).toBe(
+			"Fira Code, MyMono, Cascadia Code, Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, monospace",
+		);
+	});
+
+	it("drops the user font when undefined, keeping the Obsidian var first", () => {
+		expect(composeFontFamily(undefined, "MyMono")).toBe(
+			"MyMono, Cascadia Code, Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, monospace",
+		);
+	});
+
+	it("drops a blank/whitespace user font and a blank Obsidian var", () => {
+		expect(composeFontFamily("   ", "")).toBe(
+			"Cascadia Code, Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, monospace",
+		);
+	});
+
+	it("trims surrounding whitespace on the user font", () => {
+		expect(composeFontFamily("  Fira Code  ", "MyMono").startsWith("Fira Code, MyMono")).toBe(
+			true,
+		);
+	});
+});
+
+// QA 2.7: auto-copy-on-selection gating (setting off / empty selection / blurred window).
+describe("shouldAutoCopy", () => {
+	it("copies when enabled, non-empty selection, and focused", () => {
+		expect(shouldAutoCopy({ enabled: true, selection: "abc", documentFocused: true })).toBe(
+			true,
+		);
+	});
+
+	it("skips when auto-copy is disabled", () => {
+		expect(shouldAutoCopy({ enabled: false, selection: "abc", documentFocused: true })).toBe(
+			false,
+		);
+	});
+
+	it("skips an empty selection", () => {
+		expect(shouldAutoCopy({ enabled: true, selection: "", documentFocused: true })).toBe(false);
+	});
+
+	it("skips when the document lost focus (clipboard.writeText would throw)", () => {
+		expect(shouldAutoCopy({ enabled: true, selection: "abc", documentFocused: false })).toBe(
+			false,
+		);
 	});
 });
 

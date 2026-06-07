@@ -96,6 +96,108 @@ describe("DockerManager", () => {
 		});
 	});
 
+	describe("classifyCommandError", () => {
+		// Maps a failed exec()'s error fields to the user-facing message the
+		// status bar and Notice surface (QA 1.5). Pure, so the daemon-down path
+		// is testable without stopping a host daemon.
+		const base = { stderr: "", message: "", killed: false, wslDistro: "Ubuntu" };
+
+		it("classifies a stopped Docker daemon (Linux socket)", () => {
+			expect(
+				DockerManager.classifyCommandError({
+					...base,
+					stderr: "Cannot connect to the Docker daemon at unix:///var/run/docker.sock.",
+				}),
+			).toBe("Docker is not running. Please start your Docker engine.");
+		});
+
+		it("classifies a stopped Docker daemon (Windows named pipe)", () => {
+			expect(
+				DockerManager.classifyCommandError({
+					...base,
+					stderr: "error during connect: open //./pipe/docker_engine: The system cannot find the file specified.",
+				}),
+			).toBe("Docker is not running. Please start your Docker engine.");
+		});
+
+		it("classifies WSL not installed", () => {
+			expect(
+				DockerManager.classifyCommandError({
+					...base,
+					message: "'wsl' is not recognized as an internal or external command",
+				}),
+			).toBe("WSL is not available. Please ensure WSL is installed and configured.");
+		});
+
+		it("classifies a missing WSL distribution and interpolates the name", () => {
+			expect(
+				DockerManager.classifyCommandError({
+					...base,
+					wslDistro: "Debian",
+					stderr: "There is no such distribution: No such distribution.",
+				}),
+			).toBe("WSL distribution 'Debian' not found. Check Settings > Docker.");
+		});
+
+		it("classifies a missing compose file", () => {
+			expect(
+				DockerManager.classifyCommandError({
+					...base,
+					stderr: "no configuration file provided: not found",
+				}),
+			).toBe("docker-compose.yml not found. Check Settings > Docker Compose path.");
+		});
+
+		it("classifies a spawn-level ENOENT (cwd missing: phrase in message, no stderr)", () => {
+			expect(
+				DockerManager.classifyCommandError({
+					...base,
+					message: "spawn docker ENOENT: No such file or directory",
+				}),
+			).toBe("Docker Compose directory not found. Check Settings > Docker Compose path.");
+		});
+
+		it("does NOT rewrite a downstream 'No such file or directory' that arrives via stderr", () => {
+			// A tmux/file error on stderr keeps its original error so callers can
+			// recognise it - only the empty-stderr spawn case is rewritten.
+			expect(
+				DockerManager.classifyCommandError({
+					...base,
+					stderr: "tmux: No such file or directory",
+					message: "Command failed",
+				}),
+			).toBeNull();
+		});
+
+		it("classifies a timeout via the killed flag", () => {
+			expect(DockerManager.classifyCommandError({ ...base, killed: true })).toBe(
+				"Docker is not responding. It may still be starting - try again in a moment.",
+			);
+		});
+
+		it("classifies a timeout via ETIMEDOUT in the message", () => {
+			expect(DockerManager.classifyCommandError({ ...base, message: "ETIMEDOUT" })).toBe(
+				"Docker is not responding. It may still be starting - try again in a moment.",
+			);
+		});
+
+		it("returns null for an unrecognised failure (caller uses the generic message)", () => {
+			expect(
+				DockerManager.classifyCommandError({ ...base, stderr: "some novel docker error" }),
+			).toBeNull();
+		});
+
+		it("prioritises the WSL-missing check over later patterns", () => {
+			// Order matters: 'is not recognized' wins even if other noise is present.
+			expect(
+				DockerManager.classifyCommandError({
+					...base,
+					stderr: "'wsl' is not recognized; Cannot connect to the Docker daemon",
+				}),
+			).toBe("WSL is not available. Please ensure WSL is installed and configured.");
+		});
+	});
+
 	describe("envSpec validators (hand-edited data.json defence)", () => {
 		// Settings UI validates each field at save time, but hand-edited
 		// data.json can carry invalid values through. The envSpec validators

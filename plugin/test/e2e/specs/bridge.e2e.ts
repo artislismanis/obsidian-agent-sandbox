@@ -227,6 +227,32 @@ describe("Bridge C1: review modals (reviewed tier, no container)", function () {
 		expect(await readFile(FILE)).toBe(before);
 	});
 
+	// QA plan 4.6: a large diff still renders and stays operable. This is a
+	// render-without-error guard (modal appears, both sides of a ~500-line diff
+	// are present, Approve applies) - NOT a latency assertion. CI timing is too
+	// noisy to assert "<1s / scrolls smoothly", which stays a manual check.
+	it("4.6 large (~500-line) diff renders without error and approves", async function () {
+		const big = Array.from({ length: 500 }, (_, i) => `line ${i}`).join("\n") + "\n";
+		const bigEdited =
+			Array.from({ length: 500 }, (_, i) => `line ${i} edited`).join("\n") + "\n";
+		await obsidianPage.resetVault({ [FILE]: big });
+		const call = mcpCallTool(session, "vault_modify_reviewed", {
+			path: FILE,
+			content: bigEdited,
+		});
+
+		const approve = $("button=Approve");
+		await approve.waitForExist({ timeout: 15000 });
+		await expect($("pre.sandbox-diff-pre")).toBeDisplayed();
+		expect((await $$(".sandbox-diff-line-added").getElements()).length).toBeGreaterThan(100);
+		expect((await $$(".sandbox-diff-line-removed").getElements()).length).toBeGreaterThan(100);
+		await approve.click();
+
+		const res = await call;
+		expect(res.isError).toBe(false);
+		expect(await readFile(FILE)).toBe(bigEdited);
+	});
+
 	// QA plan 4.2: frontmatter set shows a JSON diff modal; Approve writes the FM.
 	it("4.2 frontmatter diff — Approve sets the property", async function () {
 		await obsidianPage.resetVault({ [FILE]: BASE });
