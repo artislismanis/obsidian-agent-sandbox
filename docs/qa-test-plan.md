@@ -587,7 +587,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.6 Agent output Notice: debounced bursts
 
-- **🟡 Partially automated (debounce/aggregation)** — `src/__tests__/activity.test.ts` ("fires a single notice for one create after debounce elapses", "aggregates burst of creates into one notice") drives `AgentOutputNotifier` with fake timers and asserts the emitted Notice text. The live Claude file-create chain stays manual.
+- **✅ Automated** — `src/__tests__/activity.test.ts` ("fires a single notice for one create after debounce elapses", "aggregates burst of creates into one notice") drives `AgentOutputNotifier` with fake timers, and `test/e2e/specs/agent-output.e2e.ts` ("5.6: a burst of creates aggregates …") exercises the **live wiring** — three real `app.vault.create` events → the registered vault listener → a single "Agent output: 3 created" Notice in the DOM. Driving it from a real Claude run is redundant with the wiring now covered.
 - **Setup:** General → Agent output notifications → `Notify on file created` = on (the default).
 - **Steps:** `claude -p "Create three files under agent-workspace/: a.md b.md c.md each with just 'x'."`
 - **Expected:** A single Notice ~2 s after the last create: "Agent output: 3 created" (not three notices).
@@ -603,7 +603,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.8 `Notify on file edited` fires for modifies
 
-- **🟡 Partially automated (modify gating)** — `src/__tests__/activity.test.ts` ("fires for modify events when notifyEdited is true" / "ignores modify events when notifyEdited is false") covers the toggle. Live Claude modifies stay manual.
+- **✅ Automated** — `src/__tests__/activity.test.ts` ("fires for modify events when notifyEdited is true" / "ignores modify events when notifyEdited is false") covers the toggle, and `test/e2e/specs/agent-output.e2e.ts` ("5.8: with notifyEdited on, a modify fires a Notice") drives a real `app.vault.modify` through the live listener to an "Agent modified …" Notice.
 - **Setup:** Enable `Notify on file edited` (off by default).
 - **Steps:** Prompt Claude to modify two existing files.
 - **Expected:** Notice fires for the modifies.
@@ -611,7 +611,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.9 All notify toggles off → silent
 
-- **🟡 Partially automated (all-off silence)** — `src/__tests__/activity.test.ts` ("all-off suppresses everything") asserts no Notice fires with every toggle off. The live trigger stays manual.
+- **✅ Automated** — `src/__tests__/activity.test.ts` ("all-off suppresses everything") asserts no Notice fires with every toggle off, and `test/e2e/specs/agent-output.e2e.ts` ("5.9: all toggles off → no Notice fires") confirms it through the live vault-event path (create with all toggles off → no "Agent" Notice).
 - **Steps:** Turn off all four `Notify on file created / edited / deleted / renamed-moved` toggles. Trigger creates/modifies.
 - **Expected:** No Notices.
 - **Notes:** P2.
@@ -697,6 +697,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 6.6 Custom prompt modal edge inputs
 
+- **🟡 Partially automated (modal mechanics)** — `test/e2e/specs/analyse.e2e.ts` drives the real `inputModal` opened by `runAnalyseCustom` and asserts cases 1/3/4: an empty input is trimmed to a cancel (no terminal opens), and a 2000-char prompt containing shell metacharacters opens a terminal tab without truncation. The load-bearing **security** half — that the metacharacters reach `claude` as a single argument and `id`/`whoami` never execute on open — needs a real container shell (Stage 3) and stays manual.
 - **Setup:** Templates present.
 - **Steps:** Right-click → Analyse in Sandbox → Custom prompt. In turn: 1) empty + Run, 2) Cancel, 3) ~2000-character prompt, 4) prompt with shell metacharacters: `` echo `id`; $(whoami) && rm -rf /tmp/nope ``.
 - **Expected:** 1) Treated as a cancel — `inputModal` trims the value, so an empty/whitespace input resolves to nothing and no terminal opens (no separate validation hint). 2) Modal closes; no terminal. 3) Terminal opens with full text seeded, no truncation. 4) Metacharacters passed to `claude` as a single argument; `id` / `whoami` must not execute on open.
