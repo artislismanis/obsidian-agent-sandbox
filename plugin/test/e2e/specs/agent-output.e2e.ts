@@ -1,5 +1,5 @@
 import { browser, expect } from "@wdio/globals";
-import { describe, it, beforeEach, afterEach } from "mocha";
+import { describe, it, before, beforeEach, afterEach } from "mocha";
 import { obsidianPage } from "wdio-obsidian-service";
 
 // QA plan 5.6 / 5.8 / 5.9 — AgentOutputNotifier live wiring.
@@ -54,7 +54,9 @@ async function clearNotices(): Promise<void> {
 async function createFiles(paths: string[]): Promise<void> {
 	await browser.executeObsidian(async ({ app }, ps: string[]) => {
 		const vault = (app as unknown as AppShim).vault;
-		for (const p of ps) await vault.create(p, "x");
+		// Fire the burst near-simultaneously so all events land in one debounce
+		// window and aggregate into a single notice.
+		await Promise.all(ps.map((p) => vault.create(p, "x")));
 	}, paths);
 }
 
@@ -67,6 +69,14 @@ async function modifyFirstMarkdown(content: string): Promise<void> {
 }
 
 describe("AgentOutputNotifier live wiring (QA 5.6 / 5.8 / 5.9)", function () {
+	before(async function () {
+		// The vault create/modify listeners are registered ~2 s after
+		// layout-ready (main.ts defers them so the initial vault scan doesn't
+		// raise notices). Wait once so the first event-firing test below sees
+		// them attached — otherwise the first burst is silently dropped.
+		await browser.pause(2500);
+	});
+
 	beforeEach(async function () {
 		await obsidianPage.resetVault();
 		// Vault-wide so synthetic files at the vault root count as in-scope
@@ -90,7 +100,7 @@ describe("AgentOutputNotifier live wiring (QA 5.6 / 5.8 / 5.9)", function () {
 		// DEBOUNCE_MS is 2000; wait past it for the single aggregated notice.
 		await browser.waitUntil(
 			async () => (await noticeTexts()).some((t) => t.includes("Agent output: 3 created")),
-			{ timeout: 6000, timeoutMsg: "aggregated '3 created' notice never appeared" },
+			{ timeout: 8000, timeoutMsg: "aggregated '3 created' notice never appeared" },
 		);
 		// Exactly one agent-output notice, not three.
 		const agentNotices = (await noticeTexts()).filter((t) => t.includes("Agent output:"));
