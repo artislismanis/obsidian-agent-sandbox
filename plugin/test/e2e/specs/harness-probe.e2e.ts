@@ -1,5 +1,5 @@
 import { browser, expect, $$ } from "@wdio/globals";
-import { describe, it, before } from "mocha";
+import { describe, it } from "mocha";
 import { obsidianPage } from "wdio-obsidian-service";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -49,11 +49,11 @@ function basePath(): Promise<string> {
 	});
 }
 
+// NOTE: no resetVault() here. resetVault() re-fixtures the vault and drops the
+// on-disk plugin install, which both removes main.js and turns enablePlugin()
+// back into a no-op. These probes run against the initial launched vault, where
+// the service has installed the plugin on disk.
 describe("Harness capability: on-disk install + persistence (QA 2.6 / 2.5a)", function () {
-	before(async function () {
-		await obsidianPage.resetVault();
-	});
-
 	// QA plan 2.6 — a saved setting must survive a real reload. Also asserts the
 	// plugin is installed on disk (the precondition that makes persistence work).
 	it("persists a saved setting across reloadObsidian()", async function () {
