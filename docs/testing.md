@@ -206,9 +206,9 @@ Four GitHub Actions workflows run on every PR. To mirror them locally before pus
 # check.yml: lint + format + type-check + unit tests + build + e2e
 cd plugin && npm ci && npm run check && npm run build && npm run test:e2e:headless
 
-# integration.yml: docker build + container integration suite
+# integration.yml: docker build + container integration suite + bridge container tier
 cd ../container && docker compose build
-cd ../plugin && npm run test:integration
+cd ../plugin && npm run test:integration && npm run build && npm run test:e2e:bridge:headless
 
 # lint-infra.yml: shellcheck + hadolint + actionlint
 find container/scripts container/configs workspace/.claude \

@@ -102,3 +102,26 @@ jobs:
         # doesn't have. Other suites (container, container-advanced,
         # mcp-integration) run against the built image.
         run: npm run test:integration
+
+      # ── Bridge container tier ──────────────────────────────────────────────
+      # The host↔container MCP round-trip (test/e2e/container/) otherwise runs
+      # in no workflow and can regress silently. Reuse the image built above;
+      # like check.yml's e2e it needs the built plugin + a headless display.
+      - name: Cache Obsidian + chromedriver downloads
+        # SHA-pinned to v5.0.5; shares the restore prefix with check.yml so the
+        # downloaded Obsidian tree is reused across workflows.
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: plugin/.obsidian-cache
+          key: ${{ runner.os }}-obsidian-${{ hashFiles('plugin/wdio.bridge.conf.mts', 'plugin/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-obsidian-
+
+      - name: Build plugin (required for bridge e2e)
+        run: npm run build
+
+      - name: Install xvfb for headless e2e
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Bridge container e2e (host↔container MCP round-trip)
+        run: npm run test:e2e:bridge:headless
