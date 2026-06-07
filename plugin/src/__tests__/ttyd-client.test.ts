@@ -6,7 +6,13 @@ vi.mock("obsidian", () => ({
 }));
 
 import { requestUrl } from "obsidian";
-import { pollUntilReady, buildWsUrl, encodeInputFrames, exponentialBackoff } from "../ttyd-client";
+import {
+	pollUntilReady,
+	buildWsUrl,
+	encodeInputFrames,
+	exponentialBackoff,
+	resolveTtydBrowserUrl,
+} from "../ttyd-client";
 
 const mockRequestUrl = requestUrl as ReturnType<typeof vi.fn>;
 
@@ -148,5 +154,27 @@ describe("exponentialBackoff", () => {
 		for (let i = 0; i < 15; i++) {
 			expect(exponentialBackoff(i)).toBeLessThanOrEqual(5000);
 		}
+	});
+});
+
+// QA 2.7: "Open in Browser" URL. Loopback/unset → localhost (browsers may not
+// resolve bare IP literals); a LAN bind address is kept verbatim.
+describe("resolveTtydBrowserUrl", () => {
+	it("uses localhost for an unset bind address", () => {
+		expect(resolveTtydBrowserUrl(7681, undefined)).toBe("http://localhost:7681");
+	});
+
+	it("maps loopback / wildcard literals to localhost", () => {
+		expect(resolveTtydBrowserUrl(7681, "127.0.0.1")).toBe("http://localhost:7681");
+		expect(resolveTtydBrowserUrl(7681, "0.0.0.0")).toBe("http://localhost:7681");
+		expect(resolveTtydBrowserUrl(7681, "::1")).toBe("http://localhost:7681");
+	});
+
+	it("keeps a LAN bind address verbatim", () => {
+		expect(resolveTtydBrowserUrl(8080, "192.168.1.50")).toBe("http://192.168.1.50:8080");
+	});
+
+	it("trims surrounding whitespace before deciding", () => {
+		expect(resolveTtydBrowserUrl(7681, "  127.0.0.1  ")).toBe("http://localhost:7681");
 	});
 });

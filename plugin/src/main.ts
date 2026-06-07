@@ -324,18 +324,9 @@ export default class AgentSandboxPlugin extends Plugin {
 		});
 
 		// obsidian://agent-sandbox/open-terminal - activate or open a terminal tab
-		this.registerObsidianProtocolHandler("agent-sandbox/open-terminal", async () => {
-			try {
-				if (!this.isContainerRunning()) {
-					new Notice("Sandbox container is not running.");
-					return;
-				}
-				await this.activateTerminalView();
-			} catch (e) {
-				logger.error("Plugin", "agent-sandbox/open-terminal handler failed", e);
-				new Notice(`Open terminal failed: ${errMsg(e)}`);
-			}
-		});
+		this.registerObsidianProtocolHandler("agent-sandbox/open-terminal", () =>
+			this.handleOpenTerminalUri(),
+		);
 
 		// obsidian://agent-sandbox/analyse?vault=<name>&path=<vault/path>&template=<name>
 		this.registerObsidianProtocolHandler("agent-sandbox/analyse", async (params) => {
@@ -567,6 +558,24 @@ export default class AgentSandboxPlugin extends Plugin {
 			await this.activateTerminalView();
 		} else {
 			logger.warn("Plugin", "Container not running after startContainer - skipping terminal");
+		}
+	}
+
+	/**
+	 * Body of the `obsidian://agent-sandbox/open-terminal` handler. Extracted
+	 * from the registration so the container-down guard (Notice, no leaf) is
+	 * e2e-testable without dispatching a real URI (QA 1.8 / 6.1).
+	 */
+	async handleOpenTerminalUri(): Promise<void> {
+		try {
+			if (!this.isContainerRunning()) {
+				new Notice("Sandbox container is not running.");
+				return;
+			}
+			await this.activateTerminalView();
+		} catch (e) {
+			logger.error("Plugin", "agent-sandbox/open-terminal handler failed", e);
+			new Notice(`Open terminal failed: ${errMsg(e)}`);
 		}
 	}
 
