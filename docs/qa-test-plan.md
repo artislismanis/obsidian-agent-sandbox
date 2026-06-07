@@ -9,7 +9,11 @@ This plan covers scenarios outside the scope of `npm run test`, `test:integratio
 - **Severity convention:** `P0` blocks ship, `P1` ships only with workaround, `P2` polish.
 - **Cleanup discipline:** scenarios that mutate state (symlinks, firewall, custom sudo password, files in vault) end with explicit cleanup. Run it: later scenarios assume a clean baseline.
 - **Don't repeat automated coverage.** If a behaviour is covered in `src/__tests__/*`, `test/integration/*`, or `test/e2e/*`, don't re-verify here. This plan is the gap-filler.
-- **`✅ Automated` markers.** A scenario (or stage) prefixed `✅ Automated` is fully covered by CI and needs **no manual run**. It is retained — with a pointer to the covering test — for traceability and as the reference spec for that test. Scenarios marked partially automated keep only their manual residual.
+- **Automation markers.** Two prefixes flag CI coverage, each with a pointer to the covering test:
+  - **`✅ Automated`** — fully covered by CI; needs **no manual run**. Retained for traceability and as the reference spec for that test.
+  - **`🟡 Partially automated`** — the core logic is covered by a test (named in the marker), but a residual still needs a human. The marker always names the covering test **and** spells out the remaining manual step(s) (the trailing "… stays/stay manual" clause); only that residual is worth running by hand.
+
+  A scenario with **no** marker is fully manual (or, for a few, blocked from automation — see its Notes).
 
 ---
 
@@ -36,7 +40,7 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.1 First-enable settings tab render
 
-- **Partially automated** — tab rendering, restart-label presence, MCP tier defaults, and numeric / bind-address validation are covered by `test/e2e/specs/smoke.e2e.ts` + `settings.e2e.ts`. The manual value here is the full field-**order** and default-**value** audit below (not asserted exhaustively in e2e).
+- **🟡 Partially automated** — tab rendering, restart-label presence, MCP tier defaults, and numeric / bind-address validation are covered by `test/e2e/specs/smoke.e2e.ts` + `settings.e2e.ts`. The manual value here is the full field-**order** and default-**value** audit below (not asserted exhaustively in e2e).
 - **Setup:** Plugin freshly enabled (toggle off then on in Community Plugins). DevTools open (Ctrl+Shift+I) before clicking, to catch transient errors.
 - **Steps:** Open Settings → Agent Sandbox. Visit all four tabs in order: **General, Terminal, MCP, Advanced**. For each, verify fields appear in the order listed below with the stated defaults and "Requires container restart." labels where noted.
 - **Expected:**
@@ -292,7 +296,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.11 Connection retry / exponential backoff
 
-- **Partially automated (backoff sequence)** — the delay curve (500 ms × 1.5^n, capped at 5 s) is unit-tested in `src/__tests__/ttyd-client.test.ts` ("exponentialBackoff"). The live in-terminal "attempt N/15, retry in Xs" rendering stays manual.
+- **🟡 Partially automated (backoff sequence)** — the delay curve (500 ms × 1.5^n, capped at 5 s) is unit-tested in `src/__tests__/ttyd-client.test.ts` ("exponentialBackoff"). The live in-terminal "attempt N/15, retry in Xs" rendering stays manual.
 - **Setup:** Container running, one Sandbox terminal tab open.
 - **Steps:**
   1. Run **Sandbox: Stop Container** from the command palette.
@@ -317,6 +321,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.13 Status bar tooltip content
 
+- **🟡 Partially automated (tooltip composition)** — the running-tooltip builder (`recomposeRunningTooltip`: container/port/firewall/MCP lines, the pending-restart line, and the awaiting-input override) is unit-tested in `src/__tests__/status-bar.test.ts` ("running tooltip …" / "pending-restart line is suppressed by attention override"). Hovering the live pill and the exact runtime state values stay manual.
 - **Setup:** Container running, MCP on, firewall on.
 - **Steps:** Hover the sandbox status-bar pill.
 - **Expected:** Tooltip lists container state, MCP state, firewall state. Each line is current (matches command-palette status check).
@@ -324,7 +329,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.14 `Sandbox: Container Status` command
 
-- **Partially automated (notice body)** — the composed status lines (running/ID/image/uptime/MCP/firewall) are unit-tested in `src/__tests__/format.test.ts` ("buildContainerStatusLines"). Firing the command and the stopped-state Notice stay manual.
+- **🟡 Partially automated (notice body)** — the composed status lines (running/ID/image/uptime/MCP/firewall) are unit-tested in `src/__tests__/format.test.ts` ("buildContainerStatusLines"). Firing the command and the stopped-state Notice stay manual.
 - **Setup:** Container running.
 - **Steps:** Command palette → **Sandbox: Container Status**.
 - **Expected:** Notice with container ID, image, uptime, MCP/firewall state. With container stopped → Notice explicitly says stopped.
@@ -339,7 +344,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.16 `Sandbox: Copy terminal connection log`
 
-- **Partially automated (log format)** — the ring-buffer formatter (timestamp/instance/generation/kind + code/reason/duration/byte-count fields) is unit-tested in `src/__tests__/terminal-view.test.ts` ("formatConnectionLog"). Clipboard copy and live lifecycle capture stay manual.
+- **🟡 Partially automated (log format)** — the ring-buffer formatter (timestamp/instance/generation/kind + code/reason/duration/byte-count fields) is unit-tested in `src/__tests__/terminal-view.test.ts` ("formatConnectionLog"). Clipboard copy and live lifecycle capture stay manual.
 - **Setup:** Open and close one terminal tab.
 - **Steps:** Run the copy log command.
 - **Expected:** Clipboard contains a multi-line log of the connection lifecycle for **all** terminal sessions in this Obsidian instance: connect/disconnect/error/reconnect events, timestamps, session byte counts, and connection durations. The ttyd WebSocket URL (`ws://host:port/ws`) carries no auth token. Paste into a scratchpad to verify format and content.
@@ -538,7 +543,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.1 Tab title + badge on Claude state
 
-- **Partially automated (title composition)** — the tab-title string (⚙/✓/❓ prefix + `Session: <name>` / `Sandbox Terminal <n>` base) is unit-tested in `src/__tests__/terminal-view.test.ts` ("composeTabTitle"). The live tab repaint on state change and the status-bar badge integration stay manual (badge logic itself is covered by `bridge.e2e.ts`, see 5.2).
+- **🟡 Partially automated (title composition)** — the tab-title string (⚙/✓/❓ prefix + `Session: <name>` / `Sandbox Terminal <n>` base) is unit-tested in `src/__tests__/terminal-view.test.ts` ("composeTabTitle"). The live tab repaint on state change and the status-bar badge integration stay manual (badge logic itself is covered by `bridge.e2e.ts`, see 5.2).
 - **Setup:** Open terminal, attach to named session `work`, run `claude` interactively.
 - **Steps:** Submit a long-running prompt. Then submit one that triggers an approval question (or use `writeReviewed`).
 - **Expected:** While working → tab title `⚙ Session: work`. Idle between prompts (after a turn completes, the Stop hook sets `idle`) → `✓ Session: work`; the bare `Session: work` with no symbol only appears for a terminal that has not yet run Claude. Awaiting input → `❓ Session: work` AND status bar pill grows a `🔔` badge whose tooltip reads `Sandbox running. 1 session(s) awaiting input: work` followed by a `Click for options` line.
@@ -576,6 +581,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.6 Agent output Notice: debounced bursts
 
+- **🟡 Partially automated (debounce/aggregation)** — `src/__tests__/activity.test.ts` ("fires a single notice for one create after debounce elapses", "aggregates burst of creates into one notice") drives `AgentOutputNotifier` with fake timers and asserts the emitted Notice text. The live Claude file-create chain stays manual.
 - **Setup:** General → Agent output notifications → `Notify on file created` = on (the default).
 - **Steps:** `claude -p "Create three files under agent-workspace/: a.md b.md c.md each with just 'x'."`
 - **Expected:** A single Notice ~2 s after the last create: "Agent output: 3 created" (not three notices).
@@ -583,6 +589,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.7 Agent output Notice: rate-limit doesn't drop
 
+- **🟡 Partially automated (rate-limit requeue)** — `src/__tests__/activity.test.ts` ("requeues buffered events under rate-limit instead of dropping them", "second burst after rate-limit window starts fresh") asserts the batched remainder is emitted after the window, not dropped. The live timing chain stays manual.
 - **Setup:** Same toggle (`Notify on file created` = on). First burst fired.
 - **Steps:** Within ~3 s, prompt another batch of 2 files.
 - **Expected:** ~5 s after the first Notice, a second Notice appears for the batched remainder ("Agent output: 2 created"). Not silently dropped.
@@ -590,6 +597,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.8 `Notify on file edited` fires for modifies
 
+- **🟡 Partially automated (modify gating)** — `src/__tests__/activity.test.ts` ("fires for modify events when notifyEdited is true" / "ignores modify events when notifyEdited is false") covers the toggle. Live Claude modifies stay manual.
 - **Setup:** Enable `Notify on file edited` (off by default).
 - **Steps:** Prompt Claude to modify two existing files.
 - **Expected:** Notice fires for the modifies.
@@ -597,6 +605,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.9 All notify toggles off → silent
 
+- **🟡 Partially automated (all-off silence)** — `src/__tests__/activity.test.ts` ("all-off suppresses everything") asserts no Notice fires with every toggle off. The live trigger stays manual.
 - **Steps:** Turn off all four `Notify on file created / edited / deleted / renamed-moved` toggles. Trigger creates/modifies.
 - **Expected:** No Notices.
 - **Notes:** P2.
@@ -624,6 +633,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.13 Failed kill is logged, not swallowed
 
+- **🟡 Partially automated (name validation)** — the load-bearing half (a space/metachar session name is rejected, so the kill fails and is counted rather than silently swallowed) is unit-tested via `isValidSessionName` in `src/__tests__/validation.test.ts` ("rejects whitespace", "rejects semicolon", "rejects newline (terminal injection)", …). The modal flow + aggregate "Killed 1/2 session(s)." Notice stay manual.
 - **Setup:** Create two detached tmux sessions inside a container terminal, one with a valid name and one with an invalid name (space character, which `assertSafeSessionName` in `docker.ts` rejects against `[\w.-]+`):
   ```bash
   tmux new-session -d -s validname
@@ -833,6 +843,7 @@ These require specific host hardware/OS. Run on each supported platform before r
 
 ### 10.5 WSL2: MASQ network recreation on networking-mode change
 
+- **🟡 Partially automated (parser)** — `parseDockerNetworkMasq` is unit-tested in `src/__tests__/docker.test.ts`. The end-to-end observable (network actually recreated with the correct MASQ value on a real WSL2 host) needs the hardware and stays manual.
 - **Setup:** Windows host, WSL2 with Docker Engine. Confirm the current networking mode: `wsl --status` or check `%USERPROFILE%\.wslconfig` for `networkingMode=mirrored`; absence means NAT (default).
 - **Steps:** 1) Note the current `enable_ip_masquerade` value of the existing docker network: `docker network inspect oas_default --format '{{index .Options "com.docker.network.bridge.enable_ip_masquerade"}}'` (expect `true` for NAT, `false` for mirrored, or `not found` if no network exists yet). 2) Force MASQ drift: either change `networkingMode` in `.wslconfig` and run `wsl --shutdown` then reopen, or delete the network manually while the container is stopped (`docker compose down && docker network rm oas_default`) to force a fresh creation with the opposite setting. 3) Restart the container via **Sandbox: Restart Container**.
 - **Expected:** The plugin detects the MASQ drift in `DockerManager.verifyAndMaybeRecreateNetwork` and recreates the network before starting. After restart, `docker network inspect oas_default --format '{{index .Options "com.docker.network.bridge.enable_ip_masquerade"}}'` shows the value matches the current WSL networking mode (`false` for mirrored, `true` for NAT). Container health and MCP connectivity are normal.
@@ -894,7 +905,7 @@ bash container/test-scripts/stress-checks.sh /path/to/test-vault --with-daemon-s
 
 ### 12.1 Docker daemon stops mid-session
 
-Automated in `stress-checks.sh T12.1` (with `--with-daemon-stop`). The automated probe verifies MCP becomes unreachable and recovers. The human-observable aspect (status bar transitioning to errored, terminal showing a helpful disconnected message) requires Obsidian to be open.
+- **🟡 Partially automated (recovery probe)** — `container/test-scripts/stress-checks.sh` T12.1 (`--with-daemon-stop`) verifies MCP becomes unreachable and recovers. The human-observable UI (status bar → errored, terminal disconnected message) requires Obsidian open and stays manual.
 
 - **Setup:** Container running, terminal open.
 - **Steps:** Run `stress-checks.sh --with-daemon-stop`, then observe the status bar and terminal during the stop/restart cycle.
@@ -903,13 +914,13 @@ Automated in `stress-checks.sh T12.1` (with `--with-daemon-stop`). The automated
 
 ### 12.2 Vault path with unicode
 
-Automated in `stress-checks.sh T12.2`. Passes when `vault_list` succeeds through a unicode-path symlink. The human-side check (terminal `ls /vault` showing filenames correctly) is optional confirmation.
+- **✅ Automated** — `container/test-scripts/stress-checks.sh` T12.2: passes when `vault_list` succeeds through a unicode-path symlink. The terminal `ls /vault` check is optional confirmation.
 
 - **Notes:** P1.
 
 ### 12.3 Very large note read
 
-Automated in `stress-checks.sh T12.3` (creates a ~5 MB note and calls `vault_read`). The human-side check (no Obsidian UI freeze) is optional confirmation.
+- **✅ Automated** — `container/test-scripts/stress-checks.sh` T12.3: creates a ~5 MB note and calls `vault_read`. The no-UI-freeze check is optional confirmation.
 
 - **Notes:** P2.
 
@@ -935,7 +946,7 @@ Automated in `stress-checks.sh T12.3` (creates a ~5 MB note and calls `vault_rea
 
 ### 12.7a Teardown leaves no `oas-*` debris
 
-Automated in `stress-checks.sh T12.7a`. Runs `docker compose -p oas-test down -v` and greps for leftover `oas-test-*` resources. The production volumes (`oas-claude-config`, `oas-shell-history`, `oas-user-config`) are checked separately.
+- **✅ Automated** — `container/test-scripts/stress-checks.sh` T12.7a: runs `docker compose -p oas-test down -v` and greps for leftover `oas-test-*` resources. The production volumes (`oas-claude-config`, `oas-shell-history`, `oas-user-config`) are checked separately.
 
 - **Notes:** P1.
 
