@@ -292,6 +292,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.11 Connection retry / exponential backoff
 
+- **Partially automated (backoff sequence)** — the delay curve (500 ms × 1.5^n, capped at 5 s) is unit-tested in `src/__tests__/ttyd-client.test.ts` ("exponentialBackoff"). The live in-terminal "attempt N/15, retry in Xs" rendering stays manual.
 - **Setup:** Container running, one Sandbox terminal tab open.
 - **Steps:**
   1. Run **Sandbox: Stop Container** from the command palette.
@@ -323,6 +324,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.14 `Sandbox: Container Status` command
 
+- **Partially automated (notice body)** — the composed status lines (running/ID/image/uptime/MCP/firewall) are unit-tested in `src/__tests__/format.test.ts` ("buildContainerStatusLines"). Firing the command and the stopped-state Notice stay manual.
 - **Setup:** Container running.
 - **Steps:** Command palette → **Sandbox: Container Status**.
 - **Expected:** Notice with container ID, image, uptime, MCP/firewall state. With container stopped → Notice explicitly says stopped.
@@ -337,6 +339,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.16 `Sandbox: Copy terminal connection log`
 
+- **Partially automated (log format)** — the ring-buffer formatter (timestamp/instance/generation/kind + code/reason/duration/byte-count fields) is unit-tested in `src/__tests__/terminal-view.test.ts` ("formatConnectionLog"). Clipboard copy and live lifecycle capture stay manual.
 - **Setup:** Open and close one terminal tab.
 - **Steps:** Run the copy log command.
 - **Expected:** Clipboard contains a multi-line log of the connection lifecycle for **all** terminal sessions in this Obsidian instance: connect/disconnect/error/reconnect events, timestamps, session byte counts, and connection durations. The ttyd WebSocket URL (`ws://host:port/ws`) carries no auth token. Paste into a scratchpad to verify format and content.
@@ -535,6 +538,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.1 Tab title + badge on Claude state
 
+- **Partially automated (title composition)** — the tab-title string (⚙/✓/❓ prefix + `Session: <name>` / `Sandbox Terminal <n>` base) is unit-tested in `src/__tests__/terminal-view.test.ts` ("composeTabTitle"). The live tab repaint on state change and the status-bar badge integration stay manual (badge logic itself is covered by `bridge.e2e.ts`, see 5.2).
 - **Setup:** Open terminal, attach to named session `work`, run `claude` interactively.
 - **Steps:** Submit a long-running prompt. Then submit one that triggers an approval question (or use `writeReviewed`).
 - **Expected:** While working → tab title `⚙ Session: work`. Idle between prompts (after a turn completes, the Stop hook sets `idle`) → `✓ Session: work`; the bare `Session: work` with no symbol only appears for a terminal that has not yet run Claude. Awaiting input → `❓ Session: work` AND status bar pill grows a `🔔` badge whose tooltip reads `Sandbox running. 1 session(s) awaiting input: work` followed by a `Click for options` line.

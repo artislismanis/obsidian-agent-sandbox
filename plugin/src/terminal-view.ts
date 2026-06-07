@@ -132,6 +132,16 @@ const PREFIX_SYMBOL: Record<Exclude<ActivityPrefix, null>, string> = {
 	idle: "\u2713 ", // ✓
 };
 
+/** Compose a terminal tab title from session name, instance id, and activity prefix. */
+export function composeTabTitle(
+	sessionName: string | null,
+	instanceId: number,
+	prefix: ActivityPrefix,
+): string {
+	const base = sessionName ? `Session: ${sessionName}` : `Sandbox Terminal ${instanceId}`;
+	return (prefix ? PREFIX_SYMBOL[prefix] : "") + base;
+}
+
 export class TerminalView extends ItemView {
 	private getSettings: () => TerminalSettings;
 	private instanceId: number;
@@ -179,11 +189,7 @@ export class TerminalView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		const base = this.sessionName
-			? `Session: ${this.sessionName}`
-			: `Sandbox Terminal ${this.instanceId}`;
-		const prefix = this.activityPrefix ? PREFIX_SYMBOL[this.activityPrefix] : "";
-		return prefix + base;
+		return composeTabTitle(this.sessionName, this.instanceId, this.activityPrefix);
 	}
 
 	getSessionName(): string | null {
