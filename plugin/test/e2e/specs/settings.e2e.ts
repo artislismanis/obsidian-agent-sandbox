@@ -1,51 +1,14 @@
 import { browser, expect, $, $$ } from "@wdio/globals";
 import { describe, it, before, after } from "mocha";
 import { obsidianPage } from "wdio-obsidian-service";
-
-async function openPluginSettings(): Promise<void> {
-	await browser.executeObsidianCommand("app:open-settings");
-	const tab = $(".vertical-tab-nav-item*=Agent Sandbox");
-	await tab.waitForExist({ timeout: 5000 });
-	await tab.click();
-}
-
-async function switchTab(label: string): Promise<void> {
-	const tab = $(`.sandbox-settings-tab=${label}`);
-	await tab.waitForExist({ timeout: 3000 });
-	await tab.click();
-}
-
-async function closeSettings(): Promise<void> {
-	await browser.keys("Escape");
-	await browser.pause(300);
-}
-
-// WebDriverIO's `=text` shorthand doesn't work nested inside `:has()`,
-// and native CSS `:has()` has no text-match syntax. Use XPath to select
-// a .setting-item by the exact text of its .setting-item-name child.
-function settingItemXPath(name: string): string {
-	return (
-		`//*[contains(concat(' ', normalize-space(@class), ' '), ' setting-item ')]` +
-		`[.//*[contains(concat(' ', normalize-space(@class), ' '), ' setting-item-name ')]` +
-		`[normalize-space(.)='${name}']]`
-	);
-}
-
-function settingInput(name: string) {
-	return $(`${settingItemXPath(name)}//input[@type='text']`);
-}
-
-function settingDesc(name: string) {
-	return $(
-		`${settingItemXPath(name)}//*[contains(concat(' ', normalize-space(@class), ' '), ' setting-item-description ')]`,
-	);
-}
-
-function settingWarning(name: string) {
-	return $(
-		`${settingItemXPath(name)}//*[contains(concat(' ', normalize-space(@class), ' '), ' sandbox-settings-field-warning ')]`,
-	);
-}
+import {
+	openPluginSettings,
+	switchTab,
+	closeSettings,
+	settingInput,
+	settingDesc,
+	settingWarning,
+} from "../settings-helpers";
 
 describe("Settings: validation and warnings", function () {
 	before(async function () {
