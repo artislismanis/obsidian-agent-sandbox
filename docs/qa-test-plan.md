@@ -126,11 +126,11 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.6 Write directory validation in settings
 
-- **✅ Automated (keystroke rejection)** — `settings.e2e.ts` ("write directory rejects escaping paths") covers typed `../escape` / `/root/forbidden` → `sandbox-input-error`; `validation.test.ts` unit-tests the validator. Manual residual below covers only the *stored-escape* path.
+- **✅ Automated** — `settings.e2e.ts` ("write directory rejects escaping paths") covers the typed `../escape` / `/root/forbidden` → `sandbox-input-error` path; `validation.test.ts` unit-tests the validator; and `persistence-reload.e2e.ts` ("1.6: a stored escaping write directory renders in the error state on load") covers the **stored-escape** path — it persists `vaultWriteDir = "../escape"` to `data.json`, reloads, and asserts the settings field renders with `sandbox-input-error` without any keystroke (the validator runs at render time in `addValidatedTextSetting`).
 - **Setup:** Plugin enabled.
 - **Steps:** Manually edit the vault's `data.json` (`.obsidian/plugins/obsidian-agent-sandbox/data.json`) to set `vaultWriteDir` to a path that escapes the vault, then reload the plugin (toggle off/on in Community Plugins).
 - **Expected:** On load the settings tab shows the field in error state (red border / `sandbox-input-error` class). The stored value is **not** auto-corrected; attempting to start the container while the invalid value is stored emits a Notice and fails to start.
-- **Notes:** P1. Only the stored-escape half is manual: the e2e harness loads the plugin out-of-tree, so it cannot seed `data.json` and reload (see the skipped probe in `test/e2e/specs/harness-probe.e2e.ts`).
+- **Notes:** P1. Historically the stored-escape half was manual because the harness loaded the plugin out-of-tree; on the current CI Obsidian the plugin installs on disk and `data.json` persists across `reloadObsidian()`, so it is now automated (see `harness-probe.e2e.ts` for the capability proof).
 
 ### 1.7 Port conflict detection
 
@@ -237,17 +237,19 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.5a Plugin disable/enable cycle leaves no debris
 
+- **✅ Automated** — `test/e2e/specs/harness-probe.e2e.ts` ("re-enables cleanly after a disable/enable cycle") calls `disablePlugin` then `enablePlugin` against the real plugin and asserts all 12 commands re-register and exactly one ribbon icon and one status-bar pill remain (no duplicates). This now runs because the current CI Obsidian installs the plugin on disk, so `enablePlugin()` reloads it (it was a silent no-op on the older out-of-tree harness). Unload cleanup is also unit-tested via `StatusBarManager.destroy()` / `FirewallStatusBar.destroy()`.
 - **Setup:** Container running. DevTools console open.
 - **Steps:** Disable "Agent Sandbox", wait 2 s, re-enable it.
 - **Expected:** Plugin loads cleanly: ribbon icon present, all 12 commands re-registered in command palette, settings tab renders, no red errors in console. No duplicate status bar pills or ribbon icons.
-- **Notes:** P0. Genuinely manual — not reachable in e2e: with the plugin loaded out-of-tree, `disablePlugin`/`enablePlugin` can't round-trip in the harness (skipped probe in `test/e2e/specs/harness-probe.e2e.ts`). Unload cleanup is unit-tested via `StatusBarManager.destroy()` / `FirewallStatusBar.destroy()`.
+- **Notes:** P0. The "no red console errors" sweep stays a manual spot-check; the structural no-debris assertions are automated.
 
 ### 2.6 Settings persist across full Obsidian restart
 
+- **✅ Automated** — `test/e2e/specs/harness-probe.e2e.ts` ("persists a saved setting across reloadObsidian()") asserts the plugin's `main.js` is installed on disk under the vault, then sets `terminalFontSize = 18`, `saveData`, `reloadObsidian()`, and asserts the value survives. The full quit/relaunch (vs `reloadObsidian()`) is Obsidian's own `saveData`/`loadData` responsibility and stays a manual spot-check.
 - **Setup:** Container running.
 - **Steps:** Change Terminal font size to 18. Quit Obsidian fully (not reload). Reopen.
 - **Expected:** Setting still shows 18. Open a terminal: font reflects it.
-- **Notes:** P0. Genuinely manual — not reachable in e2e: `wdio-obsidian-service` loads the plugin out-of-tree, so settings never reach `data.json` and a reboot resets them to defaults (see the skipped probe in `test/e2e/specs/harness-probe.e2e.ts`). Durable persistence is Obsidian's own `saveData`/`loadData` responsibility.
+- **Notes:** P0. Previously blocked by the out-of-tree harness; the current CI Obsidian installs on disk so `reloadObsidian()` exercises the real persistence path.
 
 ### 2.7 Terminal opens, attaches, renders
 
@@ -683,6 +685,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 6.4 Templates render on first right-click after reload
 
+- **🟡 Partially automated (templates load after reload)** — `test/e2e/specs/persistence-reload.e2e.ts` ("6.4: prompt templates seeded on disk are available after a reload") seeds `.oas/prompts/*.md`, calls `reloadObsidian()`, and asserts `analyse.loadTemplates()` returns the seeded labels — i.e. the cache the right-click submenu reads is populated post-reload (the substance of this scenario). The actual submenu **DOM** render on first right-click stays a manual spot-check (menu-building itself is unit-tested).
 - **Setup:** `<vault>/.oas/prompts/` populated with the four shipped templates. Fully reload Obsidian.
 - **Steps:** **Immediately** after Obsidian finishes loading, right-click a vault note → **Analyse in Sandbox**.
 - **Expected:** Submenu already populated, not collapsed to "Custom prompt…" only.
