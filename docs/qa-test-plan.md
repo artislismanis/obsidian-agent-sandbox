@@ -117,6 +117,7 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 ### 1.5 Start with Docker daemon stopped
 
+- **🟡 Partially automated (error classification)** — `DockerManager.classifyCommandError` maps a stopped daemon's stderr (Linux socket, Windows named pipe) and the other start failures (WSL missing, bad distro, missing compose file, timeout) to the user-facing message, unit-tested in `src/__tests__/docker.test.ts` ("classifyCommandError"). Stopping the real host daemon and observing the live Notice + errored status bar stays manual.
 - **Setup:** Stop Docker on the host. On Linux with systemd: `sudo systemctl stop docker.socket docker.service`. On macOS/Windows: quit Docker Desktop or Rancher Desktop.
 - **Steps:** Command palette → **Sandbox: Start Container**.
 - **Expected:** Clear Notice within ~5 s naming the failure ("Docker not available", "Cannot connect to Docker daemon", etc.). No infinite spinner. Status bar settles to a stopped/errored state with a useful tooltip.
@@ -180,6 +181,7 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 
 ### 1.8 URI handler without container
 
+- **🟡 Partially automated (handler guard)** — `test/e2e/specs/uri-handler.e2e.ts` ("1.8: with the container stopped …") invokes the extracted `handleOpenTerminalUri()` with `isContainerRunning` stubbed false and asserts the "Sandbox container is not running." Notice fires and no terminal tab opens. The wdio harness can't dispatch a real OS-level `obsidian://` URI, so the browser-paste round-trip stays manual.
 - **Setup:** Container stopped.
 - **Steps:** Paste `obsidian://agent-sandbox/open-terminal` into a browser.
 - **Expected:** Obsidian focuses; a Notice explains the container isn't running. No crash, no zombie terminal tab.
@@ -248,10 +250,11 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.7 Terminal opens, attaches, renders
 
+- **🟡 Partially automated (font + auto-copy gating)** — the font fallback chain (`composeFontFamily`: user font → Obsidian mono var → portable mono chain) and the auto-copy-on-selection predicate (`shouldAutoCopy`: gated on the opt-out setting, a non-empty selection, and window focus) are unit-tested in `src/__tests__/terminal-view.test.ts`. The live xterm attach, render fidelity (no flicker, no garbled escapes), and clipboard write need a running ttyd and stay manual.
 - **Setup:** Container running.
 - **Steps:** Ribbon icon (or `open-claude-terminal` command). Type `ls -la /workspace`.
 - **Expected:** Tab opens, prompt appears, command runs and prints output. No flicker, no garbled escape sequences.
-- **Notes:** P0.
+- **Notes:** P0. "Open in Browser" opens the system's default external browser via `window.open()` (it does not open inside an Obsidian tab); the URL builder `resolveTtydBrowserUrl` is unit-tested in `ttyd-client.test.ts`.
 
 ### 2.7a Custom font family
 
@@ -530,6 +533,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 4.6 Approve on big diff stays responsive
 
+- **🟡 Partially automated (large diff renders)** — `test/e2e/specs/bridge.e2e.ts` ("4.6 large (~500-line) diff renders without error and approves") fires `vault_modify_reviewed` with a ~500-line rewrite, asserts the diff modal renders both sides (>100 added and >100 removed lines) and that Approve applies the change. This is a render-without-error guard, **not** a latency assertion — CI timing is too noisy to gate on "<1 s / scrolls smoothly", which stays the manual residual below.
 - **Setup:** A note ~500 lines long.
 - **Steps:** Have Claude rewrite many lines. Open the review modal.
 - **Expected:** Modal renders in <1 s, scrolls smoothly, syntax-highlighted diff still legible. No Obsidian UI freeze.
@@ -574,6 +578,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.5 Hook script no-ops when MCP off
 
+- **✅ Automated** — `test/integration/hooks.test.ts` runs `notify-status.sh` inside the test container with `OAS_MCP_TOKEN` unset (which is exactly what "MCP off" means: the plugin omits the env var when `mcpEnabled` is false, no restart needed) and asserts it exits 0 with no output for every wired status, plus exits 0 on an invalid status — the silent-failure contract. No manual step.
 - **Setup:** MCP off. Terminal attached.
 - **Steps:** `bash .claude/hooks/notify-status.sh awaiting_input`.
 - **Expected:** Exits 0. No errors. No plugin crash.
@@ -612,6 +617,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.10 Session switcher
 
+- **✅ Automated** — `test/e2e/specs/sessions.e2e.ts` ("Session switcher") opens three real terminal tabs (`work`, `research`, unnamed) via `activateTerminalView` — which has no container guard, so the tabs exist headlessly with no ttyd — fires the switch command, and asserts the modal lists `Session: work / research / (unnamed)`, that typing filters to the matching row, and that selecting a row activates the matching leaf. No manual step.
 - **Setup:** Three terminal tabs: two named (`work`, `research`), one unnamed.
 - **Steps:** Command palette → **Sandbox: Switch to Sandbox session…**. Type to filter. Enter on a result.
 - **Expected:** Modal lists `Session: work`, `Session: research`, and `Session: (unnamed)` for the unnamed one. Filter narrows. Selecting activates the matching tab.
@@ -619,6 +625,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.11 Session switcher handles closed tabs mid-modal
 
+- **✅ Automated** — `test/e2e/specs/sessions.e2e.ts` ("5.11: clicking a row whose tab closed mid-modal …") opens the switcher, detaches the `research` leaf from under the open modal, clicks its still-rendered row, and asserts the "That session has closed." Notice fires (the row handler revalidates the leaf before activating). No manual step.
 - **Setup:** Two named tabs.
 - **Steps:** Open the switcher. Without dismissing, close one tab from another pane. Click the closed-tab row.
 - **Expected:** Notice "That session has closed." Modal closes cleanly. No crash.
@@ -626,6 +633,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 5.12 Clean up detached sessions
 
+- **✅ Automated (modal + aggregate)** — `test/e2e/specs/sessions.e2e.ts` ("Detached-session cleanup") stubs the injected `SessionCleanupApi` (`docker.listDetachedSessions`/`killSession`) and `isContainerRunning` on the live plugin, fires the cleanup command, asserts only the detached candidates are listed, unchecks one, clicks Kill selected, and asserts exactly one `killSession` call plus the "Killed 1/1 session(s)." Notice (and the empty-list "No detached tmux sessions to clean up." path). The real tmux kill against a live container stays the manual residual.
 - **Setup:** Two tmux sessions created, one attached in Obsidian, one detached.
 - **Steps:** Command palette → **Sandbox: Clean up detached sessions**. Modal appears.
 - **Expected:** Only the detached one listed. Uncheck to keep / check to kill. Kill selected → Notice "Killed 1/1 session(s).".
@@ -653,6 +661,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 6.1 obsidian:// open-terminal
 
+- **🟡 Partially automated (handler opens a tab)** — `test/e2e/specs/uri-handler.e2e.ts` ("6.1: with the container running …") invokes `handleOpenTerminalUri()` with `isContainerRunning` stubbed true and asserts a terminal leaf is created (its WebSocket attach fails harmlessly with no ttyd, but the tab — which is what the URI guarantees — exists). Dispatching the real `obsidian://` URI and the live attach stay manual.
 - **Steps:** Paste `obsidian://agent-sandbox/open-terminal` into a browser URL bar.
 - **Expected:** Obsidian focuses, opens a new terminal tab.
 - **Notes:** P1.
@@ -689,7 +698,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 - **Setup:** Templates present.
 - **Steps:** Right-click → Analyse in Sandbox → Custom prompt. In turn: 1) empty + Run, 2) Cancel, 3) ~2000-character prompt, 4) prompt with shell metacharacters: `` echo `id`; $(whoami) && rm -rf /tmp/nope ``.
-- **Expected:** 1) No-op or validation hint; no terminal opens. 2) Modal closes; no terminal. 3) Terminal opens with full text seeded, no truncation. 4) Metacharacters passed to `claude` as a single argument; `id` / `whoami` must not execute on open.
+- **Expected:** 1) Treated as a cancel — `inputModal` trims the value, so an empty/whitespace input resolves to nothing and no terminal opens (no separate validation hint). 2) Modal closes; no terminal. 3) Terminal opens with full text seeded, no truncation. 4) Metacharacters passed to `claude` as a single argument; `id` / `whoami` must not execute on open.
 - **Notes:** P1. Shell-escaping regressions here are a command-injection risk.
 
 ---
@@ -702,6 +711,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 7.1 Read of escaping symlink is denied
 
+- **✅ Automated** — `test/e2e/specs/security.e2e.ts` ("7.1 denies reading an escaping symlink and never leaks host content").
 - **Setup:** From inside a container terminal, create a symlink in the write directory (which is rw) pointing outside the vault:
   ```bash
   ln -s /etc/hosts /workspace/vault/$OAS_VAULT_WRITE_DIR/evil.md
@@ -713,6 +723,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 7.2 Create into symlinked directory denied
 
+- **✅ Automated** — `test/e2e/specs/security.e2e.ts` ("7.2 denies creating into a symlinked-out directory").
 - **Setup:** From inside a container terminal:
   ```bash
   ln -s /tmp /workspace/vault/$OAS_VAULT_WRITE_DIR/escape
@@ -724,6 +735,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 7.3 Nested symlinks resolve fully
 
+- **✅ Automated** — `test/e2e/specs/security.e2e.ts` ("7.3 denies reading through a nested escaping symlink").
 - **Setup:** From inside a container terminal:
   ```bash
   mkdir /workspace/vault/$OAS_VAULT_WRITE_DIR/innocent
@@ -736,6 +748,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 7.4 Symlink inside write directory but pointing into vault
 
+- **🟡 Partially automated (allow-path, unit only)** — `src/__tests__/mcp-symlink.test.ts` ("allows a file whose realpath stays inside the base") plus a direct `isRealPathWithinBase` unit test cover the allow-path. It can't run in the e2e harness: Obsidian's metadata index never indexes a symlink created after load, so the call fails "Folder not found" before the realpath guard is reached. The end-to-end allow-path stays manual.
 - **Setup:** `ln -s <vault>/notes <vault>/agent-workspace/safe-link`.
 - **Steps:** `claude -p "Read agent-workspace/safe-link/<some-file>.md"`.
 - **Expected:** Read succeeds: the realpath check resolves the symlink to a vault-relative target inside the read-allowed area. Outcome is deterministic across repeated runs and matches `docs/reference/settings.md`.
@@ -751,12 +764,14 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 8.1 Firewall on/off toggle live
 
+- **🟡 Partially automated (state machine)** — `test/integration/firewall.test.ts` ("reports enabled after a successful apply, disabled after --disable") covers the enable/disable/`--status` transitions. The live status-bar pill, tooltip, and ~2 s UI update stay manual.
 - **Steps:** Toggle firewall via command palette and via settings; observe status bar firewall icon (🛡️).
 - **Expected:** State updates within ~2 s. Status bar pill tooltip reflects on/off.
 - **Notes:** P1.
 
 ### 8.2 Plugin-setting domain reaches host
 
+- **✅ Automated** — `test/integration/firewall.test.ts` ("8.2 allows an allowlisted domain and blocks a non-allowlisted one"); injects a `[plugin]` domain via `OAS_ALLOWED_DOMAINS` and self-skips when the CI environment has no outbound.
 - **Setup:** Settings → Additional firewall domains = `example.com`. Restart container. Enable firewall.
 - **Steps:** In a terminal: `curl -I https://example.com`. Then `curl -I https://example.org`.
 - **Expected:** `example.com` → 200. `example.org` → timeout or blocked by iptables.
@@ -764,6 +779,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 8.3 firewall-extras.txt works AND isn't writable by Claude
 
+- **✅ Automated (read-only mount)** — `test/integration/firewall.test.ts` ("8.3 firewall-extras.txt is world-readable by the agent" + "… is not writable by the agent (read-only mount)") asserts both halves of the security property. The curl-reachability of a file-sourced domain stays manual (it needs a non-empty `firewall-extras.txt`).
 - **Setup:** Add `example.com` (a real resolvable domain) to `container/firewall-extras.txt`. Restart container.
 - **Steps:** 1) In a terminal: `curl -I https://example.com`, confirm the domain is reachable. 2) `ls -la /etc/oas/firewall-extras.txt`, note the permissions. 3) `echo "evil.com" >> /etc/oas/firewall-extras.txt`, expect permission denied.
 - **Expected:** 1) `example.com` is reachable via curl. 2) The file is world-readable (Claude can read its contents; this is intentional: knowing the allowlist doesn't help Claude escape, and iptables rules enforce the firewall). 3) Write attempt is denied: the file is mounted read-only at `/etc/oas/`, so Claude cannot modify the allowlist.
@@ -771,12 +787,14 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 8.4 --list-sources tagging
 
+- **🟡 Partially automated (baseline + plugin tags)** — `test/integration/firewall.test.ts` ("8.4 --list-sources tags baseline and plugin entries") asserts the `[baseline]` and `[plugin]` tags. The `[file]` tag (needs a non-empty `firewall-extras.txt`) and the cross-check against Settings → Effective allowlist stay manual.
 - **Steps:** `docker compose exec sandbox /usr/local/bin/init-firewall.sh --list-sources` (or run as `claude` user, read-only path).
 - **Expected:** Lines tagged `[baseline]`, `[plugin]`, `[file]`. Matches Settings → Advanced → Security → Effective allowlist (Refresh).
 - **Notes:** P1.
 
 ### 8.5 Effective allowlist refresh button
 
+- **Manual** — the Settings refresh control fetches the live allowlist from the container; no automation (UI-bound, needs a running container).
 - **Setup:** Firewall on.
 - **Steps:** Settings → Advanced → Security section → Refresh (the "Click Refresh to fetch the effective firewall allowlist from the container" control).
 - **Expected:** UI updates to current allowlist including any extras added since last refresh.
@@ -784,6 +802,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 ### 8.6 Firewall off restores full egress
 
+- **✅ Automated** — `test/integration/firewall.test.ts` ("8.6 restores full egress when the firewall is disabled"); self-skips when CI lacks outbound.
 - **Steps:** Disable firewall. `curl -I https://example.org`.
 - **Expected:** Reaches host (no iptables block).
 - **Notes:** P1.
@@ -794,12 +813,11 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 **Setup carried forward:** Stage 0–3, plus the target Obsidian plugin installed and enabled in the vault, and Extensions tier enabled.
 
-Most Stage 9 scenarios are covered exhaustively by [mcp-capability-test.md](./mcp-capability-test.md) S8 (Extensions tier) and S9.4 (malformed args). Run the capability test under cell A (or cell F to confirm extensions gating) instead of re-exercising these manually. The scenario below is unique to the human-driven QA flow because it validates plugin-specific recurrence semantics that the capability test's S8.4 toggle doesn't specifically check.
-
-Retired to the capability test: 9.1 (Dataview DQL → S8.1), 9.2 (Dataview disabled → S8.0 + S9.5 disabled-tier probe), 9.4 (Templater → S8.5), 9.5 (Periodic Notes → S8.8), 9.6 (Canvas → S8.6/S8.7), 9.7 (extensions list → S8.0), 9.8 (malformed args → S9.3/S9.4).
+Most Stage 9 scenarios are covered exhaustively by [mcp-capability-test.md](./mcp-capability-test.md) S8 (Extensions tier) and S9.4 (malformed args) — 9.1/9.2 (Dataview), 9.4 (Templater), 9.5 (Periodic Notes), 9.6 (Canvas), 9.7 (extensions list), and 9.8 (malformed args) all live there now. Run the capability test under cell A (or cell F to confirm extensions gating) instead of re-exercising these manually. The scenario below is unique to the human-driven QA flow because it validates plugin-specific recurrence semantics that the capability test's S8.4 toggle doesn't specifically check.
 
 ### 9.3 Tasks toggle with recurring
 
+- **Manual** (automatable, deferred) — the extensions-tier tools (Dataview / Templater / Tasks / Canvas) don't register in the e2e vault because those community plugins aren't installed, so neither this scenario nor extensions-tier gating (see Stage 3 note) is covered in CI. Both could be automated by vendoring the Tasks community plugin into the e2e vault fixture (`wdio-obsidian-service` enables plugins copied into `.obsidian/plugins/`) and asserting `vault_tasks_toggle` produces both the completed line and the next occurrence. Deferred: it pins a third-party build and adds fixture weight + flakiness.
 - **Setup:** Tasks plugin enabled. A note with `- [ ] weekly thing 🔁 every week 📅 2026-04-19`.
 - **Steps:** `claude -p "Toggle the task at notes/recurring.md line 5"`.
 - **Expected:** File now contains both the completed original and a fresh next occurrence (Tasks' recurring semantics).
@@ -915,7 +933,9 @@ bash container/test-scripts/stress-checks.sh /path/to/test-vault --with-daemon-s
 ### 12.2 Vault path with unicode
 
 - **✅ Automated** — `container/test-scripts/stress-checks.sh` T12.2: passes when `vault_list` succeeds through a unicode-path symlink. The terminal `ls /vault` check is optional confirmation.
-
+- **Setup:** A vault (or a symlink to one) whose path contains non-ASCII characters — the script uses `Документы-vault`. Skips gracefully if the host filesystem can't create such a symlink.
+- **Steps:** Through the unicode path, read the plugin's MCP token and call `vault_list` over the MCP endpoint. Optionally `ls /workspace/vault` in a terminal.
+- **Expected:** `vault_list` returns the vault contents with no error — the mount point and paths survive the unicode round-trip. No mojibake in the listing.
 - **Notes:** P1.
 
 ### 12.3 Very large note read

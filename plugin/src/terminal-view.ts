@@ -142,6 +142,41 @@ export function composeTabTitle(
 	return (prefix ? PREFIX_SYMBOL[prefix] : "") + base;
 }
 
+/**
+ * Build xterm's `fontFamily` string: the user's chosen font first (if set),
+ * then Obsidian's monospace var, then a portable mono fallback chain. Pure -
+ * the caller resolves `obsidianFont` from `getComputedStyle` - so the
+ * precedence and de-duplication are unit-testable (QA 2.7).
+ */
+export function composeFontFamily(userFont: string | undefined, obsidianFont: string): string {
+	return [
+		userFont?.trim(),
+		obsidianFont.trim(),
+		"Cascadia Code",
+		"Cascadia Mono",
+		"Consolas",
+		"Menlo",
+		"DejaVu Sans Mono",
+		"monospace",
+	]
+		.filter(Boolean)
+		.join(", ");
+}
+
+/**
+ * Decide whether an `onSelectionChange` should copy to the clipboard. The
+ * write is skipped when auto-copy is off, the selection is empty, or the
+ * document lost focus (clipboard.writeText throws "Document is not focused"
+ * otherwise). Pure so the gating is unit-testable (QA 2.7).
+ */
+export function shouldAutoCopy(opts: {
+	enabled: boolean;
+	selection: string;
+	documentFocused: boolean;
+}): boolean {
+	return opts.enabled && opts.selection.length > 0 && opts.documentFocused;
+}
+
 export class TerminalView extends ItemView {
 	private getSettings: () => TerminalSettings;
 	private instanceId: number;
@@ -447,18 +482,7 @@ export class TerminalView extends ItemView {
 	} {
 		const styles = getComputedStyle(document.body);
 		const obsidianFont = styles.getPropertyValue("--font-monospace").trim();
-		const fontFamily = [
-			userFont?.trim(),
-			obsidianFont,
-			"Cascadia Code",
-			"Cascadia Mono",
-			"Consolas",
-			"Menlo",
-			"DejaVu Sans Mono",
-			"monospace",
-		]
-			.filter(Boolean)
-			.join(", ");
+		const fontFamily = composeFontFamily(userFont, obsidianFont);
 
 		const cssVar = (name: string, fallback: string) =>
 			styles.getPropertyValue(name).trim() || fallback;
@@ -524,13 +548,22 @@ export class TerminalView extends ItemView {
 		// Clipboard: auto-copy on selection (opt-out via setting), Ctrl+V / Ctrl+Shift+V to paste
 		this.termDisposables.push(
 			term.onSelectionChange(() => {
-				if (!this.getSettings().clipboardAutoCopy) return;
 				const selection = term.getSelection();
-				if (!selection) return;
 				// clipboard.writeText throws DOMException "Document is not
 				// focused" when Obsidian's window lost focus mid-selection.
-				// Skip the write rather than emit a noisy console warning.
-				if (typeof document !== "undefined" && !document.hasFocus()) return;
+				// shouldAutoCopy gates on that (and the opt-out setting + empty
+				// selection) so the write is skipped rather than emitting a
+				// noisy console warning.
+				const focused = typeof document === "undefined" || document.hasFocus();
+				if (
+					!shouldAutoCopy({
+						enabled: this.getSettings().clipboardAutoCopy,
+						selection,
+						documentFocused: focused,
+					})
+				) {
+					return;
+				}
 				navigator.clipboard.writeText(selection).catch(() => {});
 			}),
 		);
