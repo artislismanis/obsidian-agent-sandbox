@@ -6,7 +6,7 @@ vi.mock("obsidian", () => ({
 }));
 
 import { requestUrl } from "obsidian";
-import { pollUntilReady, buildWsUrl, encodeInputFrames } from "../ttyd-client";
+import { pollUntilReady, buildWsUrl, encodeInputFrames, exponentialBackoff } from "../ttyd-client";
 
 const mockRequestUrl = requestUrl as ReturnType<typeof vi.fn>;
 
@@ -123,5 +123,30 @@ describe("buildWsUrl", () => {
 	it("treats empty/whitespace as loopback", () => {
 		expect(buildWsUrl(7681, "")).toBe("ws://127.0.0.1:7681/ws");
 		expect(buildWsUrl(7681, "  ")).toBe("ws://127.0.0.1:7681/ws");
+	});
+});
+
+// QA 2.11: connection retry backoff (500ms × 1.5^n, capped at 5s).
+describe("exponentialBackoff", () => {
+	it("starts at 500ms", () => {
+		expect(exponentialBackoff(0)).toBe(500);
+	});
+
+	it("grows by 1.5× each attempt", () => {
+		expect(exponentialBackoff(1)).toBe(750);
+		expect(exponentialBackoff(2)).toBe(1125);
+		expect(exponentialBackoff(3)).toBe(1688);
+	});
+
+	it("caps at 5000ms", () => {
+		// 500·1.5^6 ≈ 5696 > cap; everything from here on is clamped.
+		expect(exponentialBackoff(6)).toBe(5000);
+		expect(exponentialBackoff(14)).toBe(5000);
+	});
+
+	it("never exceeds the cap across the full retry window", () => {
+		for (let i = 0; i < 15; i++) {
+			expect(exponentialBackoff(i)).toBeLessThanOrEqual(5000);
+		}
 	});
 });

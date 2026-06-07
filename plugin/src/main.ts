@@ -28,7 +28,7 @@ import { McpLifecycle } from "./mcp-lifecycle";
 import { ActivityUi, AgentOutputNotifier } from "./activity";
 import { showSessionCleanup, showSessionPicker } from "./session-ui";
 import { resetTemplaterSuppression } from "./templater-adapter";
-import { formatUptime } from "./format";
+import { buildContainerStatusLines } from "./format";
 
 const TOOLTIP_STOPPED = "Container is not running\nClick for options";
 const HEALTH_POLL_INTERVAL = 30_000;
@@ -1150,12 +1150,11 @@ export default class AgentSandboxPlugin extends Plugin {
 			const fwLine =
 				fwState === "enabled" ? "on" : fwState === "disabled" ? "off" : "unknown";
 
-			const lines = ["Sandbox: Running"];
-			if (info?.id) lines.push(`ID: ${info.id.slice(0, 12)}`);
-			if (info?.image) lines.push(`Image: ${info.image}`);
-			if (info?.startedAt) lines.push(`Up: ${formatUptime(info.startedAt)}`);
-			lines.push(`MCP: ${mcpRunning ? `on (port ${this.settings.mcpPort})` : "off"}`);
-			lines.push(`Firewall: ${fwLine}`);
+			const lines = buildContainerStatusLines(info, {
+				mcpRunning,
+				mcpPort: this.settings.mcpPort,
+				firewall: fwLine,
+			});
 
 			new Notice(lines.join("\n"), 8000);
 		} catch (error: unknown) {
