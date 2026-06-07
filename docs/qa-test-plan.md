@@ -684,7 +684,7 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 
 **Setup carried forward:** Stage 0–3.
 
-**✅ Automated** — `test/e2e/specs/security.e2e.ts` runs 7.1–7.4 in CI against the real plugin MCP server inside wdio-Obsidian (real symlink fixtures on disk + `vault_read` / `vault_create` / `vault_list` calls over loopback), and `src/__tests__/mcp-symlink.test.ts` unit-tests `isRealPathWithinBase`. The scenario bodies below are retained as the reference spec for that suite — run them by hand only when debugging a failure or on a platform the e2e suite can't reach.
+**✅ Automated** — `test/e2e/specs/security.e2e.ts` runs the denial cases 7.1–7.3 in CI against the real plugin MCP server inside wdio-Obsidian (real symlink fixtures on disk + `vault_read` / `vault_create` calls over loopback). The 7.4 allow-path (a symlink resolving back inside the vault must not be over-blocked) is covered by `src/__tests__/mcp-symlink.test.ts` ("allows a file whose realpath stays inside the base"): it can't run in the e2e harness because `vault_list` / `vault_read` resolve via Obsidian's metadata index, which never indexes a symlink created after load (the call fails "Folder not found" before the realpath guard is reached — an indexing artifact, not a security result). `mcp-symlink.test.ts` also unit-tests `isRealPathWithinBase` directly. The scenario bodies below are the reference spec — run 7.4 by hand only when verifying the allow-path end-to-end.
 
 ### 7.1 Read of escaping symlink is denied
 

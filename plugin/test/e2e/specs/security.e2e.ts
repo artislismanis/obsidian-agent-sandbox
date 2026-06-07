@@ -9,8 +9,11 @@ import { mcpInitialize, mcpCallTool, type McpSession } from "../mcp-client";
 // inside wdio-Obsidian — the bridge layer's Docker-free tier. Symlinks resolve
 // on the host filesystem where the plugin runs, so no container is needed: we
 // create symlink fixtures in the ephemeral vault with node fs, then call the
-// real vault_read / vault_create / vault_list tools over loopback and assert the
-// realpath guard (`isVaultPathSafe` / `validateNewVaultPath`) holds over the wire.
+// real vault_read / vault_create tools over loopback and assert the realpath
+// guard (`isVaultPathSafe` / `validateNewVaultPath`) holds over the wire.
+//
+// Covers the denial cases 7.1-7.3 (the security-critical guarantees). The 7.4
+// allow-path is unit-only — see the note in `before` and mcp-symlink.test.ts.
 //
 // This is the e2e port of container/test-scripts/security-checks.sh T7. The
 // realpath logic itself is unit-tested in mcp-symlink.test.ts; this layer adds
@@ -75,11 +78,14 @@ describe("Bridge: Stage 7 symlink / path-traversal (real MCP server)", function 
 		await fs.symlink("/tmp", path.join(wd, "escape"));
 		// 7.3: nested symlink to an outside directory.
 		await fs.symlink("/tmp", path.join(wd, "innocent", "inner"));
-		// 7.4: symlink to a real directory INSIDE the vault (must stay allowed).
-		const safeTarget = path.join(base, "notes-real");
-		await fs.mkdir(safeTarget, { recursive: true });
-		await fs.writeFile(path.join(safeTarget, "inside.md"), "safe content\n");
-		await fs.symlink(safeTarget, path.join(wd, "safe-link"));
+		// 7.4 (the allow-path: a symlink resolving back inside the vault must NOT
+		// be over-blocked) is covered as a unit test — mcp-symlink.test.ts "allows
+		// a file whose realpath stays inside the base". It can't be exercised here:
+		// vault_list/vault_read resolve via Obsidian's metadata index, which never
+		// indexes a symlinked file/folder created after load, so the call fails with
+		// "Folder not found" before the realpath guard is even reached — an indexing
+		// artifact, not a security result. The denial cases (7.1-7.3) reach the guard
+		// because resolveFile/validateNewVaultPath realpath on disk.
 
 		session = await mcpInitialize(SEC_MCP_PORT, SEC_MCP_TOKEN);
 		expect(session.sessionId).not.toBe("");
@@ -89,7 +95,6 @@ describe("Bridge: Stage 7 symlink / path-traversal (real MCP server)", function 
 		// Ephemeral vault is recreated per spec, but tidy up the fixtures anyway.
 		if (!base) return;
 		await fs.rm(path.join(base, WRITE_DIR), { recursive: true, force: true });
-		await fs.rm(path.join(base, "notes-real"), { recursive: true, force: true });
 	});
 
 	// 7.1: reading a symlink that escapes the vault is denied and leaks nothing.
@@ -117,11 +122,5 @@ describe("Bridge: Stage 7 symlink / path-traversal (real MCP server)", function 
 			path: `${WRITE_DIR}/innocent/inner/x.md`,
 		});
 		expect(res.isError).toBe(true);
-	});
-
-	// 7.4: a symlink that resolves to a target INSIDE the vault stays allowed.
-	it("7.4 allows a symlink pointing back into the vault", async function () {
-		const res = await mcpCallTool(session, "vault_list", { path: `${WRITE_DIR}/safe-link` });
-		expect(res.isError).toBe(false);
 	});
 });
