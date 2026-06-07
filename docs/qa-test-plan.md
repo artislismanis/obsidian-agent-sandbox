@@ -253,7 +253,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 ### 2.7 Terminal opens, attaches, renders
 
-- **🟡 Partially automated (font + auto-copy gating)** — the font fallback chain (`composeFontFamily`: user font → Obsidian mono var → portable mono chain) and the auto-copy-on-selection predicate (`shouldAutoCopy`: gated on the opt-out setting, a non-empty selection, and window focus) are unit-tested in `src/__tests__/terminal-view.test.ts`. The live xterm attach, render fidelity (no flicker, no garbled escapes), and clipboard write need a running ttyd and stay manual.
+- **🟡 Partially automated (font/auto-copy gating + live attach)** — the font fallback chain (`composeFontFamily`) and the auto-copy-on-selection predicate (`shouldAutoCopy`) are unit-tested in `src/__tests__/terminal-view.test.ts`, and the **live attach + render** is covered by `test/e2e/container/terminal-container.e2e.ts` (bridge tier): it points the plugin at the real `oas-test` ttyd, opens a `TerminalView`, and asserts the xterm buffer fills with shell output (the WebSocket attach + render round-trip). **Render fidelity** (no flicker, no garbled escapes) and the clipboard write stay manual — xvfb can't judge "looks right".
 - **Setup:** Container running.
 - **Steps:** Ribbon icon (or `open-claude-terminal` command). Type `ls -la /workspace`.
 - **Expected:** Tab opens, prompt appears, command runs and prints output. No flicker, no garbled escape sequences.
@@ -955,6 +955,7 @@ bash container/test-scripts/stress-checks.sh /path/to/test-vault --with-daemon-s
 
 ### 12.4 Many concurrent terminals
 
+- **✅ Automated (connectivity)** — `test/e2e/container/terminal-container.e2e.ts` ("12.4: five concurrent terminals …") opens 5 `TerminalView`s against the real `oas-test` ttyd and asserts all five attach and render (ttyd multiplexes; no port conflict). CPU/memory headroom stays a manual observation.
 - **Steps:** Open 5 terminal tabs simultaneously.
 - **Expected:** All connect. No port conflicts (ttyd handles multiplexing). CPU/memory remains reasonable.
 - **Notes:** P2.
