@@ -248,4 +248,43 @@ describe("Detached-session cleanup (QA 5.12)", function () {
 			(await noticeTexts()).some((t) => t.includes("No detached tmux sessions to clean up.")),
 		).toBe(true);
 	});
+
+	// QA 5.13 — a name that fails validation makes its kill reject; the failure is
+	// counted (not swallowed) so the aggregate reads 1/2. The real killSession
+	// runs assertSafeSessionName first; we mirror that regex in the stub so the
+	// invalid name rejects without a container (the regex itself is unit-tested in
+	// validation.test.ts).
+	it("5.13: an invalid session name fails its kill and the aggregate reports 1/2", async function () {
+		await browser.executeObsidian(
+			({ app }, names: string[]) => {
+				const plugin = (app as unknown as AppShim).plugins.plugins[
+					"obsidian-agent-sandbox"
+				];
+				plugin.__killed = [];
+				plugin.isContainerRunning = () => true;
+				plugin.docker.listDetachedSessions = async () => names;
+				plugin.docker.killSession = async (name: string) => {
+					if (!/^[\w.-]+$/.test(name)) throw new Error(`Invalid session name: ${name}`);
+					plugin.__killed?.push(name);
+				};
+			},
+			["validname", "bad name"],
+		);
+
+		await browser.executeObsidianCommand(CLEANUP_CMD);
+		await $(".sandbox-modal-check-list").waitForExist({ timeout: 3000 });
+
+		// Both rows stay checked (default); kill the lot.
+		const killBtn = $("button=Kill selected");
+		await killBtn.waitForExist({ timeout: 3000 });
+		await killBtn.click();
+		await browser.pause(300);
+
+		const killed = await browser.executeObsidian(({ app }) => {
+			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			return plugin.__killed ?? [];
+		});
+		expect(killed).toEqual(["validname"]);
+		expect((await noticeTexts()).some((t) => t.includes("Killed 1/2 session(s)."))).toBe(true);
+	});
 });

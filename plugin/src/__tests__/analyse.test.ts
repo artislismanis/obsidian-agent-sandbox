@@ -136,3 +136,116 @@ describe("AnalyseManager template loading", () => {
 		rmSync(tmpBase, { recursive: true, force: true });
 	});
 });
+
+// QA plan 6.3 / 6.5 — the "Analyse in Sandbox" file-menu submenu. attachFileMenu
+// only reads the cached template list + the host, so a fake Menu/MenuItem that
+// records the structure exercises the real builder without Obsidian's Menu DOM.
+interface FakeMenuRow {
+	title: string;
+	onClick?: () => void;
+}
+
+class FakeMenu {
+	items: FakeMenuRow[] = [];
+	childSubmenu: FakeMenu | null = null;
+
+	addItem(cb: (item: FakeMenuItem) => void): this {
+		const row: FakeMenuRow = { title: "" };
+		// Arrow methods so `this` stays the FakeMenu without aliasing it.
+		const item: FakeMenuItem = {
+			setTitle: (t: string) => {
+				row.title = t;
+				return item;
+			},
+			setIcon: () => item,
+			onClick: (fn: () => void) => {
+				row.onClick = fn;
+				return item;
+			},
+			// tryOpenSubmenu() calls this; returning a Menu routes the template
+			// items into the submenu (the real Obsidian behaviour).
+			setSubmenu: () => {
+				this.childSubmenu = new FakeMenu();
+				return this.childSubmenu;
+			},
+		};
+		cb(item);
+		this.items.push(row);
+		return this;
+	}
+}
+
+interface FakeMenuItem {
+	setTitle: (t: string) => FakeMenuItem;
+	setIcon: () => FakeMenuItem;
+	onClick: (fn: () => void) => FakeMenuItem;
+	setSubmenu: () => FakeMenu;
+}
+
+describe("AnalyseManager file menu (QA 6.3 / 6.5)", () => {
+	const FOUR_TEMPLATES = {
+		"summarize.md": "Summarise\n---\nSummarise @{{file}}.",
+		"critique.md": "Critique\n---\nCritique @{{file}}.",
+		"explain.md": "Explain\n---\nExplain @{{file}}.",
+		"extract-todos.md": "Extract TODOs\n---\nExtract TODOs from @{{file}}.",
+	};
+
+	function submenuTitles(menu: FakeMenu): string[] {
+		return (menu.childSubmenu?.items ?? []).map((i) => i.title);
+	}
+
+	it("6.3: lists the templates sorted alphabetically plus a trailing Custom prompt entry", async () => {
+		const tmpBase = tmpOasPromptsDir(FOUR_TEMPLATES);
+		const host = makeHost(tmpBase);
+		const mgr = new AnalyseManager(host);
+		await mgr.prewarm();
+
+		const menu = new FakeMenu();
+		mgr.attachFileMenu(menu as never, { path: "notes/foo.md" } as never);
+
+		// Top-level menu has the single "Analyse in Sandbox" entry; the rest
+		// live in its submenu.
+		expect(menu.items.map((i) => i.title)).toEqual(["Analyse in Sandbox"]);
+		expect(submenuTitles(menu)).toEqual([
+			"Critique",
+			"Explain",
+			"Extract TODOs",
+			"Summarise",
+			"Custom prompt…",
+		]);
+		rmSync(tmpBase, { recursive: true, force: true });
+	});
+
+	it("6.3: clicking a template entry opens a terminal seeded with the substituted prompt", async () => {
+		const tmpBase = tmpOasPromptsDir(FOUR_TEMPLATES);
+		const host = makeHost(tmpBase);
+		const mgr = new AnalyseManager(host);
+		await mgr.prewarm();
+
+		const menu = new FakeMenu();
+		mgr.attachFileMenu(menu as never, { path: "notes/foo.md" } as never);
+
+		const critique = menu.childSubmenu?.items.find((i) => i.title === "Critique");
+		critique?.onClick?.();
+		await vi.waitFor(() =>
+			expect(host.activateTerminalView).toHaveBeenCalledWith(
+				undefined,
+				"Critique @notes/foo.md.",
+			),
+		);
+		rmSync(tmpBase, { recursive: true, force: true });
+	});
+
+	it("6.5: with no templates the submenu collapses to just Custom prompt", async () => {
+		const tmpBase = tmpOasPromptsDir({});
+		const host = makeHost(tmpBase);
+		const mgr = new AnalyseManager(host);
+		await mgr.prewarm();
+
+		const menu = new FakeMenu();
+		mgr.attachFileMenu(menu as never, { path: "notes/foo.md" } as never);
+
+		expect(submenuTitles(menu)).toEqual(["Custom prompt…"]);
+		rmSync(tmpBase, { recursive: true, force: true });
+	});
+});
