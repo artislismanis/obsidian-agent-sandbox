@@ -68,7 +68,10 @@ function extractActiveTab(): Promise<SettingRecord[]> {
 					return withMeta({ type: "secret", name, value: "<secret>" });
 
 				const control = item.querySelector(".setting-item-control");
-				const checkbox = control?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+				// Obsidian's ToggleComponent tracks on/off via the `is-enabled`
+				// class on `.checkbox-container`, not the hidden checkbox's
+				// `.checked` property — so read the class.
+				const toggle = control?.querySelector(".checkbox-container");
 				const select = control?.querySelector<HTMLSelectElement>("select");
 				const input = control?.querySelector<HTMLInputElement>(
 					"input:not([type='checkbox'])",
@@ -77,11 +80,11 @@ function extractActiveTab(): Promise<SettingRecord[]> {
 					item.classList.contains("sandbox-settings-list-editor") ||
 					!!item.querySelector(".sandbox-settings-list-add");
 
-				if (checkbox)
+				if (toggle)
 					return withMeta({
 						type: "toggle",
 						name,
-						value: checkbox.checked ? "on" : "off",
+						value: toggle.classList.contains("is-enabled") ? "on" : "off",
 					});
 				if (select) {
 					const opt = select.options[select.selectedIndex];
