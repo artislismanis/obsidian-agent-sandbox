@@ -41,6 +41,12 @@ function settingDesc(name: string) {
 	);
 }
 
+function settingWarning(name: string) {
+	return $(
+		`${settingItemXPath(name)}//*[contains(concat(' ', normalize-space(@class), ' '), ' sandbox-settings-field-warning ')]`,
+	);
+}
+
 describe("Settings: validation and warnings", function () {
 	before(async function () {
 		await obsidianPage.resetVault();
@@ -144,6 +150,31 @@ describe("Settings: validation and warnings", function () {
 			await settingInput("Bind address").setValue("127.0.0.1");
 			await browser.pause(500);
 			expect(await settingDesc("Bind address").getText()).not.toContain("exposes ttyd");
+		});
+
+		// QA plan 1.4 (visual half, 🎨): the warning isn't just text — it renders
+		// an amber (#ffc107) 3px solid left-border. A computed-style assertion
+		// closes the "is it amber, is it a left-border" gap deterministically,
+		// without pixel-baseline visual-regression infrastructure.
+		it("bind address warning renders the amber left-border", async function () {
+			await settingInput("Bind address").setValue("0.0.0.0");
+			await browser.pause(500);
+
+			const warning = settingWarning("Bind address");
+			await warning.waitForExist({ timeout: 3000 });
+
+			const color = await warning.getCSSProperty("border-left-color");
+			// #ffc107 → rgb(255, 193, 7); wdio normalises to an rgb(a) string.
+			expect(color.value?.replace(/\s/g, "")).toContain("255,193,7");
+
+			const width = await warning.getCSSProperty("border-left-width");
+			expect(width.parsed?.value).toBe(3);
+
+			const style = await warning.getCSSProperty("border-left-style");
+			expect(style.value).toBe("solid");
+
+			await settingInput("Bind address").setValue("127.0.0.1");
+			await browser.pause(500);
 		});
 
 		it("theme and font have no restart labels", async function () {
