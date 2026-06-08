@@ -18,10 +18,11 @@ updates:
       - artislismanis
     # Wait before opening a PR on a fresh release; buys time for the
     # community to spot a compromised action republish (cf. tj-actions /
-    # changed-files, July 2025). Patches still flow promptly.
+    # changed-files, July 2025). The github-actions ecosystem doesn't expose
+    # semver granularity to cooldown, so a single default-days applies to all
+    # bumps (actions are git-tag pinned, not strict semver, anyway).
     cooldown:
       default-days: 3
-      semver-major-days: 7
     # Group all minor/patch action bumps into one weekly PR so reviewers
     # see a coherent bump set instead of one PR per action. Majors stay
     # ungrouped; they may have breaking API or input changes that
@@ -171,9 +172,11 @@ updates:
       include: scope
     assignees:
       - artislismanis
+    # The docker ecosystem doesn't expose semver granularity to cooldown, so
+    # a single default-days applies. Base-image majors are blocked outright by
+    # the ignore rule below, so the cooldown only governs minor/patch tag bumps.
     cooldown:
       default-days: 3
-      semver-major-days: 14
     # Ubuntu base image: 24.04 is LTS until April 2029. Block 25.04 (interim
     # release, 9-month support) and the just-released 26.04 (wait for the
     # .1 patch + verify the apt tree). Lift the rule once 26.04.x is mature
