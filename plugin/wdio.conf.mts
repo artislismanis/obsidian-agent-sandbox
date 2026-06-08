@@ -1,6 +1,9 @@
 import * as path from "path";
 import { parseObsidianVersions } from "wdio-obsidian-service";
 import { env } from "process";
+// NB: keep this top-level import list as-is. Adding further static imports flips
+// jiti's module detection and breaks the top-level `await` on line below. The
+// sentinel deps are imported dynamically inside the afterTest hook instead.
 
 const cacheDir = path.resolve(".obsidian-cache");
 
@@ -52,4 +55,31 @@ export const config: WebdriverIO.Config = {
 
 	// Require explicit imports of describe/it/expect (plays nicely with ESLint).
 	injectGlobals: false,
+
+	// Console-error sentinel (QA 12.7): fail any test that left an un-allowlisted
+	// SEVERE console entry. OAS_SENTINEL_REPORT=1 prints offenders instead of
+	// failing (used to regenerate the allowlist).
+	afterTest: async function (
+		test: { parent: string; title: string },
+		_ctx: unknown,
+		result: { passed: boolean },
+	) {
+		// Don't pile a sentinel failure onto an already-failing test — it would
+		// mask the real assertion error.
+		if (!result.passed) return;
+		const { browser } = await import("@wdio/globals");
+		const { collectSevere } = await import("./test/e2e/console-sentinel.js");
+		const offenders = await collectSevere(browser);
+		if (offenders.length === 0) return;
+		const lines = offenders.map((m) => "  · " + m.split("\n")[0]).join("\n");
+		if (env.OAS_SENTINEL_REPORT) {
+			console.log(`\n[console-sentinel] ${test.parent} › ${test.title}\n${lines}`);
+			return;
+		}
+		throw new Error(
+			`console-sentinel: ${offenders.length} unexpected SEVERE console error(s) in this test:\n${lines}\n` +
+				`If intentional, add a tight pattern to CONSOLE_ALLOWLIST in test/e2e/console-sentinel.ts ` +
+				`(regenerate with OAS_SENTINEL_REPORT=1).`,
+		);
+	},
 };

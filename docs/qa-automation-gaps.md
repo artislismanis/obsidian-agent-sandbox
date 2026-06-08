@@ -93,7 +93,7 @@ Two empirical checks done while writing this (so the recommendations are grounde
 - **Clipboard:** `executeObsidian(() => require("electron").clipboard)` returns a live object →
   Enabler B is real.
 - **Console logs:** `browser.getLogs("browser")` returns `{level:"SEVERE", …}` entries after a
-  `console.error` → Enabler F is real.
+  `console.error` → Enabler F is real. **Now wired** as the 12.7 sentinel — see below.
 
 ---
 
@@ -393,13 +393,23 @@ manual line.
 | 11.3/11.4 BRAT | Third-party installer + live network | artifact + version consistency (unit, 11.5) |
 | "no red console errors" sweeps | Subjective triage of *expected* warnings | the **SEVERE** subset is now automatable — see 12.7 |
 
-### 12.7 Console-error sentinel — a recommended cheap win
-- **Precondition:** **met** — `browser.getLogs("browser")` returns `SEVERE` console entries (confirmed).
-- **Approach:** add a shared `afterEach` (or a final spec) that fetches `getLogs("browser")`, filters
-  to `SEVERE`, allowlists the known-benign lines (the `[Violation] Forced reflow` note in 1.1, ttyd
-  WS-attach failures in the no-container specs), and fails on anything else. This converts the catch-all
-  "no red errors" residual (12.7, and the sweeps in 1.1 / 2.5a) into a real gate across the whole e2e
-  suite — the single highest-leverage item in this document.
+### 12.7 Console-error sentinel — ✅ implemented
+- **Precondition:** **met** — `browser.getLogs("browser")` returns `SEVERE` console entries (verified
+  empirically with a probe: a `console.error` in the Obsidian renderer comes back as one SEVERE entry).
+- **Shipped:** an `afterTest` hook in `plugin/wdio.conf.mts` (logic in `test/e2e/console-sentinel.ts`)
+  fetches `getLogs("browser")` after every passing test, keeps only `SEVERE`, drops allowlisted lines,
+  and fails the test on anything else — a real gate across the whole `test/e2e/specs/**` suite.
+  `OAS_SENTINEL_REPORT=1` prints offenders instead of failing (regenerate the allowlist);
+  `OAS_SENTINEL_RAW=1` bypasses the allowlist (see every SEVERE).
+- **Empirical correction to the original plan:** the allowlist is **empty**. A full RAW recon over all
+  19 specs / 98 tests found **zero** SEVERE entries — the anticipated noise (ttyd WS-attach failures in
+  the no-container specs; the `[Violation] reflow` line) does **not** surface as a SEVERE *console*
+  entry: the plugin routes WS failures through its levelled logger (warn/debug), not `console.error`,
+  and `[Violation]` is a warning, not SEVERE. Pre-seeding those patterns would have been dead code that
+  could mask a real regression, so they were deliberately left out.
+- **Not yet gated:** the bridge-container tier (`wdio.bridge.conf.mts`) — it needs Docker, so its
+  zero-SEVERE baseline wasn't validated here. Adding the same hook there is a small, safe follow-up once
+  its baseline is confirmed.
 
 ### 12.1 Docker daemon stops mid-session
 - **Residual:** `stress-checks.sh --with-daemon-stop` proves MCP becomes unreachable and recovers; the

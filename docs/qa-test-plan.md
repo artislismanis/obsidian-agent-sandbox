@@ -1003,9 +1003,10 @@ bash container/test-scripts/stress-checks.sh /path/to/test-vault --with-daemon-s
 
 ### 12.7 No remaining DevTools console errors after a full session
 
+- **🟡 Partially automated (SEVERE console gate)** — an `afterTest` hook in `plugin/wdio.conf.mts` (logic in `test/e2e/console-sentinel.ts`) fetches `getLogs("browser")` after every e2e test, keeps only **SEVERE** (`console.error` / uncaught) entries, drops allowlisted lines, and fails the test on anything left. It runs across the whole `test/e2e/specs/**` suite, so any new red console error a code change introduces is caught in CI. The allowlist is currently **empty**: a full RAW recon (`OAS_SENTINEL_RAW=1`) found zero SEVERE entries — the deliberate failure paths (terminals with no ttyd, MCP on an occupied port) are surfaced via the plugin's levelled logger, not `console.error`. **Manual residual:** the subjective triage of non-SEVERE **warnings** (each should have a known reason) stays a human read; and the bridge-container tier (`wdio.bridge.conf.mts`) is not yet gated.
 - **Setup:** Open DevTools before starting. Run a representative session: start container, open terminal, do a few Claude tool calls, toggle MCP/firewall, switch sessions, close terminal.
 - **Expected:** Console clean, no red errors. Warnings should each have a known reason (note them in the QA report).
-- **Notes:** P1. Catch-all check.
+- **Notes:** P1. Catch-all check. The SEVERE subset that the "no red errors" sweeps in 1.1 / 2.5a also cover is now gated automatically suite-wide; regenerate the allowlist with `OAS_SENTINEL_REPORT=1` if a benign SEVERE ever appears.
 
 ---
 
