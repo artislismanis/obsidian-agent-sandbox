@@ -153,12 +153,12 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 **1.7a: ttyd port pre-flight (container start)**
 
 - **🟡 Partially automated (conflict surfacing)** — `test/e2e/specs/lifecycle.e2e.ts` ("1.7a") stubs `checkStartupConflicts` to report `[7681]` and asserts `startContainer()` aborts with the "Port conflict: 7681 already in use on 127.0.0.1" Notice and never calls `start()`. The real OS-level bind race and the WSL-NAT-netns blindness stay manual.
-- **What it exercises:** `checkStartupPortConflicts` (`main.ts:1051`) → `DockerManager.checkStartupConflicts` (`docker.ts:879`), which dispatches to `checkPortConflicts` (`docker.ts:829`) or `checkPortConflictsWsl` (`docker.ts:890`), probes `Settings → Terminal → Bind address` + `Port` inside the **plugin process (Obsidian host netns)** before invoking Docker.
+- **What it exercises:** `checkStartupPortConflicts` (`main.ts:1034`) → `DockerManager.checkStartupConflicts` (`docker.ts:846`), which dispatches to `checkPortConflicts` (`docker.ts:796`) or `checkPortConflictsWsl` (`docker.ts:857`), probes `Settings → Terminal → Bind address` + `Port` inside the **plugin process (Obsidian host netns)** before invoking Docker.
 - **Setup:** On the **Obsidian host**, occupy `<ttydBindAddress>:<ttydPort>` (default `127.0.0.1:7681`) using the table above. **On WSL2**: the plugin probes the Windows host netns; compose binds inside WSL2's netns. These are the same only in WSL2 mirrored mode (see expected outcomes below).
 - **Steps:** Command palette → **Sandbox: Start Container**.
 - **Expected:**
   - **Linux native Docker / macOS Docker Desktop / WSL2 mirrored mode:** Notice `Port conflict: 7681 already in use on 127.0.0.1. Stop the other process or change the port in settings.` Container does not start. *(The Notice interpolates the configured Bind address; `127.0.0.1` shown here is the default, not a hardcoded value.)*
-  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns, so the container starts without blocking. Within ~5 s, `checkTtydReachability` (`main.ts:705`) polls the port and fires a 10 s Notice: `Sandbox started but terminal isn't reachable on 127.0.0.1:<port>. Check for a port conflict or run 'docker compose logs' to investigate.` Terminal tab will spin until a manual start/stop cycle resolves the conflict.
+  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns, so the container starts without blocking. Within ~5 s, `checkTtydReachability` (`main.ts:688`) polls the port and fires a 10 s Notice: `Sandbox started but terminal isn't reachable on 127.0.0.1:<port>. Check for a port conflict or run 'docker compose logs' to investigate.` Terminal tab will spin until a manual start/stop cycle resolves the conflict.
 - **Cleanup:** Release the port. Restart container if it started in the NAT-mode gap case.
 - **Notes:** P1 on platforms where pre-flight works. Known gap on WSL2 NAT.
 
@@ -669,6 +669,14 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 - **Expected:** `validname` is killed. `bad name` fails name-validation; the failure is logged to DevTools console as `[Agent Sandbox] [sessions] failed to kill tmux session 'bad name': …`. Aggregate Notice reports `Killed 1/2 session(s).`.
 - **Cleanup:** `tmux kill-session -t "bad name"` inside the container if it survived the failed kill.
 - **Notes:** P2.
+
+### 5.14 Open named session (create + attach)
+
+- **🟡 Partially automated (command → prompt → named tab)** — `test/e2e/specs/sessions.e2e.ts` ("Open named session": "creates a terminal tab attached to the entered session name" / "opens no terminal when the prompt is cancelled") drives the real **open-session** command, fills the session-name prompt (`promptSessionName` → single-line `inputModal`), and asserts a terminal leaf whose `getSessionName()` is the entered value, plus that cancelling the prompt opens nothing. `activateTerminalView` always opens a **new** tab; the tmux **re-attach** when you reopen with the same name is container-side and stays manual.
+- **Setup:** Container running.
+- **Steps:** Command palette → **Sandbox: Open Session...**. Enter `work`. Run `claude`, complete a turn. Then run **Sandbox: Open Session...** again with `work` (in a new tab, or after reopening Obsidian).
+- **Expected:** The first run opens a terminal tab attached to tmux session `work`. Re-running with `work` re-attaches to the **same** tmux session (Claude's scrollback/context intact) rather than starting a fresh shell; a different name (`research`) opens an independent session. Cancelling the prompt (Escape / empty input) opens no tab.
+- **Notes:** P1. This create/attach flow is the core of persistent sessions (`docs/how-to/persistent-sessions.md`); only id-registration was previously covered (1.9). The rename path reuses the same `promptSessionName` modal.
 
 ---
 

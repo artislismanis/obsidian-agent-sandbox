@@ -6,6 +6,11 @@ vi.mock("obsidian", () => ({
 	prepareSimpleSearch: vi.fn(() => () => ({ score: 1, matches: [[0, 5]] })),
 	prepareFuzzySearch: vi.fn(() => () => ({ score: 1, matches: [[0, 5]] })),
 	FileSystemAdapter: class {},
+	// agent_time casts this re-export to a moment factory; return a deterministic clock.
+	moment: () => ({
+		format: (fmt?: string) => (fmt === "z" ? "UTC" : "2026-06-08T12:34:56+00:00"),
+		utcOffset: () => 0,
+	}),
 }));
 
 import { buildTools, isPathAllowedByFilter } from "../mcp-tools";
@@ -104,6 +109,7 @@ describe("MCP tool handlers", () => {
 			expect(names).toContain("vault_batch_frontmatter");
 			expect(names).toContain("vault_create_reviewed");
 			expect(names).toContain("vault_modify_reviewed");
+			expect(names).toContain("agent_time");
 		});
 
 		it("assigns correct tiers", () => {
@@ -112,6 +118,22 @@ describe("MCP tool handlers", () => {
 			expect(getTool(tools, "vault_create_anywhere").tier).toBe("writeVault");
 			expect(getTool(tools, "vault_open").tier).toBe("navigate");
 			expect(getTool(tools, "vault_rename").tier).toBe("manage");
+			expect(getTool(tools, "agent_time").tier).toBe("agent");
+		});
+	});
+
+	describe("agent_time", () => {
+		it("returns the host clock as well-formed JSON", async () => {
+			const r = getResult(await getTool(tools, "agent_time").handler({}));
+			expect(r.isError).toBe(false);
+			const parsed = JSON.parse(r.text) as {
+				localIso: string;
+				utcOffsetMinutes: number;
+				tzAbbr: string;
+			};
+			expect(parsed.localIso).toBe("2026-06-08T12:34:56+00:00");
+			expect(parsed.utcOffsetMinutes).toBe(0);
+			expect(parsed.tzAbbr).toBe("UTC");
 		});
 	});
 
