@@ -14,6 +14,7 @@ import { obsidianPage } from "wdio-obsidian-service";
 const PLUGIN_ID = "obsidian-agent-sandbox";
 const SWITCH_CMD = `${PLUGIN_ID}:sandbox-switch-session`;
 const CLEANUP_CMD = `${PLUGIN_ID}:sandbox-cleanup-sessions`;
+const OPEN_SESSION_CMD = `${PLUGIN_ID}:open-session`;
 const VIEW_TYPE_TERMINAL = "agent-sandbox-terminal-view";
 
 interface PluginShim {
@@ -208,6 +209,54 @@ describe("Session switcher (QA 5.10/5.11)", function () {
 		expect((await noticeTexts()).some((t) => t.includes("That session has closed."))).toBe(
 			true,
 		);
+	});
+});
+
+describe("Open named session (QA 5.14)", function () {
+	// The open-session command is the create half of the persistent-sessions
+	// feature: prompt for a name → activateTerminalView(name). promptSessionName
+	// opens a single-line inputModal (input.sandbox-modal-input-full, submits on
+	// Enter). activateTerminalView has no container guard, so the named leaf is
+	// observable headlessly; the tmux re-attach on a matching name is container-
+	// side and stays manual (docs/qa-test-plan.md 5.14).
+	beforeEach(async function () {
+		await obsidianPage.resetVault();
+		await closeTerminals();
+	});
+
+	afterEach(async function () {
+		await closeAllModals();
+		await closeTerminals();
+	});
+
+	it("creates a terminal tab attached to the entered session name", async function () {
+		await browser.executeObsidianCommand(OPEN_SESSION_CMD);
+		const input = $(".sandbox-modal-input-full");
+		await input.waitForExist({ timeout: 3000 });
+		await input.setValue("work");
+		await browser.keys("Enter");
+
+		await browser.waitUntil(async () => (await activeSessionName()) === "work", {
+			timeout: 3000,
+			timeoutMsg: "open-session did not open a terminal attached to 'work'",
+		});
+		expect(await terminalLeafCount()).toBe(1);
+		expect(await activeSessionName()).toBe("work");
+	});
+
+	it("opens no terminal when the prompt is cancelled", async function () {
+		await browser.executeObsidianCommand(OPEN_SESSION_CMD);
+		await $(".sandbox-modal-input-full").waitForExist({ timeout: 3000 });
+		await browser.keys("Escape");
+
+		await browser.waitUntil(
+			async () =>
+				(await browser.executeObsidian(
+					() => document.querySelectorAll(".modal-container").length,
+				)) === 0,
+			{ timeout: 3000, timeoutMsg: "session-name prompt did not close on Escape" },
+		);
+		expect(await terminalLeafCount()).toBe(0);
 	});
 });
 

@@ -153,12 +153,12 @@ To confirm your WSL2 networking mode: `wsl --status` (look for "Networking mode"
 **1.7a: ttyd port pre-flight (container start)**
 
 - **🟡 Partially automated (conflict surfacing)** — `test/e2e/specs/lifecycle.e2e.ts` ("1.7a") stubs `checkStartupConflicts` to report `[7681]` and asserts `startContainer()` aborts with the "Port conflict: 7681 already in use on 127.0.0.1" Notice and never calls `start()`. The real OS-level bind race and the WSL-NAT-netns blindness stay manual.
-- **What it exercises:** `checkStartupPortConflicts` (`main.ts:1051`) → `DockerManager.checkStartupConflicts` (`docker.ts:879`), which dispatches to `checkPortConflicts` (`docker.ts:829`) or `checkPortConflictsWsl` (`docker.ts:890`), probes `Settings → Terminal → Bind address` + `Port` inside the **plugin process (Obsidian host netns)** before invoking Docker.
+- **What it exercises:** `checkStartupPortConflicts` (`main.ts:1034`) → `DockerManager.checkStartupConflicts` (`docker.ts:846`), which dispatches to `checkPortConflicts` (`docker.ts:796`) or `checkPortConflictsWsl` (`docker.ts:857`), probes `Settings → Terminal → Bind address` + `Port` inside the **plugin process (Obsidian host netns)** before invoking Docker.
 - **Setup:** On the **Obsidian host**, occupy `<ttydBindAddress>:<ttydPort>` (default `127.0.0.1:7681`) using the table above. **On WSL2**: the plugin probes the Windows host netns; compose binds inside WSL2's netns. These are the same only in WSL2 mirrored mode (see expected outcomes below).
 - **Steps:** Command palette → **Sandbox: Start Container**.
 - **Expected:**
   - **Linux native Docker / macOS Docker Desktop / WSL2 mirrored mode:** Notice `Port conflict: 7681 already in use on 127.0.0.1. Stop the other process or change the port in settings.` Container does not start. *(The Notice interpolates the configured Bind address; `127.0.0.1` shown here is the default, not a hardcoded value.)*
-  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns, so the container starts without blocking. Within ~5 s, `checkTtydReachability` (`main.ts:705`) polls the port and fires a 10 s Notice: `Sandbox started but terminal isn't reachable on 127.0.0.1:<port>. Check for a port conflict or run 'docker compose logs' to investigate.` Terminal tab will spin until a manual start/stop cycle resolves the conflict.
+  - **WSL2 NAT mode (default):** Pre-flight probe is blind to the WSL netns, so the container starts without blocking. Within ~5 s, `checkTtydReachability` (`main.ts:688`) polls the port and fires a 10 s Notice: `Sandbox started but terminal isn't reachable on 127.0.0.1:<port>. Check for a port conflict or run 'docker compose logs' to investigate.` Terminal tab will spin until a manual start/stop cycle resolves the conflict.
 - **Cleanup:** Release the port. Restart container if it started in the NAT-mode gap case.
 - **Notes:** P1 on platforms where pre-flight works. Known gap on WSL2 NAT.
 
@@ -670,6 +670,14 @@ After all cells are complete, skim the run files for any PASS scenario that reli
 - **Cleanup:** `tmux kill-session -t "bad name"` inside the container if it survived the failed kill.
 - **Notes:** P2.
 
+### 5.14 Open named session (create + attach)
+
+- **🟡 Partially automated (command → prompt → named tab)** — `test/e2e/specs/sessions.e2e.ts` ("Open named session": "creates a terminal tab attached to the entered session name" / "opens no terminal when the prompt is cancelled") drives the real **open-session** command, fills the session-name prompt (`promptSessionName` → single-line `inputModal`), and asserts a terminal leaf whose `getSessionName()` is the entered value, plus that cancelling the prompt opens nothing. `activateTerminalView` always opens a **new** tab; the tmux **re-attach** when you reopen with the same name is container-side and stays manual.
+- **Setup:** Container running.
+- **Steps:** Command palette → **Sandbox: Open Session...**. Enter `work`. Run `claude`, complete a turn. Then run **Sandbox: Open Session...** again with `work` (in a new tab, or after reopening Obsidian).
+- **Expected:** The first run opens a terminal tab attached to tmux session `work`. Re-running with `work` re-attaches to the **same** tmux session (Claude's scrollback/context intact) rather than starting a fresh shell; a different name (`research`) opens an independent session. Cancelling the prompt (Escape / empty input) opens no tab.
+- **Notes:** P1. This create/attach flow is the core of persistent sessions (`docs/how-to/persistent-sessions.md`); only id-registration was previously covered (1.9). The rename path reuses the same `promptSessionName` modal.
+
 ---
 
 ## Stage 6: URI handlers + context menu
@@ -995,9 +1003,10 @@ bash container/test-scripts/stress-checks.sh /path/to/test-vault --with-daemon-s
 
 ### 12.7 No remaining DevTools console errors after a full session
 
+- **🟡 Partially automated (SEVERE console gate)** — an `afterTest` hook in `plugin/wdio.conf.mts` (logic in `test/e2e/console-sentinel.ts`) fetches `getLogs("browser")` after every e2e test, keeps only **SEVERE** (`console.error` / uncaught) entries, drops allowlisted lines, and fails the test on anything left. It runs across the whole `test/e2e/specs/**` suite, so any new red console error a code change introduces is caught in CI. The allowlist is currently **empty**: a full RAW recon (`OAS_SENTINEL_RAW=1`) found zero SEVERE entries — the deliberate failure paths (terminals with no ttyd, MCP on an occupied port) are surfaced via the plugin's levelled logger, not `console.error`. **Manual residual:** the subjective triage of non-SEVERE **warnings** (each should have a known reason) stays a human read; and the bridge-container tier (`wdio.bridge.conf.mts`) is not yet gated.
 - **Setup:** Open DevTools before starting. Run a representative session: start container, open terminal, do a few Claude tool calls, toggle MCP/firewall, switch sessions, close terminal.
 - **Expected:** Console clean, no red errors. Warnings should each have a known reason (note them in the QA report).
-- **Notes:** P1. Catch-all check.
+- **Notes:** P1. Catch-all check. The SEVERE subset that the "no red errors" sweeps in 1.1 / 2.5a also cover is now gated automatically suite-wide; regenerate the allowlist with `OAS_SENTINEL_REPORT=1` if a benign SEVERE ever appears.
 
 ---
 
