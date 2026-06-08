@@ -61,10 +61,13 @@ updates:
     ignore:
       # @types/node: track the runtime Node major (currently 24 LTS). Types
       # 25 surfaces APIs that don't exist at runtime. Lift on Node 26 LTS
-      # (or when we ship a non-LTS runtime).
+      # (or when we ship a non-LTS runtime). Pinned by explicit version range
+      # rather than `version-update:semver-major`: @types/node doesn't follow
+      # strict semver, so the semver-major classifier kept letting 25.x PRs
+      # through (#78, #108, #216). Bump the floor when the runtime moves.
       - dependency-name: "@types/node"
-        update-types:
-          - "version-update:semver-major"
+        versions:
+          - ">=25"
       # typescript: now on 6.x. Block the next major (7.0) until
       # typescript-eslint confirms support — TS majors routinely break the
       # eslint peer-dep chain. Minors/patches under 6.x flow via the
