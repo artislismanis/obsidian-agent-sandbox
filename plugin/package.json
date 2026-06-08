@@ -37,8 +37,8 @@
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
 		"@types/node": "^24.0.0",
-		"@typescript-eslint/eslint-plugin": "^8.60.0",
-		"@typescript-eslint/parser": "^8.60.0",
+		"@typescript-eslint/eslint-plugin": "^8.60.1",
+		"@typescript-eslint/parser": "^8.60.1",
 		"@vitest/coverage-v8": "^4.1.7",
 		"@wdio/cli": "^9.27.1",
 		"@wdio/globals": "^9.27.1",
