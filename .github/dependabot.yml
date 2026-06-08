@@ -14,7 +14,7 @@ updates:
     # while the cooldown window elapses. Without this, the cooldown's
     # supply-chain-risk justification is undercut; the PR may auto-pass
     # checks and merge timing depends entirely on incidental review.
-    reviewers:
+    assignees:
       - artislismanis
     # Wait before opening a PR on a fresh release; buys time for the
     # community to spot a compromised action republish (cf. tj-actions /
@@ -45,7 +45,7 @@ updates:
     commit-message:
       prefix: "deps"
       include: scope
-    reviewers:
+    assignees:
       - artislismanis
     open-pull-requests-limit: 10
     # Same rationale as the github-actions cooldown above. npm has a
@@ -65,10 +65,10 @@ updates:
       - dependency-name: "@types/node"
         update-types:
           - "version-update:semver-major"
-      # typescript: TS 6.0 metapackage release (8.59.4 typescript-eslint
-      # combo) has a peer-dep snarl that fails `npm install`. Wait for
-      # typescript-eslint v9 GA before attempting. Minors/patches under 5.x
-      # still flow; the lockfile is currently stale at 5.3.3.
+      # typescript: now on 6.x. Block the next major (7.0) until
+      # typescript-eslint confirms support — TS majors routinely break the
+      # eslint peer-dep chain. Minors/patches under 6.x flow via the
+      # typescript group.
       - dependency-name: "typescript"
         update-types:
           - "version-update:semver-major"
@@ -99,6 +99,7 @@ updates:
       typescript:
         patterns:
           - "typescript"
+          - "typescript-eslint"
           - "@typescript-eslint/*"
           - "tslib"
         update-types:
@@ -165,7 +166,7 @@ updates:
     commit-message:
       prefix: "container"
       include: scope
-    reviewers:
+    assignees:
       - artislismanis
     cooldown:
       default-days: 3
