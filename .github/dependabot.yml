@@ -173,15 +173,18 @@ updates:
     assignees:
       - artislismanis
     # The docker ecosystem doesn't expose semver granularity to cooldown, so
-    # a single default-days applies. Base-image majors are blocked outright by
-    # the ignore rule below, so the cooldown only governs minor/patch tag bumps.
+    # a single default-days applies. Majors and interims are blocked by the
+    # ignore rule below, so the cooldown only governs the 24.04.x patch tags.
     cooldown:
       default-days: 3
-    # Ubuntu base image: 24.04 is LTS until April 2029. Block 25.04 (interim
-    # release, 9-month support) and the just-released 26.04 (wait for the
-    # .1 patch + verify the apt tree). Lift the rule once 26.04.x is mature
-    # and we've audited every apt-installed tool still resolves.
+    # Ubuntu base image: pin to the 24.04 LTS line (supported to April 2029).
+    # Block both majors (26.04) and minors — the minor bumps are interim
+    # releases (24.10, 25.10) with only 9-month support; 24.04→24.10 is a
+    # semver-minor, which is how #220 slipped through a major-only ignore.
+    # Only 24.04.x patch tags flow. Lift / re-target when adopting the next
+    # LTS (26.04), after auditing that every apt-installed tool still resolves.
     ignore:
       - dependency-name: "ubuntu"
         update-types:
           - "version-update:semver-major"
+          - "version-update:semver-minor"
