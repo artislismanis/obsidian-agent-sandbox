@@ -30,7 +30,7 @@ Exit code `0` means the suite passed. Any non-zero code = one or more failures. 
 - **Docker Engine** running and reachable via `docker info`
 - **Image built:** `cd container && docker compose build` (or let CI build it)
   - Helpers check for `oas-sandbox:latest` and skip the whole suite if missing
-- **Ports 17681 (ttyd) and 38080 (MCP)** free on `127.0.0.1`. The test compose remaps away from production defaults so it can run alongside a live container.
+- **Ports 17681 (ttyd) and 38080 (MCP)** free on `127.0.0.1`. These are test-only remaps of the production defaults (7681 ttyd, 28080 MCP) so the suite can run alongside a live container.
 - **Optional, Claude Code auth seeding:** to run the `claude-code.test.ts` subsuite you need a live `oas_oas-claude-config` Docker volume. See "Claude Code authentication" below. Without it the Claude tests skip; everything else still runs.
 
 ### E2E tests (Layer 3)

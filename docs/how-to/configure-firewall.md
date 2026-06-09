@@ -6,7 +6,7 @@ The sandbox container runs an allowlist-based outbound firewall. Traffic to unli
 
 | Source | Where it lives | Who controls it | Claude can see/modify? |
 |---|---|---|---|
-| `baseline` | `container/scripts/init-firewall.sh` | Project maintainers (git) | No: script isn't mounted |
+| `baseline` | `container/firewall-baseline.txt` | Project maintainers (git) | See yes, modify no: bind-mounted read-only at `/etc/oas/firewall-baseline.txt` |
 | `plugin` | Obsidian plugin setting "Additional firewall domains" | User via plugin UI | No: env var only, not in `/workspace` |
 | `file` | `container/firewall-extras.txt` | User (host filesystem) | No: mounted read-only at `/etc/oas/firewall-extras.txt`, outside `/workspace` |
 

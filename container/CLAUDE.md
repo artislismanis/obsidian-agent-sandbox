@@ -10,6 +10,7 @@ This folder contains the Docker image definition and supporting scripts for the 
 | `docker-compose.yml` | Service, mounts, resource limits, OAS naming |
 | `.env.example` | Environment template (copy to `.env` for standalone CLI use) |
 | `.dockerignore` | Excludes from the build context |
+| `firewall-baseline.txt` | Project-curated firewall allowlist (baked into the image and bind-mounted read-only at `/etc/oas/firewall-baseline.txt`, so baseline updates apply without a rebuild) |
 | `firewall-extras.txt` | Host-managed firewall allowlist extras (mounted read-only at `/etc/oas/firewall-extras.txt`; invisible to the agent) |
 | `configs/` | Files copied into the image: `tmux.conf`, `session-helpers.sh` |
 | `scripts/entrypoint.sh` | Container entrypoint: sets sudo password, drops to `claude`, runs ttyd |
@@ -33,7 +34,7 @@ This folder is not mounted into the container. For the rationale and exceptions,
 ## Adding a system tool
 
 1. Add the package to the main `apt-get install` block in `Dockerfile` (keep the list alphabetized).
-2. If the tool needs network access at runtime, add the relevant domains to the allowlist in `scripts/init-firewall.sh`.
+2. If the tool needs network access at runtime, add the relevant domains to `firewall-baseline.txt`.
 3. Rebuild: `cd container && docker compose build`
 4. Restart the container (via plugin or `docker compose down && up -d`).
 5. Update `scripts/verify.sh` so the new tool is reported alongside the others (the script has a hardcoded list, so adding to the Dockerfile alone won't surface it).
@@ -42,9 +43,18 @@ This folder is not mounted into the container. For the rationale and exceptions,
 
 ## Firewall allowlist
 
-See [`docs/how-to/configure-firewall.md`](../docs/how-to/configure-firewall.md) for how to add entries. The safety constraint that lives here: **never weaken the allowlist without clear justification** (this is duplicated in "Safety constraints" below for visibility).
+The effective allowlist is the union of three additive sources: `firewall-baseline.txt` (project-curated, changes via PR), `firewall-extras.txt` (host-managed), and the `OAS_ALLOWED_DOMAINS` env var (plugin-supplied). See [`docs/how-to/configure-firewall.md`](../docs/how-to/configure-firewall.md) for how to add entries and which source to use. The safety constraint that lives here: **never weaken the allowlist without clear justification** (this is duplicated in "Safety constraints" below for visibility).
 
 Allowed categories: Anthropic (api.anthropic.com, sentry.io), npm, GitHub, PyPI, CDNs (jsdelivr, cdnjs, unpkg), Ubuntu apt mirrors.
+
+## Changing a default value
+
+Several defaults repeat across files because compose's `${VAR:-default}` idiom cannot be centralised. Change every site together:
+
+- ttyd port `7681`: `docker-compose.yml` (ports + `OAS_TTYD_PORT`), `Dockerfile` (healthcheck), `scripts/entrypoint.sh` (ttyd launch)
+- MCP port `28080`: `docker-compose.yml` (`OAS_MCP_PORT`), plugin settings default, `workspace/.claude/scripts/obsidian-mcp-proxy.js`
+- Write dir `agent-workspace`: `docker-compose.yml` (mount + `OAS_VAULT_WRITE_DIR`), `scripts/entrypoint.sh`, `scripts/verify.sh`
+- Memory file `memory.json`: `docker-compose.yml` (`OAS_MEMORY_FILE_NAME` + `MEMORY_FILE_PATH`), `scripts/entrypoint.sh`, `.env.example`
 
 ## Sudo model
 

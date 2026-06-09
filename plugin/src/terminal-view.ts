@@ -5,20 +5,20 @@ import { FitAddon } from "@xterm/addon-fit";
 import type { TerminalSettings, TerminalThemeMode } from "./settings";
 import { logger, errMsg } from "./logger";
 import { refreshLeafHeader } from "./obsidian-internals";
-import { pollUntilReady, buildWsUrl, exponentialBackoff, encodeInputFrames } from "./ttyd-client";
+import {
+	pollUntilReady,
+	buildWsUrl,
+	exponentialBackoff,
+	encodeInputFrames,
+	reconnectDelayMs,
+	RECONNECT_BACKOFF_MS,
+} from "./ttyd-client";
 import { isValidSessionName, tabKey } from "./validation";
 
 import { VIEW_TYPE_TERMINAL } from "./view-types";
 export { VIEW_TYPE_TERMINAL };
 
 const MAX_RETRIES = 15;
-
-// Auto-reconnect on abnormal close. The container is almost always still
-// running; the WebSocket dropped from Obsidian sleep or a network hiccup.
-// More patient than the initial connect because reconnects happen during
-// active use - a mid-session "could not reconnect" error is much more
-// disruptive than a slow first connect.
-const RECONNECT_BACKOFF_MS = [500, 1000, 2000, 4000, 8000, 8000, 8000, 8000];
 
 // ttyd wire protocol - single-byte command prefix. Each direction reuses the
 // same ASCII codes with different meanings; only OUTPUT is consumed inbound.
@@ -882,7 +882,8 @@ export class TerminalView extends ItemView {
 
 	private scheduleReconnect(container: HTMLElement, gen: number): void {
 		if (gen !== this.generation) return;
-		if (this.reconnectAttempt >= RECONNECT_BACKOFF_MS.length) {
+		const waitMs = reconnectDelayMs(this.reconnectAttempt);
+		if (waitMs === null) {
 			logger.warn(
 				"Terminal",
 				`Reconnect gave up after ${this.reconnectAttempt} attempts (instance ${this.instanceId})`,
@@ -893,7 +894,6 @@ export class TerminalView extends ItemView {
 			);
 			return;
 		}
-		const waitMs = RECONNECT_BACKOFF_MS[this.reconnectAttempt];
 		this.reconnectAttempt++;
 		this.showStatusBanner(
 			`Connection dropped - reconnecting (attempt ${this.reconnectAttempt}/${RECONNECT_BACKOFF_MS.length}, in ${Math.round(waitMs / 100) / 10}s)…`,

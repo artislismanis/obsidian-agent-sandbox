@@ -686,6 +686,11 @@ export class DockerManager {
 			stdio: "ignore",
 			windowsHide: true,
 		});
+		// Without a listener, a spawn failure (e.g. shell binary missing) emits
+		// an unhandled 'error' event - an uncaught exception during unload.
+		child.on("error", (e) => {
+			logger.warn("Docker", `Detached stop failed to spawn ${shell}: ${errMsg(e)}`);
+		});
 		child.unref();
 	}
 

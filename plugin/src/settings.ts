@@ -155,6 +155,31 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	pendingRestartMarker: false,
 };
 
+/**
+ * Merge raw persisted data over DEFAULT_SETTINGS and apply one-shot
+ * migrations. Pure so migrations stay unit-testable; main.ts owns the
+ * surrounding load/save I/O. The token generator is injected to keep this
+ * module free of a static mcp-server import (matching the lazy import on the
+ * Regenerate button). `changed: true` means the result needs persisting.
+ */
+export function migrateSettings(
+	raw: unknown,
+	generateToken: () => string,
+): { settings: AgentSandboxSettings; changed: boolean } {
+	const settings: AgentSandboxSettings = Object.assign({}, DEFAULT_SETTINGS, raw ?? {});
+	let changed = false;
+	// One-shot migration: "none" was renamed to "scoped" to match the tier vocabulary.
+	if ((settings.mcpVaultWrites as string) === "none") {
+		settings.mcpVaultWrites = "scoped";
+		changed = true;
+	}
+	if (!settings.mcpToken) {
+		settings.mcpToken = generateToken();
+		changed = true;
+	}
+	return { settings, changed };
+}
+
 const RESTART_CONTAINER_SUFFIX = " Requires container restart.";
 
 /** Settings keys whose values must match the snapshot to skip a restart prompt. */

@@ -155,7 +155,21 @@ fi
 # Prompt templates are not seeded; auto-seeding would overwrite user-edited prompts.
 
 # Ensure memory file exists (MCP memory server expects it).
-memory_file="/workspace/vault/.oas/${OAS_MEMORY_FILE_NAME:-memory.json}"
+#
+# Defence-in-depth guard mirroring the OAS_VAULT_WRITE_DIR check above. The
+# plugin validates the name host-side (isValidMemoryFileName), but a
+# hand-edited .env in standalone use bypasses the plugin. A plain file name
+# only: no slashes, no backslashes, no leading dot. Rejecting separators
+# keeps the install below contained to /workspace/vault/.oas/ ('..' needs a
+# separator to escape, and bare '..' is caught by the leading-dot pattern).
+memory_name="${OAS_MEMORY_FILE_NAME:-memory.json}"
+case "$memory_name" in
+    ""|*/*|*\\*|.*)
+        echo "ERROR: OAS_MEMORY_FILE_NAME='$memory_name' must be a plain file name (no slashes, no leading dot)." >&2
+        exit 1
+        ;;
+esac
+memory_file="/workspace/vault/.oas/${memory_name}"
 if [[ ! -f "$memory_file" ]]; then
     install -o "${claude_uid}" -g "${claude_gid}" -m 644 /dev/null "$memory_file"
 fi
