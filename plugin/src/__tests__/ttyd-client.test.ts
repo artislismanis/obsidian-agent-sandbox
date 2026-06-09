@@ -11,6 +11,8 @@ import {
 	buildWsUrl,
 	encodeInputFrames,
 	exponentialBackoff,
+	reconnectDelayMs,
+	RECONNECT_BACKOFF_MS,
 	resolveTtydBrowserUrl,
 } from "../ttyd-client";
 
@@ -154,6 +156,25 @@ describe("exponentialBackoff", () => {
 		for (let i = 0; i < 15; i++) {
 			expect(exponentialBackoff(i)).toBeLessThanOrEqual(5000);
 		}
+	});
+});
+
+// Reconnect give-up decision used by TerminalView.scheduleReconnect.
+describe("reconnectDelayMs", () => {
+	it("follows the schedule for each attempt already made", () => {
+		RECONNECT_BACKOFF_MS.forEach((expected, i) => {
+			expect(reconnectDelayMs(i)).toBe(expected);
+		});
+	});
+
+	it("starts patient and plateaus at 8s", () => {
+		expect(reconnectDelayMs(0)).toBe(500);
+		expect(reconnectDelayMs(RECONNECT_BACKOFF_MS.length - 1)).toBe(8000);
+	});
+
+	it("gives up once the schedule is exhausted", () => {
+		expect(reconnectDelayMs(RECONNECT_BACKOFF_MS.length)).toBeNull();
+		expect(reconnectDelayMs(RECONNECT_BACKOFF_MS.length + 5)).toBeNull();
 	});
 });
 

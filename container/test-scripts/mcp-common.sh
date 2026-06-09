@@ -28,6 +28,13 @@ assert_ok() {  # $1=response-json $2=label
 }
 
 # ---------------------------------------------------------------------------
+# Preflight
+# ---------------------------------------------------------------------------
+
+command -v jq     >/dev/null || { echo "FATAL: jq not found" >&2; exit 1; }
+command -v docker >/dev/null || { echo "FATAL: docker not found" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
 # MCP token
 # ---------------------------------------------------------------------------
 
@@ -49,7 +56,7 @@ init_session() {
         -H "Authorization: Bearer $MCP_TOKEN" \
         -H "Content-Type: application/json" \
         -X POST "$MCP_BASE" \
-        -d "{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"${0##*/}\",\"version\":\"1.0\"}}}" \
+        -d "{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"${0##*/}\",\"version\":\"1.0\"}}}" \
         2>/dev/null)
     MCP_SESSION=$(echo "$headers" | grep -i "^mcp-session-id:" | tr -d '\r' | awk '{print $2}')
     if [[ -z "$MCP_SESSION" ]]; then
@@ -67,10 +74,3 @@ mcp_call() {  # $1=tool-name $2=args-json  →  prints response JSON
         -X POST "$MCP_BASE" \
         -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"$1\",\"arguments\":$2}}"
 }
-
-# ---------------------------------------------------------------------------
-# Preflight
-# ---------------------------------------------------------------------------
-
-command -v jq     >/dev/null || { echo "FATAL: jq not found" >&2; exit 1; }
-command -v docker >/dev/null || { echo "FATAL: docker not found" >&2; exit 1; }

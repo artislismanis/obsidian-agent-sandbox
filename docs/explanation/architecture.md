@@ -8,7 +8,7 @@ The container is the security boundary. Inside it, Claude runs with `bypassPermi
 
 So the repo is structured to make that distinction mechanical, not conventional:
 
-- `container/` is infra. It builds the image. It is not mounted into Claude's visible filesystem (the lone exception, `firewall-extras.txt`, is bind-mounted read-only at `/etc/oas/firewall-extras.txt`, outside `/workspace/`, so Claude can't see or modify it). Source tags are inferred at runtime via `init-firewall.sh --list-sources`, which reports `[baseline]` / `[plugin]` / `[file]` origins.
+- `container/` is infra. It builds the image. It is not mounted into Claude's visible filesystem, with two read-only exceptions bind-mounted at `/etc/oas/`, outside `/workspace/`, so Claude cannot modify them: `firewall-baseline.txt` (the project-curated allowlist; the mount overrides the image-baked copy so baseline updates take effect without a rebuild) and `firewall-extras.txt` (host-managed additions). A third allowlist source, the `OAS_ALLOWED_DOMAINS` env var, carries plugin-supplied entries at container start. The three sources are additive, with no override semantics; `init-firewall.sh --list-sources` reports each entry's origin as `[baseline]`, `[plugin]`, or `[file]` (extras).
 - `workspace/` is Claude's domain. It is mounted rw at `/workspace/`. Claude edits files. Changes appear as unstaged modifications on the host. The human reviews and commits via normal git on a feature branch.
 - `plugin/` is the Obsidian plugin. It's how you invoke the sandbox from inside Obsidian. Changes here are unrelated to sandbox state. Plugin-internal architecture and conventions live in [`plugin/CLAUDE.md`](../../plugin/CLAUDE.md).
 

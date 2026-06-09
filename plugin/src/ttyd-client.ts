@@ -71,6 +71,24 @@ export function exponentialBackoff(attemptIdx: number): number {
 	return Math.min(5000, Math.round(500 * Math.pow(1.5, attemptIdx)));
 }
 
+// Auto-reconnect schedule for abnormal WebSocket closes. The container is
+// almost always still running; the WebSocket dropped from Obsidian sleep or
+// a network hiccup. More patient than the initial-connect exponentialBackoff
+// because reconnects happen during active use - a mid-session "could not
+// reconnect" error is much more disruptive than a slow first connect.
+export const RECONNECT_BACKOFF_MS: readonly number[] = [
+	500, 1000, 2000, 4000, 8000, 8000, 8000, 8000,
+];
+
+/**
+ * Delay before the next reconnect, given the number of attempts already
+ * made. Returns null when the schedule is exhausted and the caller should
+ * surface a terminal error instead of retrying.
+ */
+export function reconnectDelayMs(attemptsMade: number): number | null {
+	return attemptsMade >= RECONNECT_BACKOFF_MS.length ? null : RECONNECT_BACKOFF_MS[attemptsMade];
+}
+
 export function buildWsUrl(port: number, bindAddress?: string): string {
 	return `ws://${resolveHost(bindAddress)}:${port}/ws`;
 }

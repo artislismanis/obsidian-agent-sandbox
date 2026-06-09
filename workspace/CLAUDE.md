@@ -47,6 +47,21 @@ The Obsidian plugin exposes vault access via MCP. Tool *names* appear in the def
 - **`obsidian`** (stdio proxy → plugin's HTTP server): vault tools for search, read content and frontmatter, query tags/links/backlinks, find orphaned notes, create and modify notes, manage vault structure. Use when interacting with the user's knowledge base.
 - **`memory`** (`@modelcontextprotocol/server-memory`): persistent knowledge graph for cross-session notes about this user / project. Storage is per-vault (see "Memory: MCP knowledge graph" below).
 
+### MCP connection environment variables
+
+The stdio proxy (`.claude/scripts/obsidian-mcp-proxy.js`) and the status hook (`.claude/hooks/notify-status.sh`) read these:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OAS_MCP_PORT` | `28080` | Port of the plugin's MCP server |
+| `OAS_MCP_TOKEN` | set by the plugin | Bearer token for the MCP server; unset means MCP is disabled |
+| `OAS_MCP_HOST` | `host.docker.internal` | Host the proxy connects to |
+| `OAS_MCP_TIMEOUT_MS` | `15000` | Proxy socket inactivity timeout |
+| `OAS_MCP_DEBUG` | unset | `1` prints proxy diagnostics to stderr; read once at proxy startup |
+| `OAS_TAB_ID` | injected per tab | Routes activity updates to the originating terminal tab when not inside tmux |
+
+Tuning guidance lives in `docs/how-to/troubleshoot-terminal-disconnects.md` (host-side; ask the human, the docs folder is not mounted here).
+
 ## Vault write rules
 
 The vault at `/workspace/vault/` is **read-only** at the filesystem level. The only writable path inside the vault is `/workspace/vault/$OAS_VAULT_WRITE_DIR/` (the `OAS_VAULT_WRITE_DIR` env var is set by the plugin; run `echo $OAS_VAULT_WRITE_DIR` or `verify.sh` to see the current value).

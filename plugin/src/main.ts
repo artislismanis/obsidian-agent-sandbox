@@ -8,6 +8,7 @@ import {
 	DEFAULT_SETTINGS,
 	AgentSandboxSettingTab,
 	RESTART_REQUIRED_KEYS,
+	migrateSettings,
 	restartKeysChanged,
 } from "./settings";
 import { DockerManager } from "./docker";
@@ -466,18 +467,9 @@ export default class AgentSandboxPlugin extends Plugin {
 
 	async loadSettings() {
 		const raw = await this.loadData();
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
-		let needsSave = false;
-		// One-shot migration: "none" was renamed to "scoped" to match the tier vocabulary.
-		if ((this.settings.mcpVaultWrites as string) === "none") {
-			this.settings.mcpVaultWrites = "scoped";
-			needsSave = true;
-		}
-		if (!this.settings.mcpToken) {
-			this.settings.mcpToken = generateToken();
-			needsSave = true;
-		}
-		if (needsSave) {
+		const { settings, changed } = migrateSettings(raw, generateToken);
+		this.settings = settings;
+		if (changed) {
 			// Guard the save so a disk/permission failure on first install
 			// doesn't abort onload - the unhandled reject would make the
 			// plugin appear to "not load" with no visible error.
