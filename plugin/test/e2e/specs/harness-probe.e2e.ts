@@ -21,7 +21,7 @@ import path from "node:path";
 // service version regresses to out-of-tree loading, the first assertion below
 // (main.js exists) fails loudly rather than silently passing.
 
-const PLUGIN_ID = "obsidian-agent-sandbox";
+const PLUGIN_ID = "agent-sandbox";
 
 function readFontSize(): Promise<number | null> {
 	return browser.executeObsidian(({ app }) => {
@@ -30,14 +30,14 @@ function readFontSize(): Promise<number | null> {
 				plugins: { plugins: Record<string, { settings: { terminalFontSize: number } }> };
 			}
 		).plugins.plugins;
-		return plugins["obsidian-agent-sandbox"]?.settings?.terminalFontSize ?? null;
+		return plugins["agent-sandbox"]?.settings?.terminalFontSize ?? null;
 	});
 }
 
 function isEnabled(): Promise<boolean> {
 	return browser.executeObsidian(({ app }) =>
 		(app as unknown as { plugins: { enabledPlugins: Set<string> } }).plugins.enabledPlugins.has(
-			"obsidian-agent-sandbox",
+			"agent-sandbox",
 		),
 	);
 }
@@ -74,7 +74,7 @@ describe("Harness capability: on-disk install + persistence (QA 2.6 / 2.5a)", fu
 						>;
 					};
 				}
-			).plugins.plugins["obsidian-agent-sandbox"];
+			).plugins.plugins["agent-sandbox"];
 			plugin.settings.terminalFontSize = 18;
 			await plugin.saveData(plugin.settings);
 		});

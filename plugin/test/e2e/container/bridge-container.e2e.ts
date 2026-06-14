@@ -40,7 +40,7 @@ async function configureHostMcp(token: string): Promise<void> {
 						>;
 					};
 				}
-			).plugins.plugins["obsidian-agent-sandbox"];
+			).plugins.plugins["agent-sandbox"];
 			const s = plugin.settings;
 			s.mcpEnabled = true;
 			s.mcpPort = port;

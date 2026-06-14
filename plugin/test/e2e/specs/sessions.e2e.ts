@@ -11,7 +11,7 @@ import { obsidianPage } from "wdio-obsidian-service";
 // on the live plugin so the modal + aggregate Notice run without real tmux (the
 // real kill stays manual — see docs/qa-test-plan.md 5.12).
 
-const PLUGIN_ID = "obsidian-agent-sandbox";
+const PLUGIN_ID = "agent-sandbox";
 const SWITCH_CMD = `${PLUGIN_ID}:sandbox-switch-session`;
 const CLEANUP_CMD = `${PLUGIN_ID}:sandbox-cleanup-sessions`;
 const OPEN_SESSION_CMD = `${PLUGIN_ID}:open-session`;
@@ -37,7 +37,7 @@ interface AppShim {
 /** Open one terminal tab per name; `undefined` makes an unnamed tab. */
 async function openTerminals(names: Array<string | undefined>): Promise<void> {
 	await browser.executeObsidian(async ({ app }, ns: Array<string | undefined>) => {
-		const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+		const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 		for (const n of ns) await plugin.activateTerminalView(n);
 	}, names);
 	await browser.waitUntil(async () => (await terminalLeafCount()) === names.length, {
@@ -272,7 +272,7 @@ describe("Detached-session cleanup (QA 5.12)", function () {
 	/** Stub the container probe + the docker session API on the live plugin. */
 	async function stubSessions(detached: string[]): Promise<void> {
 		await browser.executeObsidian(({ app }, names: string[]) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			plugin.__killed = [];
 			plugin.isContainerRunning = () => true;
 			plugin.docker.listDetachedSessions = async () => names;
@@ -284,7 +284,7 @@ describe("Detached-session cleanup (QA 5.12)", function () {
 
 	async function killedNames(): Promise<string[]> {
 		return browser.executeObsidian(({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			return plugin.__killed ?? [];
 		});
 	}
@@ -344,9 +344,7 @@ describe("Detached-session cleanup (QA 5.12)", function () {
 	it("5.13: an invalid session name fails its kill and the aggregate reports 1/2", async function () {
 		await browser.executeObsidian(
 			({ app }, names: string[]) => {
-				const plugin = (app as unknown as AppShim).plugins.plugins[
-					"obsidian-agent-sandbox"
-				];
+				const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 				plugin.__killed = [];
 				plugin.isContainerRunning = () => true;
 				plugin.docker.listDetachedSessions = async () => names;
@@ -371,7 +369,7 @@ describe("Detached-session cleanup (QA 5.12)", function () {
 		);
 
 		const killed = await browser.executeObsidian(({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			return plugin.__killed ?? [];
 		});
 		expect(killed).toEqual(["validname"]);

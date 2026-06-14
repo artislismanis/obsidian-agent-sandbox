@@ -31,7 +31,7 @@ async function setVaultWriteDirAndSave(value: string): Promise<void> {
 					>;
 				};
 			}
-		).plugins.plugins["obsidian-agent-sandbox"];
+		).plugins.plugins["agent-sandbox"];
 		plugin.settings.vaultWriteDir = v;
 		await plugin.saveData(plugin.settings);
 	}, value);
@@ -63,7 +63,7 @@ describe("Persistence-dependent reload behaviour (QA 1.6 / 6.4)", function () {
 						>;
 					};
 				}
-			).plugins.plugins["obsidian-agent-sandbox"];
+			).plugins.plugins["agent-sandbox"];
 			const templates = await plugin.analyse.loadTemplates();
 			return templates.map((t) => t.label).sort();
 		});

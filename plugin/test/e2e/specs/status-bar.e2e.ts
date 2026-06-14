@@ -36,7 +36,7 @@ describe("Status-bar tooltip text (QA 2.13 / 5.1–5.4)", function () {
 
 	it("2.13: the running tooltip lists container / port / firewall / MCP", async function () {
 		const tooltip = await browser.executeObsidian(({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			plugin.statusBar.setState("running");
 			plugin.statusBar.setAttention(0, []);
 			plugin.statusBar.setRunningTooltipContext({
@@ -55,7 +55,7 @@ describe("Status-bar tooltip text (QA 2.13 / 5.1–5.4)", function () {
 
 	it("5.1–5.4: an awaiting-input session names the session, and clears cleanly", async function () {
 		const result = await browser.executeObsidian(({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			plugin.statusBar.setState("running");
 			plugin.statusBar.setRunningTooltipContext({
 				port: 7681,

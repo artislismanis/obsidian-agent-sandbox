@@ -32,7 +32,7 @@ npm install
 npm run build
 ```
 
-Copy the contents of `plugin/dist/` into `<your-vault>/.obsidian/plugins/obsidian-agent-sandbox/`. Create the folder if it doesn't exist.
+Copy the contents of `plugin/dist/` into `<your-vault>/.obsidian/plugins/agent-sandbox/`. Create the folder if it doesn't exist.
 
 Either way: restart Obsidian → **Settings → Community plugins → Agent Sandbox → enable**.
 

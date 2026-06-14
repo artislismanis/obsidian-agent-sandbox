@@ -31,7 +31,7 @@ interface AppShim {
 
 async function stubRunning(): Promise<void> {
 	await browser.executeObsidian(({ app }) => {
-		const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+		const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 		plugin.isContainerRunning = () => true;
 	});
 }
@@ -40,7 +40,7 @@ async function openCustomPrompt(): Promise<void> {
 	// Fire-and-forget: it opens a modal and awaits the user. We drive the modal
 	// from the test, then the promise settles.
 	await browser.executeObsidian(({ app }) => {
-		const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+		const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 		void plugin.analyse.runAnalyseCustom("notes/foo.md");
 	});
 	await $(".sandbox-modal-input-multiline").waitForExist({ timeout: 5000 });

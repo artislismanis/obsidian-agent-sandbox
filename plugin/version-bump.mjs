@@ -6,6 +6,13 @@
  * - manifest.json: update `version` to match package.json.
  * - versions.json: add `{ <new version>: <minAppVersion from manifest> }`.
  *
+ * The repo-root `manifest.json` / `versions.json` are generated copies of the
+ * `plugin/` originals: Obsidian's community store fetches both from the
+ * default-branch repo root (not the GitHub Release), so the monorepo needs
+ * them mirrored there. `plugin/` is the source of truth; the root copies are
+ * rewritten here on every bump. A release-consistency unit test gates CI
+ * against hand-edited drift.
+ *
  * Stages the updated files so `npm version`'s commit step includes them.
  */
 
@@ -35,6 +42,10 @@ if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.test(targetVersion))
 const here = dirname(fileURLToPath(import.meta.url));
 const manifestPath = resolve(here, "manifest.json");
 const versionsPath = resolve(here, "versions.json");
+// Repo root is the parent of plugin/. Obsidian reads these on the default branch.
+const repoRoot = resolve(here, "..");
+const rootManifestPath = resolve(repoRoot, "manifest.json");
+const rootVersionsPath = resolve(repoRoot, "versions.json");
 
 for (const p of [manifestPath, versionsPath]) {
 	if (!existsSync(p)) {
@@ -46,12 +57,20 @@ for (const p of [manifestPath, versionsPath]) {
 const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
 const { minAppVersion } = manifest;
 manifest.version = targetVersion;
-writeFileSync(manifestPath, JSON.stringify(manifest, null, "\t") + "\n");
+const manifestJson = JSON.stringify(manifest, null, "\t") + "\n";
+writeFileSync(manifestPath, manifestJson);
 
 const versions = JSON.parse(readFileSync(versionsPath, "utf-8"));
 versions[targetVersion] = minAppVersion;
-writeFileSync(versionsPath, JSON.stringify(versions, null, "\t") + "\n");
+const versionsJson = JSON.stringify(versions, null, "\t") + "\n";
+writeFileSync(versionsPath, versionsJson);
+
+// Mirror the plugin/ files byte-for-byte into the repo root.
+writeFileSync(rootManifestPath, manifestJson);
+writeFileSync(rootVersionsPath, versionsJson);
 
 // Use absolute paths so `git add` works regardless of cwd.
-execSync(`git add "${manifestPath}" "${versionsPath}"`);
-console.log(`version-bump: synced manifest.json + versions.json to ${targetVersion}`);
+execSync(`git add "${manifestPath}" "${versionsPath}" "${rootManifestPath}" "${rootVersionsPath}"`);
+console.log(
+	`version-bump: synced manifest.json + versions.json (plugin/ and repo root) to ${targetVersion}`,
+);

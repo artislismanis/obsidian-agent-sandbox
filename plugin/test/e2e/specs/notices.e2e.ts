@@ -11,7 +11,7 @@ import { obsidianPage } from "wdio-obsidian-service";
 // URL-builder logic is unit-tested separately (docker.test.ts classifyCommandError,
 // format.test.ts buildContainerStatusLines, ttyd-client.test.ts resolveTtydBrowserUrl).
 
-const PLUGIN_ID = "obsidian-agent-sandbox";
+const PLUGIN_ID = "agent-sandbox";
 const START_CMD = `${PLUGIN_ID}:sandbox-start-container`;
 const STATUS_CMD = `${PLUGIN_ID}:sandbox-container-status`;
 const FIREWALL_CMD = `${PLUGIN_ID}:sandbox-toggle-firewall`;
@@ -71,7 +71,7 @@ async function clearNotices(): Promise<void> {
 /** Stub the whole docker surface these scenarios touch, plus the write-dir side effect. */
 async function stubDocker(): Promise<void> {
 	await browser.executeObsidian(({ app }) => {
-		const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+		const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 		plugin.ensureWriteDir = async () => {};
 		// No port conflicts so startContainer reaches runDockerCommand.
 		plugin.docker.checkStartupConflicts = async () => [];
@@ -92,7 +92,7 @@ describe("Command → Notice / pill surfacing (QA 1.5 / 2.14 / 2.15 / 8.1)", fun
 
 	it("1.5: a start failure surfaces a 'Failed to start container' Notice and an error pill", async function () {
 		await browser.executeObsidian(({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			plugin.docker.start = async () => {
 				throw new Error(
 					"Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
@@ -115,7 +115,7 @@ describe("Command → Notice / pill surfacing (QA 1.5 / 2.14 / 2.15 / 8.1)", fun
 
 	it("2.14 (running): Container Status fires a multi-line Notice with ID / image / MCP / firewall", async function () {
 		await browser.executeObsidian(({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			plugin.docker.status = async () => '[{"State":"running"}]';
 			plugin.docker.getContainerInfo = async () => ({
 				id: "abc123def4567890",
@@ -141,7 +141,7 @@ describe("Command → Notice / pill surfacing (QA 1.5 / 2.14 / 2.15 / 8.1)", fun
 
 	it("2.14 (stopped): Container Status reports a stopped Notice", async function () {
 		await browser.executeObsidian(({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			plugin.docker.status = async () => "";
 		});
 
@@ -156,7 +156,7 @@ describe("Command → Notice / pill surfacing (QA 1.5 / 2.14 / 2.15 / 8.1)", fun
 
 	it("2.15: Open in Browser calls window.open with the resolved ttyd URL", async function () {
 		const opened = await browser.executeObsidian(({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			plugin.settings.ttydPort = 7681;
 			plugin.settings.ttydBindAddress = "127.0.0.1";
 			let captured = "";
@@ -184,7 +184,7 @@ describe("Command → Notice / pill surfacing (QA 1.5 / 2.14 / 2.15 / 8.1)", fun
 	it("8.1: toggling the firewall flips the pill state and fires a Notice", async function () {
 		// Firewall pill must be visible (non-hidden) for the toggle to act.
 		await browser.executeObsidian(({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			plugin.firewallBar.setState("disabled");
 			plugin.docker.enableFirewall = async () => "";
 			plugin.docker.disableFirewall = async () => "";

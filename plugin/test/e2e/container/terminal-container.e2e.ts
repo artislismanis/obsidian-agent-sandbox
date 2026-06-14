@@ -70,7 +70,7 @@ async function openTerminals(n: number): Promise<void> {
 					>;
 				};
 			}
-		).plugins.plugins["obsidian-agent-sandbox"];
+		).plugins.plugins["agent-sandbox"];
 		for (let i = 0; i < count; i++) await plugin.activateTerminalView();
 	}, n);
 }
@@ -92,7 +92,7 @@ async function openTerminalWithPrompt(prompt: string): Promise<void> {
 					>;
 				};
 			}
-		).plugins.plugins["obsidian-agent-sandbox"];
+		).plugins.plugins["agent-sandbox"];
 		await plugin.activateTerminalView(undefined, p);
 	}, prompt);
 }
@@ -120,7 +120,7 @@ async function openTerminalWithPrompt(prompt: string): Promise<void> {
 							>;
 						};
 					}
-				).plugins.plugins["obsidian-agent-sandbox"];
+				).plugins.plugins["agent-sandbox"];
 				plugin.settings.ttydPort = port;
 				plugin.settings.ttydBindAddress = "127.0.0.1";
 				plugin.isContainerRunning = () => true;

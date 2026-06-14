@@ -33,7 +33,7 @@ interface PluginShim {
 async function closeSettings(containerRunning: boolean): Promise<void> {
 	await browser.executeObsidian(({ app }, running) => {
 		const plugin = (app as unknown as { plugins: { plugins: Record<string, PluginShim> } })
-			.plugins.plugins["obsidian-agent-sandbox"];
+			.plugins.plugins["agent-sandbox"];
 		plugin.__restartCalls = 0;
 		plugin.isContainerRunning = () => running;
 		plugin.restartContainer = async () => {
@@ -48,7 +48,7 @@ async function restartCalls(): Promise<number> {
 	return browser.executeObsidian(({ app }) => {
 		const plugin = (
 			app as unknown as { plugins: { plugins: Record<string, { __restartCalls?: number }> } }
-		).plugins.plugins["obsidian-agent-sandbox"];
+		).plugins.plugins["agent-sandbox"];
 		return plugin.__restartCalls ?? 0;
 	});
 }
@@ -59,7 +59,7 @@ async function readSetting(key: string): Promise<unknown> {
 			app as unknown as {
 				plugins: { plugins: Record<string, { settings: Record<string, unknown> }> };
 			}
-		).plugins.plugins["obsidian-agent-sandbox"];
+		).plugins.plugins["agent-sandbox"];
 		return plugin.settings[k];
 	}, key);
 }
@@ -100,7 +100,7 @@ describe("Settings: restart-required modal (QA 1.2)", function () {
 				app as unknown as {
 					plugins: { plugins: Record<string, { settings: Record<string, unknown> }> };
 				}
-			).plugins.plugins["obsidian-agent-sandbox"];
+			).plugins.plugins["agent-sandbox"];
 			plugin.settings.vaultWriteDir = original;
 		}, ORIGINAL);
 	});

@@ -38,7 +38,7 @@ async function noticeTexts(): Promise<string[]> {
 async function applyMcpEnabled(enabled: boolean, port?: number): Promise<void> {
 	await browser.executeObsidian(
 		async ({ app }, { on, p }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			if (p !== undefined) {
 				plugin.settings.mcpPort = p;
 				plugin.settings.mcpBindAddress = "127.0.0.1";
@@ -53,8 +53,7 @@ async function applyMcpEnabled(enabled: boolean, port?: number): Promise<void> {
 async function mcpEnabledSetting(): Promise<boolean> {
 	return browser.executeObsidian(
 		({ app }) =>
-			(app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"].settings
-				.mcpEnabled,
+			(app as unknown as AppShim).plugins.plugins["agent-sandbox"].settings.mcpEnabled,
 	);
 }
 
@@ -62,7 +61,7 @@ async function mcpRunning(): Promise<boolean> {
 	return browser.executeObsidian(
 		({ app }) =>
 			(app as unknown as AppShim).plugins.plugins[
-				"obsidian-agent-sandbox"
+				"agent-sandbox"
 			].mcpLifecycle?.isRunning() ?? false,
 	);
 }

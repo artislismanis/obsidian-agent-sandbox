@@ -39,7 +39,7 @@ async function startBridgeMcp(opts: BridgeOpts = {}): Promise<void> {
 						>;
 					};
 				}
-			).plugins.plugins["obsidian-agent-sandbox"];
+			).plugins.plugins["agent-sandbox"];
 			const s = plugin.settings;
 			s.mcpEnabled = true;
 			s.mcpPort = port;
@@ -75,7 +75,7 @@ async function setMcpEnabled(enabled: boolean): Promise<void> {
 					>;
 				};
 			}
-		).plugins.plugins["obsidian-agent-sandbox"];
+		).plugins.plugins["agent-sandbox"];
 		plugin.settings.mcpEnabled = on;
 		await plugin.applyMcpEnabled(on);
 	}, enabled);
@@ -106,7 +106,7 @@ function mcpServerRunning(): Promise<boolean> {
 			app as unknown as {
 				plugins: { plugins: Record<string, { mcpLifecycle?: { isRunning(): boolean } }> };
 			}
-		).plugins.plugins["obsidian-agent-sandbox"];
+		).plugins.plugins["agent-sandbox"];
 		return plugin.mcpLifecycle?.isRunning() ?? false;
 	});
 }
@@ -723,7 +723,7 @@ async function openTerminal(name: string): Promise<void> {
 					>;
 				};
 			}
-		).plugins.plugins["obsidian-agent-sandbox"];
+		).plugins.plugins["agent-sandbox"];
 		await plugin.activateTerminalView(sessionName);
 	}, name);
 	await browser.pause(300);

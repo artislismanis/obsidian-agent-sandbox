@@ -6,7 +6,7 @@
 
 BRAT auto-checks on Obsidian start. To force: command palette → **BRAT: Check for updates to beta plugins**.
 
-Updates replace the plugin files in `<vault>/.obsidian/plugins/obsidian-agent-sandbox/`. Restart Obsidian (or toggle the plugin off/on) to load the new version.
+Updates replace the plugin files in `<vault>/.obsidian/plugins/agent-sandbox/`. Restart Obsidian (or toggle the plugin off/on) to load the new version.
 
 ## If you installed manually (built from source)
 
@@ -18,7 +18,7 @@ npm install    # in case dependencies changed
 npm run build
 ```
 
-Copy the contents of `plugin/dist/` into `<vault>/.obsidian/plugins/obsidian-agent-sandbox/` (replacing the previous files). Restart Obsidian.
+Copy the contents of `plugin/dist/` into `<vault>/.obsidian/plugins/agent-sandbox/` (replacing the previous files). Restart Obsidian.
 
 ## Rebuilding the container
 

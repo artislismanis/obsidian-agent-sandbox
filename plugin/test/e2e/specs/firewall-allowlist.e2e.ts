@@ -20,7 +20,7 @@ interface AppShim {
 
 async function stubFirewallSources(mode: "ok" | "error"): Promise<void> {
 	await browser.executeObsidian(({ app }, m: "ok" | "error") => {
-		const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+		const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 		plugin.firewallSources =
 			m === "ok"
 				? async () =>
