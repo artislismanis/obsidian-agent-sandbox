@@ -149,7 +149,7 @@ export const DEFAULT_SETTINGS: AgentSandboxSettings = {
 	notifyRenamed: true,
 	notifyVaultWide: false,
 	notifyUserEditTtlSeconds: 10,
-	logLevel: "warn",
+	logLevel: "error",
 	mcpToolTimeout: 10,
 	mcpReviewTimeout: 180,
 	pendingRestartMarker: false,

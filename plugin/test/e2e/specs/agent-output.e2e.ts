@@ -34,7 +34,7 @@ interface AppShim {
 
 async function setNotifyToggles(s: Partial<SettingsShim>): Promise<void> {
 	await browser.executeObsidian(({ app }, patch: Partial<SettingsShim>) => {
-		const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+		const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 		Object.assign(plugin.settings, patch);
 	}, s);
 }

@@ -39,7 +39,7 @@ command -v docker >/dev/null || { echo "FATAL: docker not found" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 
 MCP_TOKEN=$(jq -r '.mcpToken' \
-    "$VAULT/.obsidian/plugins/obsidian-agent-sandbox/data.json" 2>/dev/null || true)
+    "$VAULT/.obsidian/plugins/agent-sandbox/data.json" 2>/dev/null || true)
 if [[ -z "$MCP_TOKEN" || "$MCP_TOKEN" == "null" ]]; then
     echo "FATAL: could not read mcpToken from plugin settings." >&2
     echo "       Ensure Obsidian is running with the plugin installed." >&2

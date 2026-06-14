@@ -13,7 +13,7 @@ import { obsidianPage } from "wdio-obsidian-service";
 // unit-tested (docker-command.test.ts). 1.7b (MCP reactive port failure) lives
 // with the MCP specs since it manipulates the live MCP server.
 
-const PLUGIN_ID = "obsidian-agent-sandbox";
+const PLUGIN_ID = "agent-sandbox";
 
 interface DockerShim {
 	ensureWslReady: () => Promise<void>;
@@ -69,7 +69,7 @@ async function clearNotices(): Promise<void> {
 
 function isEnabled(): Promise<boolean> {
 	return browser.executeObsidian(({ app }) =>
-		(app as unknown as AppShim).plugins.enabledPlugins.has("obsidian-agent-sandbox"),
+		(app as unknown as AppShim).plugins.enabledPlugins.has("agent-sandbox"),
 	);
 }
 
@@ -94,7 +94,7 @@ describe("Container lifecycle wiring (QA 2.1 / 2.2 / 2.3 / 2.5 / 2.11a / 1.7a)",
 
 	it("2.1 / 2.11a: auto-start drives the status bar to Running through the four startup phases", async function () {
 		const result = await browser.executeObsidian(async ({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			const phases: string[] = [];
 			const realSetDetails = plugin.statusBar.setDetails.bind(plugin.statusBar);
 			plugin.statusBar.setDetails = (d: string) => {
@@ -131,7 +131,7 @@ describe("Container lifecycle wiring (QA 2.1 / 2.2 / 2.3 / 2.5 / 2.11a / 1.7a)",
 
 	it("2.1: with auto-start off the container stays stopped and never issues the auto-start phase", async function () {
 		const result = await browser.executeObsidian(async ({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			const phases: string[] = [];
 			const realSetDetails = plugin.statusBar.setDetails.bind(plugin.statusBar);
 			plugin.statusBar.setDetails = (d: string) => {
@@ -161,7 +161,7 @@ describe("Container lifecycle wiring (QA 2.1 / 2.2 / 2.3 / 2.5 / 2.11a / 1.7a)",
 
 	it("2.2: the quit hook stops the container when auto-stop is on", async function () {
 		const stopCalls = await browser.executeObsidian(async ({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			let stop = 0;
 			plugin.docker.stop = async () => {
 				stop++;
@@ -182,7 +182,7 @@ describe("Container lifecycle wiring (QA 2.1 / 2.2 / 2.3 / 2.5 / 2.11a / 1.7a)",
 
 	it("2.3: the quit hook leaves the container running when auto-stop is off", async function () {
 		const stopCalls = await browser.executeObsidian(async ({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			let stop = 0;
 			plugin.docker.stop = async () => {
 				stop++;
@@ -203,7 +203,7 @@ describe("Container lifecycle wiring (QA 2.1 / 2.2 / 2.3 / 2.5 / 2.11a / 1.7a)",
 
 	it("1.7a: a ttyd port conflict aborts the start with a Port conflict Notice", async function () {
 		const startCalls = await browser.executeObsidian(async ({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			plugin.docker.isBusy = () => false;
 			plugin.docker.checkStartupConflicts = async () => [7681];
 			plugin.docker.probeIsRunning = async () => false;
@@ -234,7 +234,7 @@ describe("Container lifecycle wiring (QA 2.1 / 2.2 / 2.3 / 2.5 / 2.11a / 1.7a)",
 	// on-disk plugin install and make enablePlugin() a no-op.
 	it("2.5: disabling the plugin always stops the container", async function () {
 		await browser.executeObsidian(({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			window.__oasStopDetached = 0;
 			plugin.docker.stopDetached = () => {
 				window.__oasStopDetached = (window.__oasStopDetached ?? 0) + 1;

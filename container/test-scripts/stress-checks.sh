@@ -68,7 +68,7 @@ UNICODE_VAULT="$VAULT/../Документы-vault"
 ln -sf "$VAULT" "$UNICODE_VAULT" 2>/dev/null || UNICODE_VAULT=""
 if [[ -n "$UNICODE_VAULT" ]]; then
     UNICODE_MCP_TOKEN=$(jq -r '.mcpToken' \
-        "$UNICODE_VAULT/.obsidian/plugins/obsidian-agent-sandbox/data.json" 2>/dev/null || true)
+        "$UNICODE_VAULT/.obsidian/plugins/agent-sandbox/data.json" 2>/dev/null || true)
     if [[ -n "$UNICODE_MCP_TOKEN" && "$UNICODE_MCP_TOKEN" != "null" ]]; then
         RESP=$(mcp_call vault_list '{"path":"."}')
         if echo "$RESP" | jq -e '.result.isError == true or (.error // empty | length > 0)' \

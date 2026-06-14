@@ -20,6 +20,7 @@ import type { AgentStatus } from "./mcp-tools";
 import { DEFAULT_SESSION_KEY } from "./mcp-tools";
 import { isPathWithinDir } from "./validation";
 import { setLeafTabTitle } from "./obsidian-internals";
+import { logger, errMsg } from "./logger";
 
 /**
  * Structural-typed guard that doesn't import the TerminalView class - that
@@ -124,8 +125,7 @@ export class ActivityUi {
 			try {
 				this.tickStale();
 			} catch (e) {
-				// eslint-disable-next-line no-console
-				console.warn("[Agent Sandbox] [ActivityUi] tickStale failed:", e);
+				logger.error("ActivityUi", `tickStale failed: ${errMsg(e)}`);
 			}
 		}, STALE_TICK_MS);
 
@@ -136,8 +136,7 @@ export class ActivityUi {
 			try {
 				this.tickStale();
 			} catch (e) {
-				// eslint-disable-next-line no-console
-				console.warn("[Agent Sandbox] [ActivityUi] layout-change tick failed:", e);
+				logger.error("ActivityUi", `layout-change tick failed: ${errMsg(e)}`);
 			}
 		});
 	}

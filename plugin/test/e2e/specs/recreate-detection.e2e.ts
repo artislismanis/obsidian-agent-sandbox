@@ -56,7 +56,7 @@ describe("Container recreate detection (QA 2.12 / 2.4)", function () {
 
 	it("2.12: an out-of-band container-id change warns and detaches stale terminals", async function () {
 		const result = await browser.executeObsidian(async ({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			let detachCount = 0;
 			const realDetach = (app as unknown as AppShim).workspace.detachLeavesOfType.bind(
 				(app as unknown as AppShim).workspace,
@@ -84,7 +84,7 @@ describe("Container recreate detection (QA 2.12 / 2.4)", function () {
 
 	it("2.12: an unchanged container id is a no-op (no warning, no detach)", async function () {
 		const result = await browser.executeObsidian(async ({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			let detachCount = 0;
 			const realDetach = (app as unknown as AppShim).workspace.detachLeavesOfType.bind(
 				(app as unknown as AppShim).workspace,
@@ -111,7 +111,7 @@ describe("Container recreate detection (QA 2.12 / 2.4)", function () {
 
 	it("2.4: a config-change restart recreates the container and rebaselines the id", async function () {
 		const result = await browser.executeObsidian(async ({ app }) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			plugin.docker.isBusy = () => false;
 			plugin.docker.restart = async () => "";
 			plugin.docker.getContainerId = async () => "recreated-333";

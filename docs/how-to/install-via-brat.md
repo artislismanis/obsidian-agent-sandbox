@@ -11,7 +11,7 @@ The plugin is distributed via tagged GitHub Releases. You can install it through
 
 1. Command palette → **BRAT: Add a beta plugin for testing**.
 2. Paste: `https://github.com/artislismanis/obsidian-agent-sandbox` (or whatever the repo URL is).
-3. BRAT downloads the latest GitHub Release assets (`main.js`, `manifest.json`, `styles.css`) into `<vault>/.obsidian/plugins/obsidian-agent-sandbox/`.
+3. BRAT downloads the latest GitHub Release assets (`main.js`, `manifest.json`, `styles.css`) into `<vault>/.obsidian/plugins/agent-sandbox/`.
 4. **Settings → Community plugins** → enable **Agent Sandbox**.
 
 ## Updates

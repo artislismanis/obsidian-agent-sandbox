@@ -69,7 +69,7 @@
 	],
 	"Advanced": [
 		{ "type": "heading", "name": "Diagnostics" },
-		{ "type": "dropdown", "name": "Log level", "value": "Warn" },
+		{ "type": "dropdown", "name": "Log level", "value": "Error" },
 		{ "type": "heading", "name": "Resource limits" },
 		{ "type": "input", "name": "Memory limit", "value": "4G", "requiresRestart": true },
 		{ "type": "input", "name": "CPU limit", "value": "2", "requiresRestart": true },

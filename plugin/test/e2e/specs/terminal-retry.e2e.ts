@@ -33,7 +33,7 @@ describe("Terminal connection-retry loading text (QA 2.11)", function () {
 
 	it("2.11: an unreachable ttyd shows 'Connecting to terminal… (attempt N/15, retry in Xs)'", async function () {
 		await browser.executeObsidian(async ({ app }, port: number) => {
-			const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+			const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 			plugin.settings.ttydPort = port;
 			plugin.settings.ttydBindAddress = "127.0.0.1";
 			plugin.isContainerRunning = () => true;

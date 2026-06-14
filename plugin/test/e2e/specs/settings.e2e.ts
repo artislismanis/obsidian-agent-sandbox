@@ -162,7 +162,7 @@ describe("Settings: validation and warnings", function () {
 						};
 					}
 				).plugins.plugins;
-				const s = plugins["obsidian-agent-sandbox"]?.settings;
+				const s = plugins["agent-sandbox"]?.settings;
 				return s
 					? {
 							vaultWrites: s.mcpVaultWrites,
@@ -188,7 +188,7 @@ describe("Settings: validation and warnings", function () {
 							};
 						}
 					).plugins.plugins;
-					return plugins["obsidian-agent-sandbox"]?.settings?.mcpToken ?? "";
+					return plugins["agent-sandbox"]?.settings?.mcpToken ?? "";
 				});
 
 			const tokenBefore = await readToken();

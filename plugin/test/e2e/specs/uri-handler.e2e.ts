@@ -23,14 +23,14 @@ interface AppShim {
 
 async function setContainerRunning(running: boolean): Promise<void> {
 	await browser.executeObsidian(({ app }, r: boolean) => {
-		const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+		const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 		plugin.isContainerRunning = () => r;
 	}, running);
 }
 
 async function fireOpenTerminalUri(): Promise<void> {
 	await browser.executeObsidian(async ({ app }) => {
-		const plugin = (app as unknown as AppShim).plugins.plugins["obsidian-agent-sandbox"];
+		const plugin = (app as unknown as AppShim).plugins.plugins["agent-sandbox"];
 		await plugin.handleOpenTerminalUri();
 	});
 }

@@ -61,4 +61,4 @@ Tool calls run under the configurable handler / review timeouts shown in the MCP
 
 ## Storage
 
-Settings persist to `<vault>/.obsidian/plugins/obsidian-agent-sandbox/data.json` via Obsidian's standard plugin-data API.
+Settings persist to `<vault>/.obsidian/plugins/agent-sandbox/data.json` via Obsidian's standard plugin-data API.

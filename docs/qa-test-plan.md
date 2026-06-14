@@ -27,7 +27,7 @@ These aren't test scenarios; they're the baseline. Verify each before touching S
 - [ ] `docker compose version` reports ≥ 2.24 (required for `!reset` syntax in the sudo override, see 2.19).
 - [ ] Obsidian desktop ≥ `1.5.0` installed.
 - [ ] A real vault to test against (not the e2e fixture). Recommend a fresh vault with a handful of notes, at least one with frontmatter, and one folder with 2-3 cross-linked notes.
-- [ ] Plugin artifacts built and installed into the vault: `cd plugin && npm run build`, then copy `dist/main.js`, `dist/manifest.json`, `dist/styles.css` into `<vault>/.obsidian/plugins/obsidian-agent-sandbox/`.
+- [ ] Plugin artifacts built and installed into the vault: `cd plugin && npm run build`, then copy `dist/main.js`, `dist/manifest.json`, `dist/styles.css` into `<vault>/.obsidian/plugins/agent-sandbox/`.
 - [ ] Claude Code authenticated inside the container at least once (see `docs/testing.md` → "Claude Code authentication"). Required from Stage 3 onward.
 
 ---
@@ -128,7 +128,7 @@ This stage exercises the settings UI, error/fallback paths before any container 
 
 - **✅ Automated** — `settings.e2e.ts` ("write directory rejects escaping paths") covers the typed `../escape` / `/root/forbidden` → `sandbox-input-error` path; `validation.test.ts` unit-tests the validator; and `persistence-reload.e2e.ts` ("1.6: a stored escaping write directory renders in the error state on load") covers the **stored-escape** path — it persists `vaultWriteDir = "../escape"` to `data.json`, reloads, and asserts the settings field renders with `sandbox-input-error` without any keystroke (the validator runs at render time in `addValidatedTextSetting`).
 - **Setup:** Plugin enabled.
-- **Steps:** Manually edit the vault's `data.json` (`.obsidian/plugins/obsidian-agent-sandbox/data.json`) to set `vaultWriteDir` to a path that escapes the vault, then reload the plugin (toggle off/on in Community Plugins).
+- **Steps:** Manually edit the vault's `data.json` (`.obsidian/plugins/agent-sandbox/data.json`) to set `vaultWriteDir` to a path that escapes the vault, then reload the plugin (toggle off/on in Community Plugins).
 - **Expected:** On load the settings tab shows the field in error state (red border / `sandbox-input-error` class). The stored value is **not** auto-corrected; attempting to start the container while the invalid value is stored emits a Notice and fails to start.
 - **Notes:** P1. Historically the stored-escape half was manual because the harness loaded the plugin out-of-tree; on the current CI Obsidian the plugin installs on disk and `data.json` persists across `reloadObsidian()`, so it is now automated (see `harness-probe.e2e.ts` for the capability proof).
 
@@ -392,7 +392,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 
 - **Setup:** Sudo password set to a unique sentinel via 2.19 (e.g. `oas-qa-sentinel-9173`).
 - **Steps:**
-  1. **Settings hold only the name:** open `<vault>/.obsidian/plugins/obsidian-agent-sandbox/data.json` and inspect `sudoSecretId`.
+  1. **Settings hold only the name:** open `<vault>/.obsidian/plugins/agent-sandbox/data.json` and inspect `sudoSecretId`.
   2. **Value never lands in the vault:** from the host, run `grep -rIl 'oas-qa-sentinel-9173' <vault-path>` (the whole vault, including `.obsidian/`).
   3. **Persists across restart:** fully quit and reopen Obsidian, then run sudo in a container terminal as in 2.19 (no re-entry of the password in settings).
 - **Expected:**

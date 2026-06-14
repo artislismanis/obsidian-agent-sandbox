@@ -17,7 +17,7 @@ Each tagged release on GitHub gets three attached assets:
 - `manifest.json`: plugin metadata with the new version
 - `styles.css`: xterm.js + plugin styles
 
-BRAT downloads these three files by the latest tag and drops them into the user's `<vault>/.obsidian/plugins/obsidian-agent-sandbox/`.
+BRAT downloads these three files by the latest tag and drops them into the user's `<vault>/.obsidian/plugins/agent-sandbox/`.
 
 ## Version scheme
 
@@ -85,8 +85,9 @@ This runs several things in order:
 2. Invokes `node version-bump.mjs` via the `"version"` script.
     - Rewrites `manifest.json` `version` → `0.2.0`.
     - Appends `"0.2.0": "<minAppVersion>"` to `versions.json`.
-    - Stages both files.
-3. Creates a commit containing `package.json`, `manifest.json`, `versions.json`.
+    - Mirrors both files byte-for-byte to the repo root (`../manifest.json`, `../versions.json`). Obsidian's community store reads them from the default-branch root, not the GitHub Release; `plugin/` stays the source of truth. A release-consistency unit test fails CI if the root copies drift.
+    - Stages all four files.
+3. Creates a commit containing `package.json`, `plugin/manifest.json`, `plugin/versions.json`, and the root `manifest.json` + `versions.json`.
 4. Creates tag `0.2.0` (no `v` prefix: `.npmrc` sets `tag-version-prefix=""`).
 
 If `npm version` fails partway, see "Recovering from a botched release" below.
