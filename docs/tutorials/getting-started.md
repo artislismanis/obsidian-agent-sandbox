@@ -4,7 +4,7 @@ First-time setup through running Claude Code inside the sandbox. You'll install 
 
 ## Prerequisites
 
-- **Obsidian** ≥ 1.5.
+- **Obsidian** ≥ 1.11.4 (the sudo-password setting relies on the secret-storage API added in 1.11.4).
 - **Docker** installed and running. On Windows we assume WSL2 + Docker Desktop (or Rancher Desktop in Docker-compat mode). On macOS / Linux, Docker Desktop or native. If you're using **rootless Docker inside WSL**, see the troubleshooting note at the bottom of this page: the daemon needs user-linger enabled to survive logout.
 - **This repository cloned somewhere** outside your vault (e.g. `~/code/obsidian-agent-sandbox`). The container build happens from there.
 - A test vault. If you're nervous about this, create a fresh empty vault for your first run.

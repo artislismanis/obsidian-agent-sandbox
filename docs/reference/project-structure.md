@@ -54,7 +54,6 @@ obsidian-agent-sandbox/
     ├── how-to/
     ├── reference/               You are here
     ├── explanation/
-    ├── roadmap.md
     └── testing.md
 ```
 

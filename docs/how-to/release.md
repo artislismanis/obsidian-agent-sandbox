@@ -164,12 +164,25 @@ Fix the underlying issue, then re-run step 3.
 
 Delete the Release + tag from GitHub UI, then re-cut using the recovery steps above. BRAT users will pick up the replacement on next update check.
 
-## First release checklist
+## First release: the `0.1.0` baseline
 
-For the very first `0.1.0 → 0.2.0` cut:
+The first published release is `0.1.0`. `manifest.json`, `package.json`, and
+`versions.json` are already pinned to `0.1.0` (with `minAppVersion` / floor
+`1.11.4`), so there is **no `npm version` bump for this cut** — you tag the
+commit on `main` directly. Every subsequent release uses the normal `npm version`
+procedure above, incrementing from `0.1.0`.
 
-- [ ] `.github/workflows/check.yml` and `.github/workflows/release.yml` are pushed to `main` (requires a PAT with `workflow` scope if the default auth lacks it).
-- [ ] `plugin/versions.json`, `plugin/version-bump.mjs`, `plugin/.npmrc`, and the `"version"` script in `package.json` are on `main`.
+Checklist:
+
+- [ ] `.github/workflows/check.yml` and `.github/workflows/release.yml` are on `main`.
+- [ ] `plugin/manifest.json`, `plugin/package.json`, and `plugin/versions.json` all read `0.1.0` on `main`, and `versions.json["0.1.0"]` equals `manifest.minAppVersion`.
 - [ ] A clean `npm ci && npm run check` passes locally.
-- [ ] CI's `check.yml` has run green on a PR at least once (confirms Node version + deps resolve on GitHub runners).
-- [ ] Run the procedure for `0.2.0`. Verify the Release, then do a clean-profile BRAT install to confirm the assets land correctly.
+- [ ] CI's `check.yml` has run green on `main` (confirms Node version + deps resolve on GitHub runners).
+- [ ] Tag and push the baseline (from repo root, on an up-to-date `main`):
+    ```bash
+    git checkout main && git pull
+    git tag 0.1.0
+    git push origin 0.1.0
+    ```
+    The tag push triggers `release.yml`, which verifies the version pins, builds, attests provenance, and creates the GitHub Release with `main.js` / `manifest.json` / `styles.css` / `SHA256SUMS` attached.
+- [ ] Verify the Release (assets present, marked "Stable"), then do a clean-profile BRAT install to confirm the assets land correctly.
