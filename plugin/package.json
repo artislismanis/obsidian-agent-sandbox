@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-agent-sandbox",
-	"version": "0.1.1",
+	"version": "0.1.0",
 	"description": "Obsidian plugin for managing a Docker-based Claude Code environment",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",

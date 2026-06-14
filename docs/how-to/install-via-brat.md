@@ -20,9 +20,13 @@ BRAT checks for new releases on Obsidian start. To force an immediate check: **B
 
 To pin to a specific version: **BRAT: Switch a beta plugin to a different version**.
 
-## Still need the container
+## The plugin drives the container — you need both
 
-Installing the plugin does not install the container. You still need:
+This plugin is not a standalone tool. It exists to run the containerised agent
+workflow inside Obsidian: starting/stopping the sandbox, wiring terminals to it,
+and exposing the vault to the agent over MCP. Installing the plugin via BRAT
+gives you the Obsidian-side controls; the agent itself runs in the container,
+which you build once from this repo. You need both halves:
 - Docker running on the host.
 - This repo cloned, so `cd container && docker compose build` can produce `oas-sandbox:latest`.
 - The **Docker Compose path** setting in the plugin pointed at the cloned `container/` directory.

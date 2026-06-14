@@ -2,6 +2,8 @@
 
 An Obsidian plugin and containerised sandbox for working with your vault through AI coding agents. Start and stop the sandbox, manage terminals, and let Claude Code (or any MCP-capable agent) read and write vault content with human-in-the-loop review, without leaving Obsidian.
 
+The plugin is not standalone: it exists to drive the containerised agent workflow from inside Obsidian. The agent runs in the container; the plugin is the Obsidian-side control surface. You install both — the plugin (via BRAT or source) and the container image (built once from this repo).
+
 ## What it does
 
 - **Embedded terminals.** xterm.js tabs inside Obsidian, each connected to a long-lived container shell or tmux session.
@@ -74,12 +76,11 @@ Organised per [Diátaxis](https://diataxis.fr/): four quadrants by purpose.
 
 These sit outside the four Diátaxis quadrants. They cover the project itself, not how to use, configure, or understand the sandbox.
 
-- [Roadmap](docs/roadmap.md)
 - [Testing](docs/testing.md): three automated layers (unit / integration / e2e)
 
 ## Requirements
 
-- Obsidian ≥ 1.5
+- Obsidian ≥ 1.11.4 (the sudo-password setting uses Obsidian's secret-storage API, added in 1.11.4)
 - Docker (Docker Desktop / Rancher Desktop / native)
 - Windows: WSL2 (if using rootless Docker inside WSL, enable `loginctl enable-linger` and `systemctl --user enable --now docker`; see [getting-started](docs/tutorials/getting-started.md#troubleshooting))
 
@@ -120,7 +121,7 @@ Branch protection: never push infra changes (`container/`, `.github/workflows/`)
 
 ## Status
 
-Under active development, pre-1.0. Tagged releases are published via CI; community plugin submission follows beta stabilisation. See [roadmap](docs/roadmap.md).
+Under active development, pre-1.0. Tagged releases are published via CI and installable through BRAT; community-plugin-store submission follows beta stabilisation.
 
 ## Licence
 
