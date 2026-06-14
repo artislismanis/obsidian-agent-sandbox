@@ -171,7 +171,7 @@ describe("Command → Notice / pill surfacing (QA 1.5 / 2.14 / 2.15 / 8.1)", fun
 					app as unknown as {
 						commands: { executeCommandById: (id: string) => boolean };
 					}
-				).commands.executeCommandById("obsidian-agent-sandbox:open-browser");
+				).commands.executeCommandById("agent-sandbox:open-browser");
 			} finally {
 				window.open = realOpen;
 			}
