@@ -569,7 +569,7 @@ export function registerTasksTools(app: App, push: ToolPusher, gate: WriteGate):
 				if (targetIdx < 0 || targetIdx >= lines.length)
 					return error(`Line ${line} is out of range (1-${lines.length}).`);
 				const originalLine = lines[targetIdx];
-				if (!/^\s*-\s*\[.\]/.test(originalLine))
+				if (!/^\s*[-*+]\s*\[.\]/.test(originalLine))
 					return error(`Line ${line} is not a checklist item.`);
 				// Pre-compute the updated content for the review preview. Tasks
 				// plugin's API is synchronous and free of side effects, so the
@@ -890,7 +890,8 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 					// could vault_create a malicious template there containing
 					// `<% tp.system.run_external_command(...) %>` and then
 					// invoke this tool to execute it (the same path
-					// vault_templater_create is hardened against at line 584).
+					// vault_templater_create is hardened against via
+					// isInsideTemplatesFolder(), below).
 					// Failing closed here matches Templater's own template-
 					// resolution behaviour.
 					if (!isInsideTemplatesFolder(templater, tmplFile.path)) {

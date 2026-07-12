@@ -549,8 +549,9 @@ export class DockerManager {
 	 * Reconcile the network's MASQUERADE driver_opt with the current WSL mode.
 	 *
 	 * `com.docker.network.bridge.enable_ip_masquerade` is a Docker driver_opt
-	 * and only takes effect when the network is created (see comment in
-	 * docker-compose.yml lines 172-174). If a user switches WSL networking
+	 * and only takes effect when the network is created (see the NOTE next to
+	 * `enable_ip_masquerade` under `driver_opts` in docker-compose.yml). If a
+	 * user switches WSL networking
 	 * mode after the network already exists, the env-var change has no
 	 * effect; the stale opt keeps masquerading packets and Windows's
 	 * Hyper-V vNic filter drops them in mirrored mode.
@@ -611,8 +612,9 @@ export class DockerManager {
 	async start(): Promise<string> {
 		return this.withGuard(async () => {
 			const { mode } = await this.getWslProbe(this.getSettings().wslDistro);
-			// docker.ts:456-462 sets OAS_IP_MASQ=false only in mirrored mode;
-			// everywhere else compose's `${OAS_IP_MASQ:-true}` defaults to true.
+			// run()'s WSL-mode branch above sets OAS_IP_MASQ=false only in
+			// mirrored mode; everywhere else compose's `${OAS_IP_MASQ:-true}`
+			// defaults to true.
 			const expectedMasq = mode !== "mirrored";
 			await this.verifyAndMaybeRecreateNetwork(expectedMasq);
 			return this.run("docker compose up -d");
