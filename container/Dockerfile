@@ -1,9 +1,9 @@
-# ── Version ARGs (global scope for multi-stage FROM) ────────
-ARG UV_VERSION=0.11
-
-# Base images pinned by digest; Dependabot opens PRs on tag bumps.
+# Base images pinned by tag + digest. Both use a literal (non-ARG) tag so
+# Dependabot's docker ecosystem can parse and refresh them; an
+# ARG-interpolated FROM tag is a dependabot-core blind spot (why uv silently
+# drifted 0.7 -> 0.11 while ubuntu got regular digest PRs).
 # Manual refresh: see container/CLAUDE.md "Pinned binary downloads".
-FROM ghcr.io/astral-sh/uv:${UV_VERSION}@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa AS uv
+FROM ghcr.io/astral-sh/uv:0.11@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa AS uv
 FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
 
 # ── Version ARGs ─────────────────────────────────────────────
