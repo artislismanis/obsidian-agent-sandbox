@@ -7,6 +7,8 @@ description: Safely rename, move, or delete notes with full awareness of incomin
 
 Structural vault changes (rename, move, delete) are the highest-risk operations. A careless delete orphans every link that pointed at it. This skill makes the blast radius visible before acting and uses the review modal when available.
 
+For content edits (not rename/move/delete), use `reviewed-edit` instead. Shared vault-write safety rules (the `writeReviewed` tier, never-delete-without-confirmation, plan-before-applying, one-file-at-a-time) and the full manage-tier tool table live in `../reviewed-edit/references/vault-safety.md` and `../reviewed-edit/SKILL.md` respectively - this skill adds the backlink-blast-radius analysis specific to structural changes on top of those.
+
 ## When to use
 
 - "Rename notes/foo.md to notes/bar.md."
@@ -17,7 +19,7 @@ Structural vault changes (rename, move, delete) are the highest-risk operations.
 ## Prerequisites
 
 - The `manage` tier must be enabled for rename/move/delete tools to be available.
-- If `writeReviewed` is also enabled, each operation pops a review modal showing the affected backlinks. You don't need to call `vault_backlinks` separately in that case, but doing so up front gives the user a chance to abort without seeing the modal per file.
+- If `writeReviewed` is also enabled, each operation pops a review modal showing the affected backlinks (see `../reviewed-edit/references/vault-safety.md` for the general `writeReviewed` mechanics). You don't need to call `vault_backlinks` separately in that case, but doing so up front gives the user a chance to abort without seeing the modal per file.
 - Before chaining manage-tier tools, call `mcp__obsidian__mcp_capabilities` to confirm `manage` (and, if you plan to lean on the modal, `writeReviewed`) are on for this session. Tier toggles change per-vault and per-user: never assume from tool *name* presence alone.
 
 ## Tool chain

@@ -5,13 +5,15 @@ description: Make safe edits to vault files outside the writable workspace direc
 
 # reviewed-edit
 
-Out-of-workspace writes require the `writeReviewed` tier: each change triggers a diff modal in Obsidian and won't apply until the user approves. This skill describes how to plan and sequence those writes so the user gets a useful review experience.
+Out-of-workspace writes require the `writeReviewed` tier: each change triggers a diff modal in Obsidian and won't apply until the user approves. This skill describes how to plan and sequence *content* writes (create/modify/append/frontmatter/patch) so the user gets a useful review experience. For rename/move/delete, use `note-refactor` instead - it covers the same review mechanics plus backlink-blast-radius analysis specific to structural changes.
+
+Shared vault-write safety rules (the `writeReviewed` tier, never-delete-without-confirmation, plan-before-applying, one-file-at-a-time) live in `references/vault-safety.md` - this skill, `note-refactor`, `link-hygiene`, and `tag-audit` all defer to it rather than each restating the rules.
 
 ## When to use
 
 - User asks you to modify a file that isn't under `$OAS_VAULT_WRITE_DIR`.
 - User says "ask me before writing" or similar.
-- You're doing a rename/move/delete (always high-risk).
+- Not for rename/move/delete: see `note-refactor`.
 
 ## Prerequisites
 

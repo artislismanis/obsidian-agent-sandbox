@@ -48,7 +48,7 @@ The Obsidian plugin exposes vault access via MCP. Tool *names* appear in the def
 
 ### MCP servers wired in this workspace
 
-- **`obsidian`** (stdio proxy → plugin's HTTP server): vault tools for search, read content and frontmatter, query tags/links/backlinks, find orphaned notes, create and modify notes, manage vault structure. Use when interacting with the user's knowledge base.
+- **`obsidian`** (stdio proxy → plugin's HTTP server): vault tools for search, read content and frontmatter, query tags/links/backlinks, find orphaned notes, create and modify notes, manage vault structure. Use when interacting with the user's knowledge base. Tools appear in the deferred-tools list as `mcp__obsidian__vault_*`; project skills refer to them by their bare `vault_*` name once loaded.
 - **`memory`** (`@modelcontextprotocol/server-memory`): persistent knowledge graph for cross-session notes about this user / project. Storage is per-vault (see "Memory: MCP knowledge graph" below).
 
 ### MCP connection environment variables

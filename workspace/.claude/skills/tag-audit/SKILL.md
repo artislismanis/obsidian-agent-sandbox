@@ -7,6 +7,8 @@ description: Find and merge tag variants (e.g. #project vs #Project vs #projects
 
 Vault tags drift over time: the same concept ends up as `#project`, `#Project`, `#projects`. This skill finds those variants, proposes a merge plan, and applies it once the user approves.
 
+Shared vault-write safety rules (the `writeReviewed` tier, plan-before-applying, one-cluster-at-a-time) live in `../reviewed-edit/references/vault-safety.md`.
+
 ## When to use
 
 - "Audit my tags."
@@ -48,7 +50,7 @@ For each `variant → canonical`:
 2. For each affected file, **`vault_search_replace`** with `search: "#variant"` and `replace: "#canonical"`. Prefer case-sensitive so you don't mangle similar substrings.
 3. If the vault uses frontmatter `tags:` arrays, also use `vault_frontmatter_set` to rewrite the array per file, or `vault_batch_frontmatter` with a dry-run first.
 
-Apply one variant cluster at a time, not all at once. That way a review modal (if `writeReviewed` enabled) shows a coherent diff per merge.
+Apply one variant cluster at a time, not all at once (see `../reviewed-edit/references/vault-safety.md`).
 
 ### Phase 4: Verify
 
