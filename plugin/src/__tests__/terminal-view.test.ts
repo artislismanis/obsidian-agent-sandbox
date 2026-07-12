@@ -14,6 +14,7 @@ import {
 	composeTabTitle,
 	composeFontFamily,
 	shouldAutoCopy,
+	isAllMouseModes,
 	formatConnectionLog,
 } from "../terminal-view";
 import type { TerminalConnectionEvent } from "../terminal-view";
@@ -88,6 +89,43 @@ describe("shouldAutoCopy", () => {
 		expect(shouldAutoCopy({ enabled: true, selection: "abc", documentFocused: false })).toBe(
 			false,
 		);
+	});
+});
+
+// Mouse-tracking DECSET (CSI ? Pm h/l) is swallowed so native selection/copy
+// survives a full-screen TUI enabling mouse reporting. Only fully-mouse
+// sequences are swallowed; anything else falls through to xterm's default.
+describe("isAllMouseModes", () => {
+	it("matches a single mouse-tracking mode", () => {
+		expect(isAllMouseModes([1000])).toBe(true);
+		expect(isAllMouseModes([1002])).toBe(true);
+		expect(isAllMouseModes([1006])).toBe(true);
+		expect(isAllMouseModes([9])).toBe(true);
+	});
+
+	it("matches a combined all-mouse sequence", () => {
+		expect(isAllMouseModes([1000, 1006])).toBe(true);
+		expect(isAllMouseModes([1002, 1015, 1016])).toBe(true);
+	});
+
+	it("does not match non-mouse rendering modes", () => {
+		expect(isAllMouseModes([1049])).toBe(false); // alt-screen
+		expect(isAllMouseModes([2004])).toBe(false); // bracketed paste
+		expect(isAllMouseModes([2026])).toBe(false); // synchronized output
+		expect(isAllMouseModes([1004])).toBe(false); // focus events
+	});
+
+	it("does not match a mixed mouse + non-mouse sequence", () => {
+		expect(isAllMouseModes([1000, 1049])).toBe(false);
+		expect(isAllMouseModes([2004, 1006])).toBe(false);
+	});
+
+	it("does not match an empty sequence", () => {
+		expect(isAllMouseModes([])).toBe(false);
+	});
+
+	it("does not match subparameter arrays", () => {
+		expect(isAllMouseModes([[1000, 1]])).toBe(false);
 	});
 });
 

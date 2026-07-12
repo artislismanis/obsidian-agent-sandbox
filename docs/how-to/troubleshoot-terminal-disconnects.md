@@ -78,6 +78,36 @@ Example:
 OAS_MCP_DEBUG=1 OAS_MCP_TIMEOUT_MS=30000 claude
 ```
 
+## Copy, paste, and selection
+
+**Symptom:** dragging to select in the terminal no longer highlights text, and
+copying from Claude Code doesn't reach your host clipboard — the copy seems to
+vanish into the container.
+
+**Cause:** Claude Code's full-screen ("non-flicker") TUI enables terminal
+mouse-tracking. When mouse-tracking is on, xterm.js (the terminal the plugin
+renders) forwards mouse events to the application and stops doing native
+selection, so drag-to-select and auto-copy break. Copy then relies on escape
+sequences that get intercepted before reaching your clipboard.
+
+**What the plugin does:** it **strips application mouse-tracking** in this
+terminal, so native selection and auto-copy of on-screen text always work — drag
+to select, and the selection lands on your host clipboard (with
+`clipboardAutoCopy` on). This is durable across Claude Code updates because it
+happens in the plugin, not via a Claude Code setting. Claude's flicker-free
+rendering and keyboard navigation are unaffected; only its in-TUI mouse features
+(clicking options, mouse-scroll within its viewport) are inactive — use the
+keyboard for those. Note a full-screen TUI draws on the terminal's alternate
+screen, so the mouse wheel scrolls *within the app* and you select the visible
+viewport; to grab text Claude has scrolled past, scroll it back into view first.
+See
+[Reference: keyboard shortcuts](../reference/keyboard-shortcuts.md#mouse-selection-and-full-screen-tuis).
+
+**Escape hatch:** if you would rather keep Claude Code's native mouse behaviour
+(and give up this reliable selection/copy), add `"tui": "default"` to
+`workspace/.claude/settings.json` and start a new terminal. That reverts Claude to
+the classic renderer, which doesn't capture the mouse.
+
 ## Related
 
 - [Reference: commands](../reference/commands.md)

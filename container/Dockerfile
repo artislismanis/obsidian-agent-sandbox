@@ -7,7 +7,7 @@ FROM ghcr.io/astral-sh/uv:${UV_VERSION}@sha256:629240833dd25d03949509fc01ceff56a
 FROM ubuntu:24.04@sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54
 
 # ── Version ARGs ─────────────────────────────────────────────
-ARG CLAUDE_CODE_VERSION=2.1.161
+ARG CLAUDE_CODE_VERSION=2.1.207
 ARG PYTHON_VERSION=3.12
 ARG NODE_MAJOR=24
 ARG TTYD_VERSION=1.7.7
@@ -28,8 +28,8 @@ ARG ATUIN_SHA256_AMD64=5da991d001632ec140d9bc7b094ddcd7a227c59acc5c498bd9ef41414
 ARG ATUIN_SHA256_ARM64=19c862a874e6dc41e373888ee11dd90bb68f7ccbb5fd8353347bf00892445e88
 # SHA256s come from https://downloads.claude.ai/claude-code-releases/${CLAUDE_CODE_VERSION}/manifest.json
 # (platforms.linux-x64.checksum / platforms.linux-arm64.checksum).
-ARG CLAUDE_CODE_SHA256_AMD64=1f6a22f387a3bce496b6d869389a35dffb5a69c97d9831833f3bd6dc0e6c6c28
-ARG CLAUDE_CODE_SHA256_ARM64=7dfa0a79a2fc9f332057cdc0302f808cba63df7b75e2ccb5a7c1ab62639804e3
+ARG CLAUDE_CODE_SHA256_AMD64=85e7e988a392d859f90802ca21fb26e89d3c9ab527f5ed0b08df3955e34d5c83
+ARG CLAUDE_CODE_SHA256_ARM64=8bc14a284065383460f37981d724b8f7aa7ca93c9849d2fe367e08f03383f454
 
 # ── User ARGs ────────────────────────────────────────────────
 # The claude user's uid/gid. Defaults to 1000 because that's the
