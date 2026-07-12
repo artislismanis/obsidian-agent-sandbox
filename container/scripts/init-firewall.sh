@@ -124,6 +124,31 @@ add_entry() {
   printf '%s\t%s\n' "$tag" "$entry" >> "$SOURCES_FILE"
 }
 
+# Read domain entries from an allowlist file (BOM stripped from line 1,
+# `#` comments, blank lines skipped) and feed each into add_entry with the
+# given source tag. When capture_baseline is "1", also append the trimmed
+# entry to BASELINE_ENTRIES (used later to distinguish baseline domains from
+# plugin/file-tier ones). Shared by the baseline and extras file loaders
+# below - identical format, only the source tag and baseline-capture differ.
+read_allowlist_file() {
+  local file="$1" tag="$2" capture_baseline="${3:-0}"
+  local first_line=1
+  local line entry
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$first_line" = "1" ]; then
+      line="${line#$'\xEF\xBB\xBF'}"
+      first_line=0
+    fi
+    line="${line%%#*}"
+    if [ "$capture_baseline" = "1" ]; then
+      entry="$(_trim "$line")"
+      [ -z "$entry" ] && continue
+      BASELINE_ENTRIES+=("$entry")
+    fi
+    add_entry "$tag" "$line"
+  done < "$file"
+}
+
 # Baseline: read from host-managed file (mounted ro at BASELINE_FILE).
 # The file is also baked into the image as a fallback so the container
 # works if the host mount is absent. Both the directory-shadow case and
@@ -137,20 +162,7 @@ elif [ ! -f "$BASELINE_FILE" ]; then
   echo "init-firewall: ERROR: $BASELINE_FILE not found. The baseline allowlist is required; ensure the image was built with the file baked in." >&2
   exit 1
 else
-  first_line=1
-  while IFS= read -r line || [ -n "$line" ]; do
-    # Strip UTF-8 BOM on the first line (Windows editors may insert one).
-    if [ "$first_line" = "1" ]; then
-      line="${line#$'\xEF\xBB\xBF'}"
-      first_line=0
-    fi
-    # Strip comments and trim
-    line="${line%%#*}"
-    entry="$(_trim "$line")"
-    [ -z "$entry" ] && continue
-    BASELINE_ENTRIES+=("$entry")
-    add_entry baseline "$entry"
-  done < "$BASELINE_FILE"
+  read_allowlist_file "$BASELINE_FILE" baseline 1
 fi
 
 # Plugin-supplied (comma-separated env var). Strip `#` comments so a user
@@ -174,20 +186,11 @@ fi
 if [ -d "$EXTRAS_FILE" ]; then
   echo "init-firewall: WARNING: $EXTRAS_FILE is a directory (host file missing; Docker auto-created the mount target). File-tier extras skipped. Restore container/firewall-extras.txt on the host and 'docker compose down && up -d' to re-bind." >&2
 elif [ -f "$EXTRAS_FILE" ]; then
-  first_line=1
-  while IFS= read -r line || [ -n "$line" ]; do
-    # Strip UTF-8 BOM on the first line; Windows editors often save with
-    # one and the resulting `﻿host.example.com` fails IPv4 routing,
-    # gets passed to dig, returns no records, and is logged as a generic
-    # resolution failure with no hint at the real cause.
-    if [ "$first_line" = "1" ]; then
-      line="${line#$'\xEF\xBB\xBF'}"
-      first_line=0
-    fi
-    # Strip comments and trim
-    line="${line%%#*}"
-    add_entry file "$line"
-  done < "$EXTRAS_FILE"
+  # BOM-stripping matters here too: Windows editors often save one, and the
+  # resulting `﻿host.example.com` fails IPv4 routing, gets passed to dig,
+  # returns no records, and is logged as a generic resolution failure with
+  # no hint at the real cause.
+  read_allowlist_file "$EXTRAS_FILE" file
 fi
 
 # Resolve domains BEFORE flipping the OUTPUT policy. A DNS hiccup must not
