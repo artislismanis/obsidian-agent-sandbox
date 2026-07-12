@@ -39,7 +39,7 @@
 		"@types/node": "^24.13.2",
 		"@typescript-eslint/eslint-plugin": "^8.60.1",
 		"@typescript-eslint/parser": "^8.60.1",
-		"@vitest/coverage-v8": "^4.1.8",
+		"@vitest/coverage-v8": "^4.1.10",
 		"@wdio/cli": "^9.27.1",
 		"@wdio/globals": "^9.27.1",
 		"@wdio/local-runner": "^9.27.1",
