@@ -124,6 +124,29 @@ export function formatConnectionLog(events: TerminalConnectionEvent[]): string {
 		.join("\n");
 }
 
+// Mouse-tracking DECSET modes (CSI ? Pm h/l). Claude Code's fullscreen TUI
+// enables these; once on, xterm.js forwards mouse events to the application and
+// stops doing native text selection - breaking drag-to-select and the
+// auto-copy-on-selection below. We swallow these modes at the parser so the
+// Obsidian terminal always keeps native selection/copy. Rendering modes
+// (alt-screen 1049, synchronized output 2026, bracketed paste 2004, focus
+// events 1004) are deliberately absent so flicker-free rendering is unaffected.
+const MOUSE_TRACKING_MODES: ReadonlySet<number> = new Set([
+	9, 1000, 1001, 1002, 1003, 1005, 1006, 1015, 1016,
+]);
+
+/**
+ * True iff `params` is non-empty and every parameter is a mouse-tracking DECSET
+ * mode. Used to decide whether to swallow a `CSI ? Pm h/l` sequence: swallow
+ * only when the whole sequence is mouse-tracking, so a combined sequence that
+ * also carries a needed mode (e.g. alt-screen) still falls through to xterm's
+ * default handler. Pure, so the gating is unit-testable (mirrors shouldAutoCopy).
+ */
+export function isAllMouseModes(params: (number | number[])[]): boolean {
+	if (params.length === 0) return false;
+	return params.every((p) => typeof p === "number" && MOUSE_TRACKING_MODES.has(p));
+}
+
 export type ActivityPrefix = "working" | "awaiting_input" | "idle" | null;
 
 const PREFIX_SYMBOL: Record<Exclude<ActivityPrefix, null>, string> = {
@@ -543,6 +566,19 @@ export class TerminalView extends ItemView {
 			fitAddon.fit();
 		} catch {
 			/* container may not be visible yet */
+		}
+
+		// Strip application mouse-tracking (CSI ? Pm h/l for the mouse modes) so
+		// native drag-selection + auto-copy keep working even when a full-screen
+		// TUI like Claude Code enables mouse reporting. Custom parser handlers run
+		// before xterm's built-in: returning true swallows the sequence (mouse
+		// stays off), false falls through so non-mouse modes are handled normally.
+		for (const final of ["h", "l"] as const) {
+			this.termDisposables.push(
+				term.parser.registerCsiHandler({ prefix: "?", final }, (params) =>
+					isAllMouseModes(params),
+				),
+			);
 		}
 
 		// Clipboard: auto-copy on selection (opt-out via setting), Ctrl+V / Ctrl+Shift+V to paste

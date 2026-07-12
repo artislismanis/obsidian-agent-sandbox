@@ -55,6 +55,37 @@ The JSONL file at `vault/.oas/mcp-audit.jsonl` is the long-horizon record. Size-
 
 `pollUntilReady` hits `/` on the ttyd port via `requestUrl` (which bypasses CORS) before opening the WebSocket. A WebSocket open failure is less debuggable than an HTTP 404: knowing "ttyd isn't up yet" vs "ttyd is up but rejecting" is useful. Exponential backoff (500 ms × 1.5ⁿ, capped at 5s) keeps the initial probe fast without hammering on slow cold starts.
 
+## Why strip application mouse-tracking in the terminal?
+
+Claude Code's full-screen ("non-flicker") TUI enables terminal mouse-tracking.
+Once an application turns that on, xterm.js forwards mouse events to the
+application and stops doing native text selection — so drag-to-select and the
+plugin's auto-copy-on-selection stop working, and copy falls back to escape
+sequences that don't reach the host clipboard through this delivery path.
+
+The plugin swallows the mouse-tracking DECSET modes (`CSI ? Pm h/l` for modes
+9/1000–1003/1005/1006/1015/1016) in `terminal-view.ts` via a parser handler, so
+xterm never enables mouse reporting and native selection/copy always work.
+
+Three alternatives were rejected:
+
+- **`"tui": "default"`** (revert Claude to the classic renderer) depends on a
+  Claude Code setting we don't control and gives up the flicker-free rendering.
+- **OSC 52 clipboard + Shift-drag selection** keeps mouse capture, which leaves a
+  plain-drag-doesn't-select asymmetry.
+- **A user toggle** would be speculative; the tradeoff is clear and reversible.
+
+The chosen approach keeps the new renderer, gives reliable native selection/copy
+of on-screen text in the Obsidian pane, and — because it lives in the plugin
+rather than a Claude setting — stays robust across Claude Code TUI changes. The
+accepted cost is that Claude's in-TUI mouse features (clicking options,
+mouse-scroll within its viewport) are inactive in the sandbox terminal; it stays
+keyboard-driven. Because a full-screen TUI renders on the alternate screen (no
+xterm scrollback of its own), the wheel scrolls within the app and selection
+covers the visible viewport; classic mode (`tui: "default"`) or running inside a
+`session` keeps the main screen, where terminal scrollback and full-history
+selection apply.
+
 ## Why use Obsidian's bundled moment for Periodic Notes formatting?
 
 Periodic Notes stores its format strings in moment.js syntax. We import `moment` from `obsidian` (already bundled and externalised by esbuild) rather than adding a moment/dayjs dependency or shipping our own minimal formatter. Reusing Obsidian's bundle costs nothing in plugin size, and matches the format semantics Periodic Notes itself uses. There's no risk of a subtle divergence between our formatter and the one the rest of Obsidian relies on.
