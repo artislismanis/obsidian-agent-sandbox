@@ -7,12 +7,11 @@ node_modules/
 # IDE
 .idea
 .vscode
-plugin/.claude/
-container/.claude/
 
 # OS
 .DS_Store
 Thumbs.db
+*:Zone.Identifier
 
 # env (`.env` matches at any depth, covers container/.env too)
 .env
@@ -55,14 +54,29 @@ workspace/vault/
 .gitmodules
 .ripgreprc
 
-# Claude Code local overrides
-**/.claude/settings.local.json
-# Claude Code scheduler state: runtime artefact, never committed
-**/.claude/scheduled_tasks.lock
-# Project-root .claude/ is entirely per-machine runtime state (sandbox masks,
-# agent worktrees). workspace/.claude/ has committed project files; this
-# root-anchored pattern deliberately leaves that untouched.
-/.claude/
+# ── Claude Code ──────────────────────────────────────────
+# Policy: project .claude/ config is shared by default (deny-list).
+# Only runtime state and personal/local files are ignored below.
+# See: https://code.claude.com/docs/en/claude-directory
+
+# Sub-package .claude/ dirs aren't real config — only monorepo-root and workspace/ are
+plugin/.claude/
+container/.claude/
+
+# Runtime state (any .claude/ at any depth)
+**/.claude/worktrees/
+**/.claude/.cc-writes/
+**/.claude/routines/
+**/.claude/launch.json
+**/.claude/scheduled_tasks.*
+
+# Local-only subagent memory (memory: local)
+**/.claude/agent-memory-local/
+
+# Personal/local overrides (Anthropic's .local. convention)
+**/.claude/*.local.json
+**/.claude/*.local.md
+CLAUDE.local.md
 tmux-*.log
 
 # test artifacts
