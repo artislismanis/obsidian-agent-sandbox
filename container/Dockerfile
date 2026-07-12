@@ -4,7 +4,7 @@ ARG UV_VERSION=0.7
 # Base images pinned by digest; Dependabot opens PRs on tag bumps.
 # Manual refresh: see container/CLAUDE.md "Pinned binary downloads".
 FROM ghcr.io/astral-sh/uv:${UV_VERSION}@sha256:629240833dd25d03949509fc01ceff56ae74f5e5f0fd264da634dd2f70e9cc70 AS uv
-FROM ubuntu:24.04@sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54
+FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
 
 # ── Version ARGs ─────────────────────────────────────────────
 ARG CLAUDE_CODE_VERSION=2.1.207
