@@ -923,7 +923,12 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 									`Templater did not produce a file for periodic note '${path}'.`,
 								);
 							}
-							await assertTemplateDidNotRelocate(app, createdFile, path, "periodic note");
+							await assertTemplateDidNotRelocate(
+								app,
+								createdFile,
+								path,
+								"periodic note",
+							);
 						},
 						successMsg: `Created ${path} (Templater processed)`,
 					});

@@ -212,9 +212,7 @@ export function restartKeysChanged(
 }
 
 /** Snapshot of only the restart-required keys, diffed later via `restartKeysChanged()`. */
-export function snapshotRestartKeys(
-	settings: AgentSandboxSettings,
-): Partial<AgentSandboxSettings> {
+export function snapshotRestartKeys(settings: AgentSandboxSettings): Partial<AgentSandboxSettings> {
 	return Object.fromEntries(
 		RESTART_REQUIRED_KEYS.map((k) => [k, settings[k]]),
 	) as Partial<AgentSandboxSettings>;

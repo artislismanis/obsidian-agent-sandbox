@@ -1,4 +1,13 @@
-import type { PermissionTier } from "./mcp-tools";
+/** Single source of truth for the set of MCP permission tiers. */
+export type PermissionTier =
+	| "read"
+	| "writeScoped"
+	| "writeReviewed"
+	| "writeVault"
+	| "navigate"
+	| "manage"
+	| "extensions"
+	| "agent";
 
 /** MCP tiers enabled automatically when the server is on. */
 export const ALWAYS_ON_TIERS: readonly PermissionTier[] = ["read", "writeScoped", "agent"];
@@ -57,7 +66,8 @@ export function reviewsRequired(mode: VaultWriteMode): boolean {
 
 // Compile-time exhaustiveness check: if PermissionTier gains a new member,
 // this assignment errors until the new tier is added to one of the three
-// classification sources (always-on, vault-write, or gated).
+// classification sources (always-on, vault-write, or gated) that ALL_TIERS
+// below is assembled from.
 type _ClassifiedTier =
 	| (typeof ALWAYS_ON_TIERS)[number]
 	| (typeof GATED_TIERS)[number]["tier"]
@@ -69,3 +79,16 @@ const _exhaustive: _ClassifiedTier extends PermissionTier
 		: false
 	: false = true;
 void _exhaustive;
+
+/** Every permission tier, in the plugin's canonical display/registration
+ * order. Single source of truth: mcp-tools.ts derives its default
+ * `enabledTiers` Set from this, and mcp-schemas-gen.ts derives its doc-table
+ * ordering from it, instead of each keeping its own copy of the tier list. */
+export const ALL_TIERS: readonly PermissionTier[] = [
+	"read",
+	"writeScoped",
+	"writeReviewed",
+	"writeVault",
+	...GATED_TIERS.map((t) => t.tier),
+	"agent",
+];
