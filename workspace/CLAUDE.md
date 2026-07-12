@@ -6,9 +6,9 @@ This is Claude's configurable workspace inside the Agent Sandbox container. Ever
 
 | Path | Purpose |
 |------|---------|
-| `.claude/settings.json` | Claude Code project settings (permission mode, env, experiments) |
+| `.claude/settings.json` | Claude Code project settings (permission mode, env, experiments, hooks) |
 | `.claude/settings.local.json` | Per-machine overrides (gitignored) |
-| `.claude/skills/` | Project skills shipped with the workspace (see `ls .claude/skills/` for the current set). |
+| `.claude/skills/` | Project skills shipped with the workspace (see `ls .claude/skills/` for the current set), including `prose-style` (see below). |
 | `.claude/agents/` | Sub-agents directory, *not present by default*; create this folder + files in it if you want repo-managed sub-agents. |
 | `.claude/commands/` | Slash-command directory, *not present by default*; create this folder + files in it for repo-managed commands. |
 | `.claude/hooks/` | Claude Code lifecycle hook scripts: `notify-status.sh` (reports working/idle to the Obsidian plugin via MCP) |
@@ -19,6 +19,10 @@ This is Claude's configurable workspace inside the Agent Sandbox container. Ever
 | `vault/` | Obsidian vault overlay (read-only, see below) |
 | `vault/$OAS_VAULT_WRITE_DIR/` | Writable vault subfolder (see `$OAS_VAULT_WRITE_DIR` env var, default `agent-workspace`) |
 | `vault/.oas/` | Vault infrastructure: memory file, writable (independent of write dir) |
+
+## Prose style enforcement
+
+`.claude/settings.json`'s `hooks.PreToolUse` block matches `Write|Edit` and injects a reminder to invoke the `prose-style` skill before the edit proceeds. This is mandatory, not optional: it applies to every piece of prose you write here, including documentation, code comments, commit messages, and vault notes. See `.claude/skills/prose-style/SKILL.md` for the style rules themselves (British English, smart-brevity, no em dashes, banned AI-writing tells).
 
 ## Extensibility tiers (inline reference)
 

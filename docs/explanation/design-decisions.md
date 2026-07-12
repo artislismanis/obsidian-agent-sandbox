@@ -71,9 +71,18 @@ Three alternatives were rejected:
 
 - **`"tui": "default"`** (revert Claude to the classic renderer) depends on a
   Claude Code setting we don't control and gives up the flicker-free rendering.
-- **OSC 52 clipboard + Shift-drag selection** keeps mouse capture, which leaves a
+- **OSC 52 clipboard + Shift-drag selection** (as the *sole* fix, without also
+  stripping mouse-tracking) keeps mouse capture, which leaves a
   plain-drag-doesn't-select asymmetry.
 - **A user toggle** would be speculative; the tradeoff is clear and reversible.
+
+Separately, the plugin does honour OSC 52 clipboard *writes*: `decodeOsc52()`
+in `terminal-view.ts` copies a `c;<base64>` payload to the host clipboard so
+`ttyd`-side "copy" actions (e.g. Claude Code's own `c` binding) reach Obsidian's
+pane even though native drag-select is what's expected for everyday use. Read
+requests (`OSC 52 ?`) are refused - decoding returns `null` and the sequence is
+swallowed - so a compromised or malicious TUI process cannot exfiltrate the
+host clipboard through this path.
 
 The chosen approach keeps the new renderer, gives reliable native selection/copy
 of on-screen text in the Obsidian pane, and — because it lives in the plugin

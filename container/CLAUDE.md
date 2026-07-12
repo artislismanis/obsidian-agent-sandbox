@@ -45,14 +45,14 @@ This folder is not mounted into the container. For the rationale and exceptions,
 
 The effective allowlist is the union of three additive sources: `firewall-baseline.txt` (project-curated, changes via PR), `firewall-extras.txt` (host-managed), and the `OAS_ALLOWED_DOMAINS` env var (plugin-supplied). See [`docs/how-to/configure-firewall.md`](../docs/how-to/configure-firewall.md) for how to add entries and which source to use. The safety constraint that lives here: **never weaken the allowlist without clear justification** (this is duplicated in "Safety constraints" below for visibility).
 
-Allowed categories: Anthropic (api.anthropic.com, sentry.io), npm, GitHub, PyPI, CDNs (jsdelivr, cdnjs, unpkg), Ubuntu apt mirrors.
+Allowed categories: Anthropic (api.anthropic.com, sentry.io, downloads.claude.ai - the last is load-bearing for `claude update`), npm (incl. registry.yarnpkg.com), GitHub, PyPI, CDNs (jsdelivr, cdnjs, unpkg), Ubuntu apt mirrors (incl. keyserver.ubuntu.com). See `firewall-baseline.txt` for the authoritative list.
 
 ## Changing a default value
 
 Several defaults repeat across files because compose's `${VAR:-default}` idiom cannot be centralised. Change every site together:
 
-- ttyd port `7681`: `docker-compose.yml` (ports + `OAS_TTYD_PORT`), `Dockerfile` (healthcheck), `scripts/entrypoint.sh` (ttyd launch)
-- MCP port `28080`: `docker-compose.yml` (`OAS_MCP_PORT`), plugin settings default, `workspace/.claude/scripts/obsidian-mcp-proxy.js`
+- ttyd port `7681`: `docker-compose.yml` (ports + `OAS_TTYD_PORT`), `Dockerfile` (healthcheck), `scripts/entrypoint.sh` (ttyd launch), `scripts/verify.sh`
+- MCP port `28080`: `docker-compose.yml` (`OAS_MCP_PORT`), plugin settings default, `workspace/.claude/scripts/obsidian-mcp-proxy.js`, `scripts/init-firewall.sh`
 - Write dir `agent-workspace`: `docker-compose.yml` (mount + `OAS_VAULT_WRITE_DIR`), `scripts/entrypoint.sh`, `scripts/verify.sh`
 - Memory file `memory.json`: `docker-compose.yml` (`OAS_MEMORY_FILE_NAME` + `MEMORY_FILE_PATH`), `scripts/entrypoint.sh`, `.env.example`
 
