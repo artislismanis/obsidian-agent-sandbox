@@ -6,7 +6,7 @@ This folder contains the Docker image definition and supporting scripts for the 
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | Container image definition (Ubuntu 24.04, Node 24, Python 3.12, Claude Code, ttyd, firewall tools) |
+| `Dockerfile` | Container image definition (Ubuntu 24.04, Node 24, Python 3.14, Claude Code, ttyd, firewall tools) |
 | `docker-compose.yml` | Service, mounts, resource limits, OAS naming |
 | `.env.example` | Environment template (copy to `.env` for standalone CLI use) |
 | `.dockerignore` | Excludes from the build context |
@@ -83,9 +83,14 @@ curl -fsSL "https://downloads.claude.ai/claude-code-releases/${CLAUDE_CODE_VERSI
   | jq -r '.platforms | {amd64: ."linux-x64".checksum, arm64: ."linux-arm64".checksum}'
 ```
 
-The base images (`ubuntu:24.04`, `ghcr.io/astral-sh/uv`) are pinned by digest at
-the top of the Dockerfile; Dependabot's docker ecosystem refreshes them
-on tag bumps. To refresh manually:
+The base images (`ubuntu:24.04`, `ghcr.io/astral-sh/uv:0.11`) are pinned by
+tag + digest at the top of the Dockerfile. Both use a **literal** tag (no
+`ARG` interpolation): Dependabot's docker ecosystem cannot resolve an
+ARG-interpolated `FROM` tag, so an ARG-pinned image drifts un-updated (uv
+silently lagged 0.7 → 0.11 this way). With literal tags, Dependabot refreshes
+the digest within the pinned tag automatically. Bumping the tag itself (e.g.
+uv `0.11` → `0.12`, or the Ubuntu LTS line) is a deliberate manual change —
+see the ignore rules in `.github/dependabot.yml`. To refresh a digest manually:
 
 ```bash
 # ubuntu:24.04 digest
@@ -93,6 +98,12 @@ curl -sI \
   -H "Authorization: Bearer $(curl -sL 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/ubuntu:pull' | jq -r .token)" \
   -H 'Accept: application/vnd.oci.image.index.v1+json' \
   'https://registry-1.docker.io/v2/library/ubuntu/manifests/24.04' | grep -i digest
+
+# ghcr.io/astral-sh/uv:<tag> digest
+curl -sI \
+  -H "Authorization: Bearer $(curl -sL 'https://ghcr.io/token?scope=repository:astral-sh/uv:pull&service=ghcr.io' | jq -r .token)" \
+  -H 'Accept: application/vnd.oci.image.index.v1+json' \
+  'https://ghcr.io/v2/astral-sh/uv/manifests/0.11' | grep -i docker-content-digest
 ```
 
 ## Safety constraints for this folder

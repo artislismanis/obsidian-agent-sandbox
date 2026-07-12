@@ -108,7 +108,7 @@ echo "=== Agent Sandbox: Environment Verification ==="
 
 echo ""
 echo "── Tool versions ──────────────────────────────────"
-# Floors track Dockerfile-pinned versions: Node 24 (LTS), Python 3.12.
+# Floors track Dockerfile-pinned versions: Node 24 (LTS), Python 3.14.
 # A drift below the floor breaks Claude Code (Node 22-only APIs), uv
 # (Py 3.12+ syntax), and certain MCP SDK features. Bump alongside the
 # Dockerfile when raising the floor.
@@ -125,7 +125,7 @@ tool_version "tmux"    "tmux" "-V"
 tool_version "rg"      "rg"
 tool_version "fd"      "fd"
 tool_version "uv"      "uv"
-tool_version "Python"  "python3" "--version" "3.12"
+tool_version "Python"  "python3" "--version" "3.14"
 tool_version "gosu"    "gosu"
 tool_version "sudo"    "sudo"
 

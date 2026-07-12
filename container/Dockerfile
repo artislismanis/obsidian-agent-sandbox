@@ -1,31 +1,31 @@
-# ── Version ARGs (global scope for multi-stage FROM) ────────
-ARG UV_VERSION=0.7
-
-# Base images pinned by digest; Dependabot opens PRs on tag bumps.
+# Base images pinned by tag + digest. Both use a literal (non-ARG) tag so
+# Dependabot's docker ecosystem can parse and refresh them; an
+# ARG-interpolated FROM tag is a dependabot-core blind spot (why uv silently
+# drifted 0.7 -> 0.11 while ubuntu got regular digest PRs).
 # Manual refresh: see container/CLAUDE.md "Pinned binary downloads".
-FROM ghcr.io/astral-sh/uv:${UV_VERSION}@sha256:629240833dd25d03949509fc01ceff56ae74f5e5f0fd264da634dd2f70e9cc70 AS uv
-FROM ubuntu:24.04@sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54
+FROM ghcr.io/astral-sh/uv:0.11@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa AS uv
+FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
 
 # ── Version ARGs ─────────────────────────────────────────────
 ARG CLAUDE_CODE_VERSION=2.1.207
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.14
 ARG NODE_MAJOR=24
 ARG TTYD_VERSION=1.7.7
-ARG NVM_VERSION=0.40.3
+ARG NVM_VERSION=0.40.5
 # SHA256 of https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh
 # Recompute when bumping NVM_VERSION; see container/CLAUDE.md "Pinned binary downloads".
-ARG NVM_INSTALL_SHA256=2d8359a64a3cb07c02389ad88ceecd43f2fa469c06104f92f98df5b6f315275f
-ARG ATUIN_VERSION=18.8.0
-ARG BASH_PREEXEC_VERSION=0.5.0
-ARG MEMORY_SERVER_VERSION=2026.1.26
+ARG NVM_INSTALL_SHA256=582070e4c44452c1d8d68e16fc786c2216ecba6bc6bf18dc280a03fdba6ed1a9
+ARG ATUIN_VERSION=18.17.0
+ARG BASH_PREEXEC_VERSION=0.6.0
+ARG MEMORY_SERVER_VERSION=2026.7.4
 
 # ── Binary download SHA256 pins ───────────────────────────────
 # Bump a *_VERSION ARG? Recompute its SHA; see container/CLAUDE.md "Pinned binary downloads".
 ARG TTYD_SHA256_AMD64=8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55
 ARG TTYD_SHA256_ARM64=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165
-ARG BASH_PREEXEC_SHA256=6ef95f16012bdfec0ab6ee853e8892d51eee295c8639944f9b983b3d40e0e9f7
-ARG ATUIN_SHA256_AMD64=5da991d001632ec140d9bc7b094ddcd7a227c59acc5c498bd9ef4141417ae8ea
-ARG ATUIN_SHA256_ARM64=19c862a874e6dc41e373888ee11dd90bb68f7ccbb5fd8353347bf00892445e88
+ARG BASH_PREEXEC_SHA256=998f4d5e9dd82e254463228cc6caa4d40125ae79b31d5a16a2a2f49357f0c160
+ARG ATUIN_SHA256_AMD64=7f9f8b5b71abfaa5cf6be051e2f82e1d4bab529e56f59e16126a684e450c2abb
+ARG ATUIN_SHA256_ARM64=e8074dbb2df1b14a7f7456a5a2c4ffe7887c020243f230e37fe56bbaeef00e63
 # SHA256s come from https://downloads.claude.ai/claude-code-releases/${CLAUDE_CODE_VERSION}/manifest.json
 # (platforms.linux-x64.checksum / platforms.linux-arm64.checksum).
 ARG CLAUDE_CODE_SHA256_AMD64=85e7e988a392d859f90802ca21fb26e89d3c9ab527f5ed0b08df3955e34d5c83
@@ -148,7 +148,7 @@ ENV PATH=/home/claude/.local/bin:/home/claude/.nvm/default/bin:/home/claude/.loc
 # ~/.local/python-default gives a version-agnostic entry for PATH.
 # Symlinking the whole install root (not just the binary) is load-bearing:
 # `python3 -m venv` writes the invocation bin dir into pyvenv.cfg as `home`,
-# and `../lib/python3.12/` must resolve to real stdlib from there. A
+# and `../lib/python3.14/` must resolve to real stdlib from there. A
 # `/usr/local/bin/python3` symlink breaks venv because pyvenv.cfg ends up
 # with `home = /usr/local/bin` and no stdlib lives there, so Python then
 # falls back to python-build-standalone's baked `/install` prefix and
