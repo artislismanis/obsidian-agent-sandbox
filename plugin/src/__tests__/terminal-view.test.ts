@@ -14,6 +14,7 @@ import {
 	composeTabTitle,
 	composeFontFamily,
 	shouldAutoCopy,
+	decodeOsc52,
 	isAllMouseModes,
 	formatConnectionLog,
 } from "../terminal-view";
@@ -126,6 +127,42 @@ describe("isAllMouseModes", () => {
 
 	it("does not match subparameter arrays", () => {
 		expect(isAllMouseModes([[1000, 1]])).toBe(false);
+	});
+});
+
+// OSC 52 clipboard-write payloads from TUIs (e.g. Claude Code's "c to copy") are
+// base64-decoded into clipboard text; reads/empty/malformed payloads decode to null
+// so the handler swallows the sequence without touching the clipboard.
+describe("decodeOsc52", () => {
+	it("decodes a base64 clipboard-write payload", () => {
+		expect(decodeOsc52("c;" + btoa("hello"))).toBe("hello");
+	});
+
+	it("decodes regardless of the selection field", () => {
+		expect(decodeOsc52("p;" + btoa("primary"))).toBe("primary");
+		expect(decodeOsc52(";" + btoa("no-selection"))).toBe("no-selection");
+	});
+
+	it("round-trips a UTF-8 URL", () => {
+		const url =
+			"https://claude.com/cai/oauth/authorize?code=true&state=ysmZB7SJwiZTVRAZ3ZSMC79pZ0aMBqk99Ai5ArOLn9M";
+		expect(decodeOsc52("c;" + btoa(url))).toBe(url);
+	});
+
+	it("returns null for a clipboard read request", () => {
+		expect(decodeOsc52("c;?")).toBe(null);
+	});
+
+	it("returns null for an empty data field", () => {
+		expect(decodeOsc52("c;")).toBe(null);
+	});
+
+	it("returns null when there is no selection/data separator", () => {
+		expect(decodeOsc52("no-semicolon")).toBe(null);
+	});
+
+	it("returns null for malformed base64", () => {
+		expect(decodeOsc52("c;!!!not base64!!!")).toBe(null);
 	});
 });
 

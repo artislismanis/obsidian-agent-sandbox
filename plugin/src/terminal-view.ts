@@ -200,6 +200,25 @@ export function shouldAutoCopy(opts: {
 	return opts.enabled && opts.selection.length > 0 && opts.documentFocused;
 }
 
+/**
+ * Decode an OSC 52 payload (`<selection>;<data>`, e.g. "c;<base64>") into the text
+ * to place on the clipboard. Returns null for a read request ("?"), an empty/absent
+ * data field, or invalid base64 - the caller then swallows the sequence without
+ * touching the clipboard. Pure so the parsing is unit-testable (mirrors shouldAutoCopy).
+ */
+export function decodeOsc52(data: string): string | null {
+	const sep = data.indexOf(";");
+	if (sep === -1) return null;
+	const payload = data.slice(sep + 1);
+	if (payload === "" || payload === "?") return null; // "?" = clipboard READ request
+	try {
+		const bytes = Uint8Array.from(atob(payload), (ch) => ch.charCodeAt(0));
+		return new TextDecoder().decode(bytes);
+	} catch {
+		return null; // malformed base64
+	}
+}
+
 export class TerminalView extends ItemView {
 	private getSettings: () => TerminalSettings;
 	private instanceId: number;
@@ -580,6 +599,20 @@ export class TerminalView extends ItemView {
 				),
 			);
 		}
+
+		// OSC 52: honour clipboard-WRITE requests from TUIs (e.g. Claude Code's "c to
+		// copy"). xterm 5.5.0 has no built-in OSC 52 support, so the sequence is dropped
+		// without this. Reads (payload "?") are ignored so a remote program can't
+		// exfiltrate the host clipboard. Return true either way to swallow the sequence.
+		this.termDisposables.push(
+			term.parser.registerOscHandler(52, (data) => {
+				const text = decodeOsc52(data);
+				if (text !== null) {
+					navigator.clipboard.writeText(text).catch(() => {});
+				}
+				return true;
+			}),
+		);
 
 		// Clipboard: auto-copy on selection (opt-out via setting), Ctrl+V / Ctrl+Shift+V to paste
 		this.termDisposables.push(
