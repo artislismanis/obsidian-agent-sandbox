@@ -45,7 +45,7 @@ jobs:
         # not in scope for CodeQL; shellcheck handles those via lint-infra.
         language: [javascript-typescript, actions]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Initialize CodeQL
         # First-party GitHub action; major-tag pin per GitHub guidance.
