@@ -1,6 +1,7 @@
 import { browser, expect, $ } from "@wdio/globals";
 import { describe, it, beforeEach } from "mocha";
 import { obsidianPage } from "wdio-obsidian-service";
+import { openPluginSettings } from "../settings-helpers";
 
 const PLUGIN_ID = "agent-sandbox";
 
@@ -71,12 +72,7 @@ describe("Settings UI", function () {
 	});
 
 	it("has four tabs: General, Terminal, Advanced, MCP", async function () {
-		await browser.executeObsidianCommand("app:open-settings");
-
-		// Navigate to our plugin's settings tab (vertical tab list on left of settings modal)
-		const pluginTab = $(".vertical-tab-nav-item*=Agent Sandbox");
-		await expect(pluginTab).toExist();
-		await pluginTab.click();
+		await openPluginSettings();
 
 		// Our internal tab bar is rendered inside the settings content area
 		for (const label of ["General", "Terminal", "Advanced", "MCP"]) {
@@ -85,8 +81,7 @@ describe("Settings UI", function () {
 	});
 
 	it("MCP tab shows permission tier toggles", async function () {
-		await browser.executeObsidianCommand("app:open-settings");
-		await $(".vertical-tab-nav-item*=Agent Sandbox").click();
+		await openPluginSettings();
 		await $(".sandbox-settings-tab=MCP").click();
 
 		// Always-on tiers (Read, Write scoped) are rendered as bullet items in
