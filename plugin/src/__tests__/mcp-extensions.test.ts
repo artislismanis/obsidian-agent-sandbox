@@ -551,10 +551,12 @@ describe("Periodic Notes integration", () => {
 		// adapters). The class comes from the top-level
 		// `vi.mock("obsidian", ...)` block.
 		const { FileSystemAdapter } = await import("obsidian");
-		const adapter = new (FileSystemAdapter as unknown as new () => {
-			getBasePath: () => string;
-			getFullPath: (p: string) => string;
-		})();
+		const adapter = new (
+			FileSystemAdapter as unknown as new () => {
+				getBasePath: () => string;
+				getFullPath: (p: string) => string;
+			}
+		)();
 		adapter.getBasePath = () => "/tmp/vault-base";
 		adapter.getFullPath = (p: string) => `/tmp/vault-base/${p}`;
 		(app.vault as unknown as { adapter: typeof adapter }).adapter = adapter;
