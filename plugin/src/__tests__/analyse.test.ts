@@ -40,9 +40,11 @@ function tmpOasPromptsDir(files: Record<string, string>): string {
 }
 
 function makeHost(vaultBase: string) {
-	const adapter = new (FileSystemAdapter as unknown as new (p: string) => {
-		getBasePath: () => string;
-	})(vaultBase);
+	const adapter = new (
+		FileSystemAdapter as unknown as new (p: string) => {
+			getBasePath: () => string;
+		}
+	)(vaultBase);
 	return {
 		app: { vault: { adapter } } as never,
 		isContainerRunning: vi.fn(() => true),

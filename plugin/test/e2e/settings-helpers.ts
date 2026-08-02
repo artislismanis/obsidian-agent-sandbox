@@ -3,6 +3,17 @@ import { browser, $ } from "@wdio/globals";
 // Shared helpers for the settings e2e specs (settings.e2e.ts, settings-inventory.e2e.ts).
 
 export async function openPluginSettings(): Promise<void> {
+	// Obsidian 1.13 opens Settings in a separate Electron window by default,
+	// which moves the settings DOM out of WebDriver's main-window context and
+	// makes every settings selector time out. Force Obsidian's own in-window
+	// modal branch (the `else` of `shouldUsePopout()` in SettingModal.open) so
+	// the selectors below resolve. Re-applied on each call, so it survives
+	// reloadObsidian() (which rebuilds app.setting without the override).
+	await browser.executeObsidian(({ app }) => {
+		const setting = (app as unknown as { setting?: { shouldUsePopout?: () => boolean } })
+			.setting;
+		if (setting) setting.shouldUsePopout = () => false;
+	});
 	await browser.executeObsidianCommand("app:open-settings");
 	const tab = $(".vertical-tab-nav-item*=Agent Sandbox");
 	await tab.waitForExist({ timeout: 5000 });

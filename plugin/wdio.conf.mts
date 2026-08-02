@@ -7,10 +7,15 @@ import { env } from "process";
 
 const cacheDir = path.resolve(".obsidian-cache");
 
-// Test matrix: OBSIDIAN_VERSIONS env var overrides. Default = latest.
+// Test matrix: OBSIDIAN_VERSIONS env var overrides. Default is PINNED, not
+// "latest": an unpinned default let Obsidian 1.13 (which moved Settings into a
+// separate window) silently break the settings-DOM e2e specs when it shipped.
+// Pin to a known-good version for reproducible CI; bump deliberately after
+// confirming the suite passes, and run `OBSIDIAN_VERSIONS=latest/latest` to
+// probe upstream breakage on purpose.
 // Format: "appVersion/installerVersion", space-separated for multiple.
 // "earliest" resolves to manifest.json's minAppVersion.
-const versions = await parseObsidianVersions(env.OBSIDIAN_VERSIONS ?? "latest/latest", {
+const versions = await parseObsidianVersions(env.OBSIDIAN_VERSIONS ?? "1.13.4/1.13.4", {
 	cacheDir,
 });
 
