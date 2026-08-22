@@ -3,7 +3,7 @@
 # ARG-interpolated FROM tag is a dependabot-core blind spot (why uv silently
 # drifted 0.7 -> 0.11 while ubuntu got regular digest PRs).
 # Manual refresh: see container/CLAUDE.md "Pinned binary downloads".
-FROM ghcr.io/astral-sh/uv:0.11@sha256:eb2843a1e56fd9e30c7276ce1a52cba86e64c7b385f5e3279a0e08e02dd058fc AS uv
+FROM ghcr.io/astral-sh/uv:0.11@sha256:77280f2f771df71f90786c314fe1bbc1e023feac652969bbf139c280babf2eb7 AS uv
 FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
 
 # ── Version ARGs ─────────────────────────────────────────────
