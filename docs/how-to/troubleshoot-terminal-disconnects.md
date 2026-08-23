@@ -14,7 +14,7 @@ The in-Obsidian terminal sometimes drops its WebSocket to the container even tho
   - `idleMsBeforeClose`: milliseconds since the last server message. A high value (tens of seconds+) means the server-side socket went silent before the close. A near-zero value means an active connection was cut.
   - `instance=N`: matches the Obsidian terminal tab. Multiple tabs interleave in the log; filter by instance to follow one tab.
   - `gen=N`: increments each time the view re-opens. Use it to separate tab-detach events from network drops.
-- **Container-side session logging.** `ttyd` runs at info level (`-d 6`) and `session.sh` writes start/end markers to stderr, so each WS connection appears in `docker logs oas-sandbox` as a paired `[oas-session] start id=… / end id=… exit=…` block.
+- **Container-side session logging.** `ttyd` runs at `-d 7` (the libwebsockets `ERR|WARN|NOTICE` bitmask) and `session.sh` writes start/end markers to stderr, so each WS connection appears in `docker logs oas-sandbox` as a paired `[oas-session] start id=… / end id=… exit=…` block. Set `OAS_TTYD_DEBUG=15` to add `INFO`.
 
 ## Step-by-step
 

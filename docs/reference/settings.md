@@ -15,7 +15,16 @@ UI labels in the table below match exactly what the plugin renders, so a setting
 | Memory file name | `memory.json` | File in `.oas/` used as the agent's persistent memory. |
 | Auto-start on load | off | Start the container automatically when Obsidian opens. |
 | Auto-stop on exit | off | Stop the container on Obsidian exit (via `quit` hook). |
-| Notify on agent output | `new` | `new` / `new_or_modified` / `off`: shows an Obsidian Notice when files appear under the write directory. Debounced and rate-limited. |
+
+### Agent output notifications
+
+| Setting (UI label) | Default | Notes |
+|---|---|---|
+| Notify on file created | on | Shows a notice when the agent creates a file under the write directory (or vault-wide if enabled below). |
+| Notify on file edited | off | Shows a notice when the agent modifies an existing file. Can be noisy during long edit sessions. |
+| Notify on file deleted | on | Shows a notice when the agent deletes a file. |
+| Notify on file renamed/moved | on | Shows a notice when the agent renames or moves a file. |
+| Vault-wide scope | off | When off, notifications only fire for files inside the vault write directory. When on, notifications fire for any file the agent touches anywhere in the vault. |
 
 ## Terminal
 
@@ -39,7 +48,7 @@ UI labels in the table below match exactly what the plugin renders, so a setting
 | Allowed private hosts | `""` | Comma-separated IPs/CIDRs allowed through the firewall (e.g. `192.168.1.100, 10.0.0.0/8`). The Docker bridge gateway is always allowed regardless of this setting (otherwise the container couldn't reach `host.docker.internal`). *(requires restart)* |
 | Additional firewall domains | `""` | Comma-separated domain names. Surfaces with `[plugin]` tag in `--list-sources`. *(requires restart)* |
 | Sudo password | `""` | For the narrow apt-get/apt sudoers entry inside the container. Empty (default) = sudo disabled. Set a value to enable test-installs in interactive sessions. When set, this plugin setting overrides the `OAS_SUDO_PASSWORD` value in `container/.env` (the plugin passes its setting through as `OAS_SUDO_PASSWORD` on `docker compose up`). Stored via Obsidian secret storage (app-level local storage, outside the vault mount). *(requires restart)* |
-| Log level | `warn` | Levelled console logging from the plugin (`error` / `warn` / `info` / `debug`). Higher = more chatter in the developer console. |
+| Log level | `error` | Levelled console logging from the plugin (`error` / `warn` / `info` / `debug`). Higher = more chatter in the developer console. |
 
 ## MCP
 
@@ -51,9 +60,11 @@ UI labels in the table below match exactly what the plugin renders, so a setting
 | Auth token | auto-generated | Regenerable via button. Passed to the container as `OAS_MCP_TOKEN`. *(requires restart)* |
 | Vault-wide writes | `None` | Dropdown: `None` (scoped only), `Reviewed` (writeReviewed tier; diff modal per change), or `Full` (writeVault tier; no review). Mutually exclusive. |
 | Escalation tiers | all off | Toggles for `navigate`, `manage`, `extensions`. See `explanation/security-model.md`. |
-| Allowed paths / Blocked paths | `""` | Per-path allowlist/blocklist applied inside MCP tools (not the firewall). |
+| Allowed paths / Blocked paths | `""` | Per-path allowlist/blocklist applied inside MCP tools (not the firewall). A more-specific allow entry overrides a block entry. |
+| Allowlist mode | off | When on, paths not matching "Allowed paths" are denied. When off, the allow list only overrides block entries - all other paths are accessible. |
 | Tool timeout (seconds) | `10` | Server-side handler timeout for individual tool calls. A hung handler returns a structured error instead of stalling the proxy's request queue. |
 | Review timeout (seconds) | `180` | How long the diff/batch review modal waits for human approval before auto-rejecting. Larger than tool timeout because human latency dominates. |
+| User edit suppression window (seconds) | `10` | After you type in a file, agent-output notifications for that file are suppressed for this many seconds, so your own Obsidian edits don't trigger notices. |
 
 Claude can call the always-on `mcp_capabilities` tool to introspect which tiers are enabled and the current write directory. Use this when debugging unexpected "write rejected" errors rather than guessing.
 

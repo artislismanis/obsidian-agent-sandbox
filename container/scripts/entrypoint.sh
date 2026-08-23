@@ -74,8 +74,8 @@ ensure_ownership() {
     # on failure (many bind-mount backends (drvfs/9p, rootless Docker idmap)
     # reject chown by design) but DO log rather than swallow, so the operator
     # can see why the chmod fallback path triggered.
-    chown -R "${claude_uid}:${claude_gid}" "$dir" 2>/dev/null
-    rc=$?
+    rc=0
+    chown -R "${claude_uid}:${claude_gid}" "$dir" 2>/dev/null || rc=$?
     if [ "$rc" -ne 0 ]; then
         echo "entrypoint: chown -R failed on $dir (rc=$rc); likely a non-Linux-native mount" >&2
     fi
@@ -84,8 +84,8 @@ ensure_ownership() {
     # regardless of ownership.
     if [[ -n "$(find "$dir" \( -not -uid "$claude_uid" -o -not -gid "$claude_gid" \) -print -quit 2>/dev/null)" ]]; then
         echo "entrypoint: chown ineffective under $dir (9p/drvfs mount?), using chmod"
-        chmod -R a+rwX "$dir" 2>/dev/null
-        rc=$?
+        rc=0
+        chmod -R a+rwX "$dir" 2>/dev/null || rc=$?
         if [ "$rc" -ne 0 ]; then
             echo "entrypoint: chmod -R fallback failed on $dir (rc=$rc)" >&2
         fi
@@ -177,8 +177,10 @@ fi
 # Drop to the claude user and run ttyd. OAS_TTYD_PORT falls through from
 # docker-compose.yml (defaults to 7681).
 #
-# -d 6 raises ttyd's log level from the default (notice) to info, so each
-# WebSocket open/close lands in `docker logs oas-sandbox` with timestamp
-# and remote addr. Override via OAS_TTYD_DEBUG (libwebsockets bitmask: 1=ERR 2=WARN 4=NOTICE 8=INFO 16=DEBUG) if you
-# need more detail; ttyd's WS ping interval defaults to 5s and is fine.
-exec gosu claude ttyd -W -d "${OAS_TTYD_DEBUG:-6}" -p "${OAS_TTYD_PORT:-7681}" /usr/local/bin/session.sh
+# -d takes a libwebsockets bitmask, not a scale: 1=ERR 2=WARN 4=NOTICE 8=INFO
+# 16=DEBUG. 7 (ERR|WARN|NOTICE) is ttyd's own default and is restated here so
+# the OAS_TTYD_DEBUG override has an explicit fallback. NOTICE is what puts
+# each WebSocket open/close in `docker logs oas-sandbox` with timestamp and
+# remote addr. Raise to 15 for INFO if you need more detail, and keep the ERR
+# bit set in any override; ttyd's WS ping interval defaults to 5s and is fine.
+exec gosu claude ttyd -W -d "${OAS_TTYD_DEBUG:-7}" -p "${OAS_TTYD_PORT:-7681}" /usr/local/bin/session.sh

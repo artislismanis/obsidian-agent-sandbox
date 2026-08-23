@@ -87,7 +87,7 @@ This stage exercises the settings UI, error/fallback paths before any container 
       - User edit suppression window (seconds) = `10` *(no label)*
   - **Advanced** (top to bottom):
     - **Diagnostics** *(heading)*
-      - Log level = `Warn` *(no label)*
+      - Log level = `Error` *(no label)*
     - **Resource limits** *(heading)*
       - Memory limit = `4G` *(Requires container restart.)*
       - CPU limit = `2` *(Requires container restart.)*

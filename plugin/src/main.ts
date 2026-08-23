@@ -698,12 +698,13 @@ export default class AgentSandboxPlugin extends Plugin {
 
 	private async stopContainer(): Promise<void> {
 		if (this.guardBusy()) return;
-		await this.runDockerCommand({
+		const ok = await this.runDockerCommand({
 			action: () => this.docker.stop(),
 			postState: "stopped",
 			successMsg: "Sandbox container stopped.",
 			failurePrefix: "Failed to stop container",
 		});
+		if (!ok) return;
 		this.firewallBar.setState("hidden");
 		this.statusBar.setDetails(TOOLTIP_STOPPED);
 		this.stopHealthPoll();
