@@ -37,7 +37,7 @@ Content-write ops register a `_reviewed` variant in `reviewed` mode; that varian
 | Find/replace within one file | `vault_search_replace_reviewed` |
 | Targeted insert at heading/line | `vault_patch_reviewed` |
 
-Manage-tier ops (rename / move / delete / create-folder / batch-frontmatter) keep their plain names: there is no `_reviewed` suffix. This table is the shared reference for `note-refactor`, `link-hygiene`, and `tag-audit` as well. With the `manage` tier on, a call to any of them outside `$OAS_VAULT_WRITE_DIR` follows the write mode: blocked under `scoped`, review modal showing the affected backlinks under `reviewed` (a per-item batch modal for `vault_batch_frontmatter`), applied with no modal under `full`.
+Manage-tier ops (rename / move / delete / create-folder / batch-frontmatter) keep their plain names: there is no `_reviewed` suffix. This table is the shared reference for `note-refactor`, `link-hygiene`, and `tag-audit` as well. With the `manage` tier on, a call to any of them outside `$OAS_VAULT_WRITE_DIR` follows the write mode: blocked under `scoped`, review modal showing the affected backlinks under `reviewed`, applied with no modal under `full`. `vault_batch_frontmatter` is the exception: it reviews the whole batch in one modal with per-item picks, and refuses outright under `scoped`.
 
 | Operation | Tool |
 |---|---|

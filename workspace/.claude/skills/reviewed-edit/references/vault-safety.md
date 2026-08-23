@@ -16,6 +16,8 @@ Writes to a path inside `$OAS_VAULT_WRITE_DIR` apply straight away in all three 
 
 The `manage` tier toggles on its own, independent of the write mode. Manage tools (`vault_rename`, `vault_move`, `vault_delete`, `vault_create_folder`, `vault_batch_frontmatter`) keep their plain names in every mode and obey the same table: blocked under `scoped`, modal under `reviewed`, silent apply under `full`.
 
+`vault_batch_frontmatter` reviews at batch grain, not per call. Under `scoped` it refuses the whole batch when any match sits outside the write dir, naming the count. Under `reviewed` it shows one modal listing every match, the user picks which to keep, and a partial apply is the expected outcome. Run it with `dryRun` first, which is the default.
+
 Call `mcp__obsidian__mcp_capabilities` to read the mode and the enabled tiers for this session. Toggles are per-vault and per-user, so never infer them from tool *name* presence alone.
 
 See `../SKILL.md` for the full `_reviewed` tool-name mapping and the manage-tier table.
