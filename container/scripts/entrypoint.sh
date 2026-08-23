@@ -177,8 +177,10 @@ fi
 # Drop to the claude user and run ttyd. OAS_TTYD_PORT falls through from
 # docker-compose.yml (defaults to 7681).
 #
-# -d 6 raises ttyd's log level from the default (notice) to WARN+NOTICE, so
-# each WebSocket open/close lands in `docker logs oas-sandbox` with timestamp
-# and remote addr. Override via OAS_TTYD_DEBUG (libwebsockets bitmask: 1=ERR 2=WARN 4=NOTICE 8=INFO 16=DEBUG) if you
-# need more detail; ttyd's WS ping interval defaults to 5s and is fine.
-exec gosu claude ttyd -W -d "${OAS_TTYD_DEBUG:-6}" -p "${OAS_TTYD_PORT:-7681}" /usr/local/bin/session.sh
+# -d takes a libwebsockets bitmask, not a scale: 1=ERR 2=WARN 4=NOTICE 8=INFO
+# 16=DEBUG. 7 (ERR|WARN|NOTICE) is ttyd's own default and is restated here so
+# the OAS_TTYD_DEBUG override has an explicit fallback. NOTICE is what puts
+# each WebSocket open/close in `docker logs oas-sandbox` with timestamp and
+# remote addr. Raise to 15 for INFO if you need more detail, and keep the ERR
+# bit set in any override; ttyd's WS ping interval defaults to 5s and is fine.
+exec gosu claude ttyd -W -d "${OAS_TTYD_DEBUG:-7}" -p "${OAS_TTYD_PORT:-7681}" /usr/local/bin/session.sh
