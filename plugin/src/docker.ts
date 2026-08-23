@@ -323,10 +323,19 @@ export class DockerManager {
 		return { mode, hostIp };
 	}
 
-	private async run(dockerCmd: string, timeout = EXEC_TIMEOUT, quiet = false): Promise<string> {
+	/**
+	 * Assemble and validate the `OAS_*` env vars for a docker compose
+	 * invocation: per-setting validation, the vault/write-dir containment
+	 * check, and the WSL host-IP/MASQUERADE injection. Split out of `run()`
+	 * so that ~130-line block is a self-contained unit instead of the first
+	 * third of `run()`'s body.
+	 */
+	private async buildEnvVars(
+		settings: DockerManagerSettings,
+		dockerCmd: string,
+	): Promise<Record<string, string>> {
 		const {
 			dockerMode,
-			composePath,
 			wslDistro,
 			vaultPath,
 			writeDir,
@@ -338,19 +347,9 @@ export class DockerManager {
 			containerMemory,
 			containerCpus,
 			sudoPassword,
-		} = this.getSettings();
-
-		if (!composePath) {
-			throw new Error(
-				"Docker Compose path not configured. Set it in Settings > Agent Sandbox.",
-			);
-		}
-
-		// Convert Windows paths for WSL mode (e.g. Z:\path → /mnt/z/path)
-		const effectiveComposePath =
-			dockerMode === "wsl" ? windowsToWslPath(composePath) : composePath;
-
-		const { mcpToken, mcpPort } = this.getSettings();
+			mcpToken,
+			mcpPort,
+		} = settings;
 
 		const envSpec: {
 			key: string;
@@ -487,6 +486,25 @@ export class DockerManager {
 		if (wslMode === "mirrored") {
 			envVars.OAS_IP_MASQ = "false";
 		}
+
+		return envVars;
+	}
+
+	private async run(dockerCmd: string, timeout = EXEC_TIMEOUT, quiet = false): Promise<string> {
+		const settings = this.getSettings();
+		const { dockerMode, composePath, wslDistro } = settings;
+
+		if (!composePath) {
+			throw new Error(
+				"Docker Compose path not configured. Set it in Settings > Agent Sandbox.",
+			);
+		}
+
+		// Convert Windows paths for WSL mode (e.g. Z:\path → /mnt/z/path)
+		const effectiveComposePath =
+			dockerMode === "wsl" ? windowsToWslPath(composePath) : composePath;
+
+		const envVars = await this.buildEnvVars(settings, dockerCmd);
 
 		const resolvedCmd = dockerCmd.startsWith("docker compose ")
 			? `docker compose ${this.composeFiles()} ${dockerCmd.slice("docker compose ".length)}`
