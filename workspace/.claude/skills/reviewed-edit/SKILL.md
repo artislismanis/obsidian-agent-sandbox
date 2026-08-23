@@ -5,22 +5,27 @@ description: Make safe edits to vault files outside the writable workspace direc
 
 # reviewed-edit
 
-Out-of-workspace writes require the `writeReviewed` tier: each change triggers a diff modal in Obsidian and won't apply until the user approves. This skill describes how to plan and sequence those writes so the user gets a useful review experience.
+This skill covers the `reviewed` write mode: each change outside `$OAS_VAULT_WRITE_DIR` triggers a diff modal in Obsidian and won't apply until the user approves. It describes how to plan and sequence *content* writes (create/modify/append/frontmatter/patch) so the user gets a useful review experience. For rename/move/delete, use `note-refactor` instead: it covers the same review mechanics plus backlink-blast-radius analysis specific to structural changes.
+
+**Read `references/vault-safety.md` before your first write.** It carries the shared rules (the three write modes, per-file delete confirmation, plan-before-applying, one unit at a time) for this skill, `note-refactor`, `link-hygiene`, and `tag-audit`. Two of those rules are absolute and repeated here so you never act without them:
+
+- Print the full plan and get approval before the first write.
+- Get explicit per-file approval before any delete, even inside an approved batch.
 
 ## When to use
 
 - User asks you to modify a file that isn't under `$OAS_VAULT_WRITE_DIR`.
 - User says "ask me before writing" or similar.
-- You're doing a rename/move/delete (always high-risk).
+- Planning or sequencing a rename/move/delete: use `note-refactor`. The manage-tier table below stays here as the shared reference the other skills point at.
 
 ## Prerequisites
 
-- `writeReviewed` tier enabled in Obsidian plugin settings. If not enabled, the `_reviewed` tools won't be registered: offer to proceed in the workspace dir instead, or ask the user to enable the tier.
+- Write mode set to `reviewed` in Obsidian plugin settings. Under `scoped` the `_reviewed` tools aren't registered: offer to work inside the write dir instead, or ask the user to switch the mode.
 - Look up `$OAS_VAULT_WRITE_DIR` via the shell (`echo $OAS_VAULT_WRITE_DIR`) before deciding whether a path is in-scope.
 
 ## Tool selection
 
-Content-write ops register a `_reviewed` variant when the `writeReviewed` tier is on; that variant calls the review modal before applying:
+Content-write ops register a `_reviewed` variant in `reviewed` mode; that variant calls the review modal before applying:
 
 | Operation | Tool |
 |---|---|
@@ -32,7 +37,7 @@ Content-write ops register a `_reviewed` variant when the `writeReviewed` tier i
 | Find/replace within one file | `vault_search_replace_reviewed` |
 | Targeted insert at heading/line | `vault_patch_reviewed` |
 
-Manage-tier ops (rename / move / delete / create-folder / batch-frontmatter) keep their plain names: there is no `_reviewed` suffix. They are reviewed when both the `manage` tier and `writeReviewed` are enabled; each call surfaces a review modal showing the affected backlinks (or, for `vault_batch_frontmatter`, a per-item batch modal):
+Manage-tier ops (rename / move / delete / create-folder / batch-frontmatter) keep their plain names: there is no `_reviewed` suffix. This table is the shared reference for `note-refactor`, `link-hygiene`, and `tag-audit` as well. With the `manage` tier on, a call to any of them outside `$OAS_VAULT_WRITE_DIR` follows the write mode: blocked under `scoped`, review modal showing the affected backlinks under `reviewed`, applied with no modal under `full`. `vault_batch_frontmatter` is the exception: it reviews the whole batch in one modal with per-item picks, and refuses outright under `scoped`.
 
 | Operation | Tool |
 |---|---|
@@ -42,14 +47,14 @@ Manage-tier ops (rename / move / delete / create-folder / batch-frontmatter) kee
 | Create a folder | `vault_create_folder` |
 | Batch-set frontmatter across many files | `vault_batch_frontmatter` |
 
-**Never** use the non-reviewed content-write variant for out-of-workspace paths: the server blocks it via the `writeScoped` guard, but `writeVault` (if enabled) would bypass review.
+**Never** point a plain content-write tool at an out-of-workspace path: the `writeScoped` guard blocks it. The `_anywhere` variants exist only in `full` mode, where no write is reviewed at all, so don't reach for them to skip a modal.
 
 ## Pre-write checklist
 
 Before any `_reviewed` call:
 
 1. **Confirm target.** If the user gave a note name, use `vault_file_info` to resolve it to a path. Don't guess.
-2. **Check blast radius.** For any rename / delete / large modify, run `vault_backlinks` first. Tell the user how many notes link in. Don't break outbound references without warning.
+2. **Check blast radius.** For a large modify, run `vault_backlinks` first. Tell the user how many notes link in. Don't break outbound references without warning. Rename and delete get their own blast-radius pass in `note-refactor`.
 3. **Narrow the change.** Prefer `vault_search_replace` or `vault_patch` (small diff) over `vault_modify` (full rewrite) so the review modal shows minimal change surface.
 4. **Chunk per-file.** Each tool call produces one modal. If you have five files to edit, that's five modals in sequence: warn the user upfront.
 

@@ -7,6 +7,8 @@ description: Find and fix broken wikilinks, orphaned notes, and missing backlink
 
 Periodic vault cleanup: broken links, orphans, and missed cross-references. Always preview before writing.
 
+**Read `../reviewed-edit/references/vault-safety.md` before your first write.** It carries the shared rules: the three write modes, per-file delete confirmation, plan-before-applying, one unit at a time.
+
 ## When to use
 
 - "Clean up my vault."
@@ -16,8 +18,9 @@ Periodic vault cleanup: broken links, orphans, and missed cross-references. Alwa
 
 ## Constraints
 
-- Writes to the vault outside `$OAS_VAULT_WRITE_DIR` require the `writeReviewed` tier; each change will pop a diff modal. If the tier isn't enabled, suggest changes only.
-- Never mass-delete. Orphan status is a hint, not a verdict.
+- Writes outside `$OAS_VAULT_WRITE_DIR` need the `reviewed` or `full` write mode. Under `scoped` they fail, so suggest changes instead of applying them.
+- Print the full plan and get approval before the first write.
+- Never mass-delete. Orphan status is a hint, not a verdict. Every delete needs explicit per-file confirmation.
 - Show the user a summary (counts + sample) before applying any batch change.
 
 ## Tool chain
@@ -48,11 +51,7 @@ For each recent note (from step 3):
 
 ### Phase 4: Surface orphans (no action)
 
-List orphans grouped by folder. Ask the user whether any should be linked from an index note, archived, or deleted. Never delete without explicit per-file confirmation.
-
-## Batching
-
-If applying many changes, do them one file at a time with review on. Don't batch across files into a single modal, since the user needs per-change context.
+List orphans grouped by folder. Ask the user whether any should be linked from an index note, archived, or deleted. Never delete without explicit per-file confirmation, even after the user approves the batch (`../reviewed-edit/references/vault-safety.md` has the batching rules).
 
 ## Example output to user
 

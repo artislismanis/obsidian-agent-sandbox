@@ -37,13 +37,5 @@ Three ways to add rules:
 
 ## Precedence
 
-`prose-style` is the source of truth for voice and style across the project.
-
-Other skills should reference it, not restate its rules. A project skill
-extending `prose-style` can add domain rules (a section template, a
-formatting convention, a domain glossary) but must not duplicate the
-style rules.
-
-When a project skill conflicts with `prose-style`:
-- `prose-style` wins on style (voice, structure, banned words).
-- The project skill wins on domain content (what the document contains).
+See `SKILL.md`'s "How other skills should use this" section - it's the
+loaded-at-trigger-time copy of this rule, so it's the one to keep in sync.
