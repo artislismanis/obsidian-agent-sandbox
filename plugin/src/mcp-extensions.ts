@@ -26,6 +26,7 @@ import {
 import { logger, errMsg } from "./logger";
 import { getInstalledPlugin, isVaultPathSafe, type MomentFactory } from "./obsidian-internals";
 import { isPathWithinDir, pathHasParentSegment } from "./validation";
+import { assertTemplateDidNotRelocate } from "./templater-adapter";
 
 type ToolPusher = (tool: McpToolDef) => void;
 
@@ -750,23 +751,10 @@ export function registerTemplaterTools(app: App, push: ToolPusher, gate: WriteGa
 							false,
 						);
 						if (!created) throw new Error("Templater returned no file.");
-						// Templater templates can call `tp.file.move(...)` from
-						// the script section to relocate the file after creation,
-						// escaping the gated destPath. Post-validate the actual
-						// path: if Templater moved the file, delete it and fail.
-						// Trades a UX cost (legitimate tp.file.move use stops
-						// working) for the guarantee that no template writes
-						// outside the gated scope.
-						if (created.path !== destPath) {
-							try {
-								await app.vault.trash(created, true);
-							} catch {
-								/* fall through and surface the error anyway */
-							}
-							throw new Error(
-								`Template relocated the file from '${destPath}' to '${created.path}' (likely via tp.file.move). Refusing to escape the gated path.`,
-							);
-						}
+						// Templater templates can call `tp.file.move(...)` from the
+						// script section to relocate the file after creation, escaping
+						// the gated destPath. Post-validate the actual path.
+						await assertTemplateDidNotRelocate(app, created, destPath, "file");
 					},
 					successMsg: `Created ${destPath}`,
 				});
@@ -935,16 +923,12 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 									`Templater did not produce a file for periodic note '${path}'.`,
 								);
 							}
-							if (createdFile.path !== path) {
-								try {
-									await app.vault.trash(createdFile, true);
-								} catch {
-									/* surface the relocation error anyway */
-								}
-								throw new Error(
-									`Template relocated the periodic note from '${path}' to '${createdFile.path}' (likely via tp.file.move or tp.file.rename). Refusing to escape the gated path.`,
-								);
-							}
+							await assertTemplateDidNotRelocate(
+								app,
+								createdFile,
+								path,
+								"periodic note",
+							);
 						},
 						successMsg: `Created ${path} (Templater processed)`,
 					});

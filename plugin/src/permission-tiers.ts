@@ -1,7 +1,23 @@
-import type { PermissionTier } from "./mcp-tools";
+/** Single source of truth for the set of MCP permission tiers. */
+export type PermissionTier =
+	| "read"
+	| "writeScoped"
+	| "writeReviewed"
+	| "writeVault"
+	| "navigate"
+	| "manage"
+	| "extensions"
+	| "agent";
 
-/** MCP tiers enabled automatically when the server is on. */
-export const ALWAYS_ON_TIERS: readonly PermissionTier[] = ["read", "writeScoped", "agent"];
+/** MCP tiers enabled automatically when the server is on. `satisfies` rather
+ * than a `readonly PermissionTier[]` annotation: the annotation would widen the
+ * element type back to the full union and defeat the `_ClassifiedTier` check
+ * below. */
+export const ALWAYS_ON_TIERS = [
+	"read",
+	"writeScoped",
+	"agent",
+] as const satisfies readonly PermissionTier[];
 
 /**
  * Generic over the settings-key type so consumers in this file (no Obsidian
@@ -18,7 +34,7 @@ export interface TierDef<K extends string = string> {
 /** MCP tiers gated behind per-tier user toggles. Write tiers are handled
  * separately via a single dropdown (see VaultWriteMode) so Reviewed and Full
  * are mutually exclusive. */
-export const GATED_TIERS: readonly TierDef[] = [
+export const GATED_TIERS = [
 	{
 		tier: "navigate",
 		settingKey: "mcpTierNavigate",
@@ -37,7 +53,7 @@ export const GATED_TIERS: readonly TierDef[] = [
 		name: "Extensions",
 		desc: "Access third-party plugin APIs (Dataview, Templater, Tasks, Canvas). Requires target plugins to be installed.",
 	},
-];
+] as const satisfies readonly TierDef[];
 
 /** Vault-wide write mode - mutually exclusive choice between scoped-only
  * writes, reviewed writes (diff modal per change), or full unrestricted
@@ -57,15 +73,38 @@ export function reviewsRequired(mode: VaultWriteMode): boolean {
 
 // Compile-time exhaustiveness check: if PermissionTier gains a new member,
 // this assignment errors until the new tier is added to one of the three
-// classification sources (always-on, vault-write, or gated).
+// classification sources (always-on, vault-write, or gated), i.e. until some
+// settings path can actually enable it.
 type _ClassifiedTier =
 	| (typeof ALWAYS_ON_TIERS)[number]
 	| (typeof GATED_TIERS)[number]["tier"]
 	| "writeReviewed"
 	| "writeVault";
-const _exhaustive: _ClassifiedTier extends PermissionTier
-	? PermissionTier extends _ClassifiedTier
-		? true
-		: false
-	: false = true;
+const _exhaustive: PermissionTier extends _ClassifiedTier ? true : false = true;
 void _exhaustive;
+
+/** Every permission tier, in the plugin's canonical display/registration
+ * order. Single source of truth: mcp-tools.ts derives its default
+ * `enabledTiers` Set from this, and mcp-schemas-gen.ts derives its doc-table
+ * ordering from it, instead of each keeping its own copy of the tier list.
+ *
+ * Listed explicitly rather than assembled from the classification sources
+ * above: display order is a separate concern from classification (`agent` is
+ * always-on but sorts last). `_allTiersCovers` below is what keeps it from
+ * drifting - a listing-only mistake is invisible to the mcp-schemas doc-sync
+ * test, which generates its expected table from this same array. */
+export const ALL_TIERS = [
+	"read",
+	"writeScoped",
+	"writeReviewed",
+	"writeVault",
+	"navigate",
+	"manage",
+	"extensions",
+	"agent",
+] as const satisfies readonly PermissionTier[];
+
+// The `satisfies` above proves every entry is a real tier; this proves the
+// converse - that every tier is listed.
+const _allTiersCovers: PermissionTier extends (typeof ALL_TIERS)[number] ? true : false = true;
+void _allTiersCovers;

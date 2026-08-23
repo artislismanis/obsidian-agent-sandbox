@@ -7,23 +7,16 @@ import type { WriteOperation } from "./diff-review-modal";
 import { registerExtensionTools } from "./mcp-extensions";
 import {
 	applyTemplaterFolderTemplate,
+	assertTemplateDidNotRelocate,
 	previewTemplaterFolderTemplate,
 	withTemplaterHookSuppressed,
 } from "./templater-adapter";
 import { errMsg, logger } from "./logger";
 import { isVaultPathSafe, type MomentFactory } from "./obsidian-internals";
+import { ALL_TIERS, type PermissionTier } from "./permission-tiers";
 
 export type { WriteOperation };
-
-export type PermissionTier =
-	| "read"
-	| "writeScoped"
-	| "writeReviewed"
-	| "writeVault"
-	| "navigate"
-	| "manage"
-	| "extensions"
-	| "agent";
+export type { PermissionTier };
 
 export type AgentStatus = "idle" | "working" | "awaiting_input";
 
@@ -434,16 +427,7 @@ export type ReviewBatchFn = (request: {
 	items: Array<{ filePath: string; oldContent?: string; newContent?: string }>;
 }) => Promise<{ approved: boolean; approvedPaths: string[] }>;
 
-const ALL_TIERS: ReadonlySet<PermissionTier> = new Set<PermissionTier>([
-	"read",
-	"writeScoped",
-	"writeReviewed",
-	"writeVault",
-	"navigate",
-	"manage",
-	"extensions",
-	"agent",
-]);
+const ALL_TIERS_SET: ReadonlySet<PermissionTier> = new Set(ALL_TIERS);
 
 export interface BuildToolsOptions {
 	app: App;
@@ -475,7 +459,7 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 		reviewBatch: reviewBatchFn,
 		cache,
 		onActivity,
-		enabledTiers = ALL_TIERS,
+		enabledTiers = ALL_TIERS_SET,
 	} = opts;
 	const tools: McpToolDef[] = [];
 
@@ -1454,16 +1438,12 @@ export function buildTools(opts: BuildToolsOptions): McpToolDef[] {
 								// reviewed/approved the body on the assumption it lands
 								// at `path`; if it landed elsewhere, trash and surface.
 								// Mirrors the post-validate in vault_templater_create.
-								if (created.path !== expectedPath) {
-									try {
-										await app.vault.trash(created, true);
-									} catch {
-										/* surface the relocation error anyway */
-									}
-									throw new Error(
-										`Template relocated the file from '${expectedPath}' to '${created.path}' (likely via tp.file.move). Refusing to escape the gated path.`,
-									);
-								}
+								await assertTemplateDidNotRelocate(
+									app,
+									created,
+									expectedPath,
+									"file",
+								);
 								if (result.ok) return ` (applied template ${result.template})`;
 								if (result.reason === "failed") {
 									// File was created but the reviewed template body

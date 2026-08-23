@@ -14,7 +14,8 @@ import type { App, EventRef, WorkspaceLeaf } from "obsidian";
 import { Notice } from "obsidian";
 import type { ActivityEntry } from "./mcp-server";
 import type { StatusBarManager } from "./status-bar";
-import type { ActivityPrefix, TerminalView } from "./terminal-view";
+import type { TerminalView } from "./terminal-view";
+import { composeTabTitle, type ActivityPrefix } from "./terminal-format";
 import { VIEW_TYPE_TERMINAL } from "./view-types";
 import type { AgentStatus } from "./mcp-tools";
 import { DEFAULT_SESSION_KEY } from "./mcp-tools";
@@ -73,22 +74,11 @@ function leafSessionFromState(leaf: WorkspaceLeaf): string | null {
 
 /**
  * Build the display text for a deferred terminal leaf given the session name
- * from its persisted state and an activity prefix to apply.
- *
- * Mirrors the PREFIX_SYMBOL map in terminal-view.ts (kept local to avoid
- * importing xterm.js into the unit-test bundle).
+ * from its persisted state and an activity prefix to apply. A deferred leaf
+ * has no live TerminalView instance, so there's no instanceId to pass.
  */
 function deferredLeafTitle(sessionName: string | null, prefix: ActivityPrefix): string {
-	const prefixSymbol =
-		prefix === "working"
-			? "⚙ " // ⚙
-			: prefix === "awaiting_input"
-				? "❓ " // ❓
-				: prefix === "idle"
-					? "✓ " // ✓
-					: "";
-	const base = sessionName ? `Session: ${sessionName}` : "Sandbox Terminal";
-	return prefixSymbol + base;
+	return composeTabTitle(sessionName, undefined, prefix);
 }
 
 const STATUS_TO_PREFIX: Record<AgentStatus, ActivityPrefix> = {

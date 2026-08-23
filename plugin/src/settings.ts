@@ -19,6 +19,7 @@ import {
 	isValidPathPrefixList,
 	isValidPrivateHosts,
 	isValidWriteDir,
+	splitCsv,
 } from "./validation";
 import { promises as fsp } from "fs";
 import { join } from "path";
@@ -208,6 +209,13 @@ export function restartKeysChanged(
 	baseline: Partial<AgentSandboxSettings>,
 ): boolean {
 	return RESTART_REQUIRED_KEYS.some((k) => current[k] !== baseline[k]);
+}
+
+/** Snapshot of only the restart-required keys, diffed later via `restartKeysChanged()`. */
+export function snapshotRestartKeys(settings: AgentSandboxSettings): Partial<AgentSandboxSettings> {
+	return Object.fromEntries(
+		RESTART_REQUIRED_KEYS.map((k) => [k, settings[k]]),
+	) as Partial<AgentSandboxSettings>;
 }
 
 type TabId = "general" | "terminal" | "advanced" | "mcp";
@@ -431,10 +439,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 			this.display();
 		};
 
-		const entries = (this.plugin.settings[opts.key] as string)
-			.split(",")
-			.map((s) => s.trim())
-			.filter(Boolean);
+		const entries = splitCsv(this.plugin.settings[opts.key] as string);
 
 		const wrapper = containerEl.createDiv({ cls: "setting-item sandbox-settings-list-editor" });
 		const infoEl = wrapper.createDiv({ cls: "setting-item-info" });
@@ -489,9 +494,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 
 	display(): void {
 		if (Object.keys(this.restartSnapshot).length === 0) {
-			this.restartSnapshot = Object.fromEntries(
-				RESTART_REQUIRED_KEYS.map((k) => [k, this.plugin.settings[k]]),
-			) as Partial<AgentSandboxSettings>;
+			this.restartSnapshot = snapshotRestartKeys(this.plugin.settings);
 			this.sudoPasswordSnapshot = this.plugin.sudoPassword;
 		}
 		const { containerEl } = this;

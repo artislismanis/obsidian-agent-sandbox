@@ -7,9 +7,9 @@ import {
 	type AgentSandboxSettings,
 	DEFAULT_SETTINGS,
 	AgentSandboxSettingTab,
-	RESTART_REQUIRED_KEYS,
 	migrateSettings,
 	restartKeysChanged,
+	snapshotRestartKeys,
 } from "./settings";
 import { DockerManager } from "./docker";
 import type { ContainerState } from "./status-bar";
@@ -660,7 +660,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			new Notice("Container restarted with updated settings.", 5000);
 		}
 		// Capture the baseline for the live restart-pending tooltip diff.
-		this.startedWithSettings = this.snapshotRestartKeys();
+		this.startedWithSettings = snapshotRestartKeys(this.settings);
 		this.startedWithSudo = this.sudoPassword;
 		this.recomputeRestartPending();
 		try {
@@ -924,12 +924,6 @@ export default class AgentSandboxPlugin extends Plugin {
 
 	// ── Restart-pending tracking ───────────────────────────
 
-	private snapshotRestartKeys(): Partial<AgentSandboxSettings> {
-		return Object.fromEntries(
-			RESTART_REQUIRED_KEYS.map((k) => [k, this.settings[k]]),
-		) as Partial<AgentSandboxSettings>;
-	}
-
 	/** Recompute the restart-pending flag and refresh the tooltip. */
 	private recomputeRestartPending(): void {
 		this.restartPending =
@@ -1173,7 +1167,7 @@ export default class AgentSandboxPlugin extends Plugin {
 			// Reattach path: plugin reloaded while container was already running.
 			// Initialise baseline from current settings so we start with no drift.
 			if (this.startedWithSettings === null) {
-				this.startedWithSettings = this.snapshotRestartKeys();
+				this.startedWithSettings = snapshotRestartKeys(this.settings);
 				this.startedWithSudo = this.sudoPassword;
 			}
 			this.recomputeRestartPending();

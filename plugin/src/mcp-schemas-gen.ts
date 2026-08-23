@@ -10,6 +10,7 @@
 
 import { z } from "zod/v4";
 import { buildTools, type McpToolDef } from "./mcp-tools";
+import { ALL_TIERS } from "./permission-tiers";
 
 interface ParamRow {
 	name: string;
@@ -165,16 +166,7 @@ export function collectToolDocs(): ToolDoc[] {
 		// `review` is truthy.
 		review: async () => ({ approved: true }),
 		reviewBatch: async () => ({ approved: true, approvedPaths: [] }),
-		enabledTiers: new Set([
-			"read",
-			"writeScoped",
-			"writeReviewed",
-			"writeVault",
-			"navigate",
-			"manage",
-			"extensions",
-			"agent",
-		]),
+		enabledTiers: new Set(ALL_TIERS),
 	});
 	return tools.map((t) => ({
 		name: t.name,
@@ -185,23 +177,12 @@ export function collectToolDocs(): ToolDoc[] {
 	}));
 }
 
-/** Stable tier ordering for the rendered doc. */
-const TIER_ORDER = [
-	"read",
-	"writeScoped",
-	"writeReviewed",
-	"writeVault",
-	"navigate",
-	"manage",
-	"extensions",
-	"agent",
-] as const;
-
 /** Render the full markdown doc. Deterministic - sorts tools alphabetically
- *  within each tier so re-runs only diff when the schema actually changes. */
+ *  within each tier so re-runs only diff when the schema actually changes.
+ *  Tier ordering comes from `ALL_TIERS` (permission-tiers.ts). */
 export function renderMcpSchemasMarkdown(docs: ToolDoc[]): string {
 	const byTier = new Map<string, ToolDoc[]>();
-	for (const tier of TIER_ORDER) byTier.set(tier, []);
+	for (const tier of ALL_TIERS) byTier.set(tier, []);
 	for (const d of docs) {
 		const bucket = byTier.get(d.tier) ?? [];
 		bucket.push(d);
@@ -222,7 +203,7 @@ export function renderMcpSchemasMarkdown(docs: ToolDoc[]): string {
 	);
 	lines.push("");
 	const tableOfContents: string[] = ["## Tools by tier", ""];
-	for (const tier of TIER_ORDER) {
+	for (const tier of ALL_TIERS) {
 		const list = byTier.get(tier) ?? [];
 		if (list.length === 0) continue;
 		tableOfContents.push(
@@ -231,7 +212,7 @@ export function renderMcpSchemasMarkdown(docs: ToolDoc[]): string {
 	}
 	tableOfContents.push("");
 	lines.push(...tableOfContents);
-	for (const tier of TIER_ORDER) {
+	for (const tier of ALL_TIERS) {
 		const list = byTier.get(tier) ?? [];
 		if (list.length === 0) continue;
 		lines.push(`## ${tier}`);

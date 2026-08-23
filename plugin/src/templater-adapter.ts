@@ -178,3 +178,28 @@ export async function withTemplaterHookSuppressed<T>(app: App, fn: () => Promise
 		}
 	}
 }
+
+/**
+ * Guard against a Templater template escaping the gated destination path via
+ * `tp.file.move(...)` (or `tp.file.rename(...)`) in its script section. Compare
+ * the file Templater actually produced against where the caller expected it to
+ * land; if they differ, trash the file and throw. Trades a UX cost (legitimate
+ * tp.file.move use stops working) for the guarantee that no template writes
+ * outside the scope a review/gate already approved.
+ */
+export async function assertTemplateDidNotRelocate(
+	app: App,
+	created: TFile,
+	expectedPath: string,
+	noun: string,
+): Promise<void> {
+	if (created.path === expectedPath) return;
+	try {
+		await app.vault.trash(created, true);
+	} catch {
+		/* surface the relocation error anyway */
+	}
+	throw new Error(
+		`Template relocated the ${noun} from '${expectedPath}' to '${created.path}' (likely via tp.file.move or tp.file.rename). Refusing to escape the gated path.`,
+	);
+}
