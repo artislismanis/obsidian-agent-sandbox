@@ -316,6 +316,10 @@ EXPOSE 7681
 #   -s  silent (no progress bar)
 #   -S  show errors even with -s, for postmortem readability
 #   -L  follow redirects (tolerates a future ttyd 301/302)
+#
+# DL3025 wants JSON notation, which would stop ${OAS_TTYD_PORT:-7681} from
+# expanding. hadolint 2.15.0 (action v3.4.0) started flagging HEALTHCHECK CMD.
+# hadolint ignore=DL3025
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -fsSL -o /dev/null "http://localhost:${OAS_TTYD_PORT:-7681}/" || exit 1
 
