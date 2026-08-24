@@ -578,12 +578,23 @@ export class ObsidianMcpServer {
 		);
 	}
 
+	/** True when this tool can open a review modal and so needs the longer
+	 *  review timeout rather than the ordinary tool timeout. writeReviewed
+	 *  tools always can; manage and extensions tools route through
+	 *  gateVaultWrite, which only reviews when writeReviewed is enabled. */
+	private mayTriggerReview(tool: McpToolDef): boolean {
+		return (
+			tool.tier === "writeReviewed" ||
+			((tool.tier === "manage" || tool.tier === "extensions") &&
+				this.config.enabledTiers.has("writeReviewed"))
+		);
+	}
+
 	/** Pick the timeout budget for a tool - review-modal tools get a longer window. */
 	private selectTimeoutMs(tool: McpToolDef): number {
-		const mayTriggerReview =
-			tool.tier === "writeReviewed" ||
-			(tool.tier === "manage" && this.config.enabledTiers.has("writeReviewed"));
-		return mayTriggerReview ? this.config.reviewTimeoutMs : this.config.toolTimeoutMs;
+		return this.mayTriggerReview(tool)
+			? this.config.reviewTimeoutMs
+			: this.config.toolTimeoutMs;
 	}
 
 	/** Run a tool under the configured timeout and truncate oversize responses;
@@ -604,6 +615,13 @@ export class ObsidianMcpServer {
 				() =>
 					reject(
 						new Error(
+							// Deliberately narrower than mayTriggerReview(): a
+							// manage/extensions tool can also time out on an
+							// in-writeDir write, where gateVaultWrite never opened a
+							// modal (mcp-tools.ts:391-393 short-circuits before the
+							// review branch) - "review timed out" would be wrong
+							// there. writeReviewed tools have no such short-circuit;
+							// every call is a review.
 							tool.tier === "writeReviewed"
 								? `Review timed out for '${tool.name}' - user did not respond within ${timeoutMs / 1000}s. The review modal may have been dismissed.`
 								: `Tool '${tool.name}' did not respond within ${timeoutMs / 1000}s`,

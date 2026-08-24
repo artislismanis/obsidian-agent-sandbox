@@ -360,15 +360,17 @@ export async function gateVaultWrite(args: {
 	 *  under the modal. Mirrors runWrite's `recheckFile` semantics - the
 	 *  shared CAS contract for write tools that route through this gate
 	 *  (vault_tasks_toggle, vault_batch_frontmatter, etc.) rather than
-	 *  through runWrite. */
-	recheckFile?: TFile;
-	/** Override the CAS comparison target when `oldContent` is a derived
-	 *  representation (e.g. JSON-stringified frontmatter) rather than the
-	 *  raw file contents. When omitted, recheck falls back to `oldContent`. */
-	recheckExpected?: string;
-	/** App handle for the `recheckFile` re-read. Required when `recheckFile`
-	 *  is provided; without it, the gate has no way to call `vault.read`. */
-	app?: App;
+	 *  through runWrite. `app` is required alongside `file` - grouped in one
+	 *  object so a caller can't supply one without the other and silently
+	 *  get no clobber check. */
+	recheck?: {
+		file: TFile;
+		app: App;
+		/** Override the CAS comparison target when `oldContent` is a derived
+		 *  representation (e.g. JSON-stringified frontmatter) rather than the
+		 *  raw file contents. When omitted, recheck falls back to `oldContent`. */
+		expected?: string;
+	};
 }): Promise<McpToolResult> {
 	// Errors thrown by apply() (e.g. the Templater post-validate guard
 	// rejecting a path-relocating template) must surface as clean tool
@@ -400,15 +402,17 @@ export async function gateVaultWrite(args: {
 		// Compare-and-swap against editor edits between modal-show and
 		// modal-approve. Only applies on the reviewed path - direct writes
 		// (in-writeDir or writeVault) have no review window to race against.
-		const expected = args.recheckExpected ?? args.oldContent;
-		if (args.recheckFile && args.app && expected !== undefined) {
-			const conflict = await assertUnchangedDuringReview(
-				args.app,
-				args.recheckFile,
-				expected,
-				args.destPath,
-			);
-			if (conflict) return error(conflict);
+		if (args.recheck) {
+			const expected = args.recheck.expected ?? args.oldContent;
+			if (expected !== undefined) {
+				const conflict = await assertUnchangedDuringReview(
+					args.recheck.app,
+					args.recheck.file,
+					expected,
+					args.destPath,
+				);
+				if (conflict) return error(conflict);
+			}
 		}
 		return runApply();
 	}

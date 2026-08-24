@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { TFile } from "obsidian";
+import moment from "moment";
 
 vi.mock("obsidian", async () => {
 	class TFile {}
@@ -617,6 +618,84 @@ describe("Periodic Notes integration", () => {
 		});
 		expect(r.isError).toBe(true);
 		expect((r.content[0] as { text: string }).text).toContain("M/2026-04.md");
+	});
+
+	// vault_periodic_note now routes its computed path through the same
+	// validateNewVaultPath() the sibling write tools use (previously it only
+	// ran a subset: '..' segments, symlink-escape, and the filter - missing
+	// the leading-slash, ':' /drive-letter, and dotfile-basename checks).
+	// That validator is stricter, so confirm every built-in default format
+	// still produces a path it accepts - a false positive here would break a
+	// user's periodic notes with a generic, unhelpful error.
+	describe("path validation for default formats (validateNewVaultPath coverage)", () => {
+		const DEFAULT_FORMATS: Array<[string, string]> = [
+			["daily", "YYYY-MM-DD"],
+			["weekly", "gggg-[W]ww"],
+			["monthly", "YYYY-MM"],
+			["quarterly", "YYYY-[Q]Q"],
+			["yearly", "YYYY"],
+		];
+
+		it.each(DEFAULT_FORMATS)(
+			"%s default format produces a path validateNewVaultPath accepts",
+			async (periodicity, format) => {
+				const { app } = mockApp("{}");
+				(app as unknown as { plugins: unknown }).plugins = {
+					getPlugin: (id: string) =>
+						id === "periodic-notes"
+							? {
+									instance: {
+										settings: { [periodicity]: { enabled: true, format } },
+									},
+								}
+							: null,
+					enabledPlugins: new Set(["periodic-notes"]),
+				};
+				app.vault.getFileByPath = vi.fn((_p: string) => null);
+				const tools = buildTools({
+					app: app as never,
+					getWriteDir: () => "agent-workspace",
+				});
+				const r = await getTool(tools, "vault_periodic_note").handler({
+					periodicity,
+					date: "2026-04-19",
+				});
+				const expectedFilename = moment("2026-04-19", "YYYY-MM-DD").format(format);
+				// "Not found" means path construction + validateNewVaultPath both
+				// passed and the handler reached the existence check - a
+				// validation rejection would instead produce a different message
+				// (e.g. "may not contain drive letters").
+				expect(r.isError).toBe(true);
+				expect((r.content[0] as { text: string }).text).toBe(
+					`Not found: ${expectedFilename}.md`,
+				);
+			},
+		);
+
+		it("rejects a custom format producing ':' (previously reached the filesystem)", async () => {
+			const { app } = mockApp("{}");
+			(app as unknown as { plugins: unknown }).plugins = {
+				getPlugin: (id: string) =>
+					id === "periodic-notes"
+						? {
+								instance: {
+									settings: {
+										daily: { enabled: true, format: "YYYY-MM-DD HH:mm" },
+									},
+								},
+							}
+						: null,
+				enabledPlugins: new Set(["periodic-notes"]),
+			};
+			app.vault.getFileByPath = vi.fn((_p: string) => null);
+			const tools = buildTools({ app: app as never, getWriteDir: () => "agent-workspace" });
+			const r = await getTool(tools, "vault_periodic_note").handler({
+				periodicity: "daily",
+				date: "2026-04-19",
+			});
+			expect(r.isError).toBe(true);
+			expect((r.content[0] as { text: string }).text).toContain("drive letters");
+		});
 	});
 });
 
