@@ -68,7 +68,8 @@ describe.skipIf(SKIP)("MCP server integration with container", () => {
 	});
 });
 
-describe.skipIf(SKIP)("MCP HTTP server (standalone, no Obsidian)", () => {
+// In-process only, over a mock App - no container dependency, so no skipIf(SKIP).
+describe("MCP HTTP server (standalone, no Obsidian)", () => {
 	// These tests start a real MCP HTTP server with a mocked App.
 	// They verify the full HTTP stack works end-to-end without Obsidian.
 
