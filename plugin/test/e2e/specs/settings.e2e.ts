@@ -141,7 +141,7 @@ describe("Settings: validation and warnings", function () {
 	});
 
 	describe("MCP tab", function () {
-		it("default tier values: vault writes None, escalations off", async function () {
+		it("default tier values: vault writes scoped, escalations off", async function () {
 			await openPluginSettings();
 			await switchTab("MCP");
 

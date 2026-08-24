@@ -75,7 +75,7 @@ This stage exercises the settings UI, error/fallback paths before any container 
       - Auth token = auto-generated value, with **Regenerate** button *(Requires container restart.)*
     - **Always enabled** *(heading, with a two-item info list, no controls)*
     - **Escalations** *(heading)*
-      - Vault-wide writes = `None` *(no label)*
+      - Vault-wide writes = `Scoped only` *(no label)*
       - Navigate / Manage / Extensions tiers = off *(no label each)*
     - **Path restrictions** *(heading)*
       - Allowed paths = empty, list editor with **Add** button *(no label)*
@@ -412,7 +412,7 @@ This stage covers lifecycle, terminal, and status-bar behaviour without dependin
 **Tier model (`src/permission-tiers.ts`):**
 - Always-on when MCP is enabled: `read`, `writeScoped`, `agent`.
 - Toggled per-tier: `navigate`, `manage`, `extensions`.
-- Vault-wide writes (dropdown, labels `None` / `Reviewed` / `Full (no review)`): `None` (default, stored value `scoped`, no extra tier) / `Reviewed` (`writeReviewed` tier, diff modal per change) / `Full (no review)` (`writeVault` tier, unrestricted, no review).
+- Vault-wide writes (dropdown, labels `Scoped only` / `Reviewed` / `Full (no review)`): `Scoped only` (default, stored value `scoped`, no extra tier) / `Reviewed` (`writeReviewed` tier, diff modal per change) / `Full (no review)` (`writeVault` tier, unrestricted, no review).
 
 ### 3.1 Permission cells matrix
 

@@ -54,7 +54,7 @@
 		},
 		{ "type": "heading", "name": "Always enabled" },
 		{ "type": "heading", "name": "Escalations" },
-		{ "type": "dropdown", "name": "Vault-wide writes", "value": "None" },
+		{ "type": "dropdown", "name": "Vault-wide writes", "value": "Scoped only" },
 		{ "type": "toggle", "name": "Navigate", "value": "off" },
 		{ "type": "toggle", "name": "Manage", "value": "off" },
 		{ "type": "toggle", "name": "Extensions", "value": "off" },
