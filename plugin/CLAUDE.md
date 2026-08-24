@@ -35,7 +35,8 @@ main.ts (Plugin entry, commands, lifecycle, context menu, firewall toggle)
 ├── mcp-rate-limiter.ts  : RateLimiter, per-tool sliding-window rate limiter
 ├── mcp-audit.ts         : AuditEntry / AuditLog / createFileAuditSink, JSONL audit trail
 ├── mcp-sse.ts           : startSseKeepalive, SSE keepalive to prevent proxy timeouts
-├── mcp-tools.ts         : buildTools(), all read/write/manage MCP tools
+├── mcp-tools.ts         : buildTools() composition root - assembles tools from mcp-tools-registrars/
+├── mcp-tools-registrars/: Per-tier tool registrars split out of mcp-tools.ts (see below)
 ├── mcp-extensions.ts    : Extensions tier, Dataview / Templater / Tasks / Canvas / Periodic Notes
 ├── mcp-cache.ts         : VaultCache, graph + tag/property counts, invalidated on metadata `resolved`
 ├── permission-tiers.ts  : Tier metadata + reviewsRequired() / vaultWriteTiers() derivations
@@ -49,6 +50,27 @@ main.ts (Plugin entry, commands, lifecycle, context menu, firewall toggle)
 ```
 
 `main.ts` wires the leaves together. Most leaves are independent, but a few have intentional in-tree dependencies. For example, `mcp-tools.ts` re-exports `gateVaultWrite` to `mcp-extensions.ts`, `activity.ts` uses `view-types.ts` to talk about terminal leaves without importing `terminal-view.ts`, and several MCP modules share `obsidian-internals.ts`. `validation.ts` and `logger.ts` are leaf-of-leaves, used everywhere.
+
+### `mcp-tools-registrars/`
+
+`mcp-tools.ts`'s `buildTools()` used to be one ~2080-line function covering every tier. It's now a
+composition root over per-tier registrars in `src/mcp-tools-registrars/`, each taking `(ctx, push)` -
+matching the pattern `mcp-extensions.ts`'s `registerExtensionTools` already used before this split:
+
+| File | Registers |
+|------|-----------|
+| `core.ts` | Registration primitives every registrar needs: `defineTool`, `text`/`error`, path validation (`validateNewVaultPath`, `isPathAllowedByFilter`), `gateVaultWrite`, the `ToolBuildContext` shape. No tools of its own. |
+| `shared-helpers.ts` | Cross-tier closures used by more than one registrar: link graph (`buildLinkGraph`/`collectBacklinks`), `frontmatterSnapshot`, tag/property counts, the cache-backed `memo`. |
+| `read-tools.ts` | `read` tier (19 tools: file/search/graph/context). |
+| `write-factory.ts` | `writeScoped`/`writeReviewed`/`writeVault` (one factory emits the same 8 tools × 3 tiers). |
+| `manage-tools.ts` | `manage` tier (rename/move/delete/create_folder/batch_frontmatter) - the tools that route through `gateVaultWrite` rather than the write factory. |
+| `misc-tools.ts` | `navigate` (`vault_open`) + `agent` (`agent_status_set`/`agent_time`) - too small individually for their own files. |
+
+The directory is named `mcp-tools-registrars/`, not `mcp-tools/`, deliberately - a same-named
+file+directory pair (`mcp-tools.ts` next to `mcp-tools/`) resolves correctly (file wins over directory
+in both Node and esbuild resolution) but is a needless trap for anyone browsing the tree.
+`mcp-tools.ts` re-exports the full original public surface (types + `gateVaultWrite`,
+`DEFAULT_SESSION_KEY`, etc.) unchanged, so every existing `from "./mcp-tools"` import is unaffected.
 
 ## Key patterns
 
