@@ -68,7 +68,8 @@ describe.skipIf(SKIP)("MCP server integration with container", () => {
 	});
 });
 
-describe.skipIf(SKIP)("MCP HTTP server (standalone, no Obsidian)", () => {
+// In-process only, over a mock App - no container dependency, so no skipIf(SKIP).
+describe("MCP HTTP server (standalone, no Obsidian)", () => {
 	// These tests start a real MCP HTTP server with a mocked App.
 	// They verify the full HTTP stack works end-to-end without Obsidian.
 
@@ -328,7 +329,10 @@ function makeMockApp() {
 	};
 }
 
-describe.skipIf(SKIP)("MCP tools/list and tier enforcement", () => {
+// Runs a purely in-process ObsidianMcpServer over a mock App - no container
+// involved, so it doesn't need skipIf(SKIP). Kept in this file (rather than
+// moved to src/__tests__/) because it exercises the real HTTP transport.
+describe("MCP tools/list and tier enforcement", () => {
 	// Three servers: read+writeScoped (default), read-only, all tiers.
 	const stops: Array<() => Promise<void>> = [];
 	let defaultSession: McpSession;
@@ -446,7 +450,8 @@ describe.skipIf(SKIP)("MCP tools/list and tier enforcement", () => {
 	});
 });
 
-describe.skipIf(SKIP)("MCP tool invocation (HTTP end-to-end)", () => {
+// Same as above - in-process only, no container dependency.
+describe("MCP tool invocation (HTTP end-to-end)", () => {
 	let session: McpSession;
 	let stopServer: () => Promise<void>;
 

@@ -112,6 +112,71 @@ describe("MCP tool handlers", () => {
 			expect(names).toContain("agent_time");
 		});
 
+		// Exact-set guard: the toContain list above only catches a dropped tool
+		// if it happens to be one of the names already listed there. A refactor
+		// (e.g. splitting buildTools() into per-tier modules) that silently
+		// drops or renames a tool must fail loudly here even if that tool was
+		// never named above.
+		it("registers exactly the expected tool set", () => {
+			const names = tools.map((t) => t.name).sort();
+			expect(names).toEqual([
+				"agent_status_set",
+				"agent_time",
+				"plugin_extensions_list",
+				"vault_append",
+				"vault_append_anywhere",
+				"vault_append_reviewed",
+				"vault_backlinks",
+				"vault_batch_frontmatter",
+				"vault_canvas_modify",
+				"vault_canvas_read",
+				"vault_context",
+				"vault_create",
+				"vault_create_anywhere",
+				"vault_create_folder",
+				"vault_create_reviewed",
+				"vault_delete",
+				"vault_file_info",
+				"vault_frontmatter",
+				"vault_frontmatter_delete",
+				"vault_frontmatter_delete_anywhere",
+				"vault_frontmatter_delete_reviewed",
+				"vault_frontmatter_set",
+				"vault_frontmatter_set_anywhere",
+				"vault_frontmatter_set_reviewed",
+				"vault_graph_clusters",
+				"vault_graph_neighborhood",
+				"vault_graph_path",
+				"vault_headings",
+				"vault_links",
+				"vault_list",
+				"vault_modify",
+				"vault_modify_anywhere",
+				"vault_modify_reviewed",
+				"vault_move",
+				"vault_open",
+				"vault_orphans",
+				"vault_patch",
+				"vault_patch_anywhere",
+				"vault_patch_reviewed",
+				"vault_prepend",
+				"vault_prepend_anywhere",
+				"vault_prepend_reviewed",
+				"vault_properties",
+				"vault_read",
+				"vault_recent",
+				"vault_rename",
+				"vault_search",
+				"vault_search_fuzzy",
+				"vault_search_replace",
+				"vault_search_replace_anywhere",
+				"vault_search_replace_reviewed",
+				"vault_suggest_links",
+				"vault_tags",
+				"vault_unresolved",
+			]);
+		});
+
 		it("assigns correct tiers", () => {
 			expect(getTool(tools, "vault_read").tier).toBe("read");
 			expect(getTool(tools, "vault_create").tier).toBe("writeScoped");
