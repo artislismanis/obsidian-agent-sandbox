@@ -453,7 +453,7 @@ Repeat for each cell before handing the capability test to Claude:
 
 ### 3.3 Sanity-diff run against code
 
-After all cells are complete, skim the run files for any PASS scenario that relied on a tool name or tier tag that may have changed in `plugin/src/mcp-tools.ts` since the run was recorded. Most release cycles this is a no-op.
+After all cells are complete, skim the run files for any PASS scenario that relied on a tool name or tier tag that may have changed in `plugin/src/mcp-tools-registrars/` since the run was recorded. Most release cycles this is a no-op.
 
 - **Notes:** P1.
 

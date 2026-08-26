@@ -12,7 +12,8 @@ obsidian-agent-sandbox/
 │   │   ├── ttyd-client.ts       Pure polling + URL building
 │   │   ├── validation.ts        Shared input validators (used by settings + docker + mcp-*)
 │   │   ├── mcp-server.ts        ObsidianMcpServer (HTTP, auth, audit, activity)
-│   │   ├── mcp-tools.ts         Tool registry across all tiers (big file)
+│   │   ├── mcp-tools.ts         buildTools() composition root; per-tier tools live in mcp-tools-registrars/
+│   │   ├── mcp-tools-registrars/ Per-tier tool registrars (read/write/manage/misc) + shared helpers
 │   │   ├── mcp-extensions.ts    Plugin-integration tools (Canvas, Dataview, Tasks, Templater, Periodic Notes)
 │   │   ├── mcp-cache.ts         VaultCache: metadata-invalidated graph cache
 │   │   ├── permission-tiers.ts  Tier metadata + reviewsRequired() / vaultWriteTiers()

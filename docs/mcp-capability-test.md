@@ -15,7 +15,7 @@ Put the cell letter in the run file's header (e.g. `Cell A: baseline`). Claude u
 ## Prerequisites
 
 - Sandbox container running with a test vault open in Obsidian and the plugin enabled (per `qa-test-plan.md` Stages 0–2).
-- `workspace/.mcp.json` wires `obsidian` to `workspace/.claude/scripts/obsidian-mcp-proxy.js`. The proxy talks to the plugin's MCP HTTP server (`plugin/src/mcp-server.ts`); tools are defined in `plugin/src/mcp-tools.ts` and `plugin/src/mcp-extensions.ts`.
+- `workspace/.mcp.json` wires `obsidian` to `workspace/.claude/scripts/obsidian-mcp-proxy.js`. The proxy talks to the plugin's MCP HTTP server (`plugin/src/mcp-server.ts`); tools are defined in `plugin/src/mcp-tools-registrars/` and `plugin/src/mcp-extensions.ts`.
 - A Claude Code session **inside the container** attached to that MCP server. Tools appear under the `mcp__obsidian__` prefix; bare names (`vault_read`, …) are used below, so call them with the prefix.
 - For cross-checking results, the plugin's audit log is at `<vault>/.oas/mcp-audit.jsonl` (one JSONL entry per call).
 
