@@ -280,12 +280,12 @@ export function registerCanvasTools(app: App, push: ToolPusher, gate: WriteGate)
 					newContent: updated,
 					apply: async () => {
 						// CAS recheck against editor edits during a long-running
-						// review. The other single-file write tools use runWrite's
-						// recheckFile option; canvas takes gateVaultWrite which has
-						// no equivalent - so re-read here and abort if the canvas
-						// changed between review and apply. Without this, an
-						// approved reviewed-tier canvas edit would silently clobber
-						// the user's concurrent edits in the canvas UI.
+						// review, done inline in apply() rather than via
+						// gateVaultWrite's `recheck` option so it also covers the
+						// writeVault branch (recheck only fires on the reviewed
+						// path). Without this, an approved reviewed-tier canvas
+						// edit would silently clobber the user's concurrent edits
+						// in the canvas UI.
 						const conflict = await assertUnchangedDuringReview(app, f, raw, f.path);
 						if (conflict) throw new Error(conflict);
 						await app.vault.modify(f, updated);
@@ -609,8 +609,7 @@ export function registerTasksTools(app: App, push: ToolPusher, gate: WriteGate):
 					// vault_modify routes through runWrite which already does
 					// this - toggling went through gateVaultWrite, which
 					// didn't, until the CAS option was added here.
-					app,
-					recheckFile: f,
+					recheck: { file: f, app },
 					apply: () => app.vault.modify(f, updated),
 					successMsg: `Toggled ${path}:${line}.`,
 				});
@@ -838,26 +837,15 @@ export function registerPeriodicNotesTools(app: App, push: ToolPusher, gate: Wri
 				const path = folder ? `${folder}/${filename}.md` : `${filename}.md`;
 
 				// The format string is plugin-controlled but moment passes
-				// non-token characters through verbatim - including `/` and
-				// `..`. Reject paths whose realpath escapes the vault before
-				// touching the filesystem. Also reject `..` segments outright:
-				// `../sibling-folder/foo` stays inside the vault realpath but
-				// still writes to an unexpected location.
-				if (pathHasParentSegment(path)) {
-					return error(
-						`Periodic note path '${path}' contains a '..' segment. Check the Periodic Notes format setting.`,
-					);
-				}
-				if (!isVaultPathSafe(app, path)) {
-					return error(
-						`Periodic note path '${path}' resolves outside the vault. Check the Periodic Notes format setting for path-traversal characters.`,
-					);
-				}
-				if (!gateAllowsPath(gate, path)) {
-					return error(
-						`Periodic note path '${path}' is blocked by allow/block list. Adjust the Periodic Notes folder setting or the MCP path filter.`,
-					);
-				}
+				// non-token characters through verbatim - including `/`, `..`,
+				// dotfile basenames, and drive-letter/`:` sequences. Route
+				// through the same validator the sibling write tools
+				// (vault_create, vault_create_folder, vault_templater_create)
+				// use, rather than a hand-rolled subset of its checks -
+				// vault_templater_create's own comment already claims this
+				// tool shares the helper; it previously didn't.
+				const pathError = validateNewVaultPath(app, path, gate.pathFilter);
+				if (pathError) return pathError;
 
 				const existing = app.vault.getFileByPath(path);
 				if (existing) return text(`Exists: ${path}`);

@@ -46,6 +46,7 @@ vi.mock("@modelcontextprotocol/sdk/server/streamableHttp.js", () => {
 });
 
 import { ObsidianMcpServer, generateToken, startSseKeepalive } from "../mcp-server";
+import type { PermissionTier } from "../mcp-tools";
 
 const TEST_PORT = 39182;
 const TEST_TOKEN = "test-token-abc123";
@@ -483,6 +484,48 @@ describe("ObsidianMcpServer", () => {
 	describe("tool count", () => {
 		it("returns count via getToolCount()", () => {
 			expect(typeof server.getToolCount()).toBe("number");
+		});
+	});
+
+	describe("review-timeout tier selection", () => {
+		// selectTimeoutMs/mayTriggerReview are private; a fresh (unstarted)
+		// instance is enough to reach them - no port binding needed.
+		function timeoutFor(tier: PermissionTier, enabledTiers: PermissionTier[]): number {
+			const s = new ObsidianMcpServer(app as never, {
+				port: TEST_PORT + 2,
+				token: TEST_TOKEN,
+				enabledTiers: new Set(enabledTiers),
+				getWriteDir: () => "agent-workspace",
+				toolTimeoutMs: 10_000,
+				reviewTimeoutMs: 180_000,
+			});
+			return (
+				s as unknown as { selectTimeoutMs: (t: { tier: PermissionTier }) => number }
+			).selectTimeoutMs({ tier });
+		}
+
+		it("writeReviewed tools always get the review timeout", () => {
+			expect(timeoutFor("writeReviewed", ["writeReviewed"])).toBe(180_000);
+		});
+
+		it("manage tools get the review timeout only when writeReviewed is enabled", () => {
+			expect(timeoutFor("manage", ["manage", "writeReviewed"])).toBe(180_000);
+			expect(timeoutFor("manage", ["manage"])).toBe(10_000);
+		});
+
+		// Regression: all six extensions-tier gateVaultWrite sites
+		// (vault_canvas_modify, vault_tasks_toggle, vault_templater_create,
+		// vault_periodic_note) can open a review modal exactly like manage
+		// tools do, but the tier was previously missing from this check - an
+		// extensions-tier review got the 10s tool budget instead of 180s, so
+		// the modal was still open when the tool reported failure.
+		it("extensions tools get the review timeout only when writeReviewed is enabled", () => {
+			expect(timeoutFor("extensions", ["extensions", "writeReviewed"])).toBe(180_000);
+			expect(timeoutFor("extensions", ["extensions"])).toBe(10_000);
+		});
+
+		it("read tools never get the review timeout", () => {
+			expect(timeoutFor("read", ["read", "writeReviewed"])).toBe(10_000);
 		});
 	});
 
