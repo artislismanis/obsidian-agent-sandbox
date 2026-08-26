@@ -63,6 +63,21 @@ workspace/vault/
 plugin/.claude/
 container/.claude/
 
+# Root .claude/ config-category placeholders the sandbox masking layer
+# bind-mounts /dev/null over (same mechanism as the dotfiles above, just
+# scoped under .claude/): empty character-device stand-ins mirroring the
+# user's global ~/.claude/ directory names, not real project content.
+# Root-anchored (not **/) so this never touches workspace/.claude/ or
+# plugin/.claude/, where hooks/skills/commands are real, committed config.
+/.claude/agents
+/.claude/commands
+/.claude/hooks
+/.claude/loop.md
+/.claude/output-styles
+/.claude/routines
+/.claude/skills
+/.claude/workflows
+
 # Runtime state (any .claude/ at any depth)
 **/.claude/worktrees/
 **/.claude/.cc-writes/
