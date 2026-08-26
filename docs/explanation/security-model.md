@@ -34,8 +34,8 @@ The MCP server's tools are split into two kinds of tier:
 - `agent`: activity signal (exposes one tool, `agent_status_set`, not file access, UI only). Always-on tier rather than a separate gate because no escalation is involved.
 
 **Gated (escalations)**, off by default. Each opt-in grants access beyond filesystem:
-- **Vault-wide writes** (dropdown: `None` / `Reviewed` / `Full`). Mutually exclusive so the agent never has to choose between review-and-no-review paths:
-  - `None`: scoped write directory only (default).
+- **Vault-wide writes** (dropdown: `Scoped only` / `Reviewed` / `Full`). Mutually exclusive so the agent never has to choose between review-and-no-review paths:
+  - `Scoped only`: scoped write directory only (default).
   - `Reviewed`: registers the `writeReviewed` tier. Vault-wide writes pop a human-in-the-loop diff modal before applying.
   - `Full`: registers the `writeVault` tier. Vault-wide writes with no review. Highest risk.
 - `navigate`: open files and affect the Obsidian UI.

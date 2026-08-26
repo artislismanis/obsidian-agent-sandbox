@@ -908,11 +908,11 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 		new Setting(el)
 			.setName("Vault-wide writes")
 			.setDesc(
-				"Writes outside the scoped write directory. None: scoped only. Reviewed: each change prompts a diff approval. Full: unrestricted, no review.",
+				"Writes outside the scoped write directory. Scoped: none allowed - confined to the write directory. Reviewed: each change prompts a diff approval. Full: unrestricted, no review.",
 			)
 			.addDropdown((dd) =>
 				dd
-					.addOption("scoped", "None")
+					.addOption("scoped", "Scoped only")
 					.addOption("reviewed", "Reviewed")
 					.addOption("full", "Full (no review)")
 					.setValue(this.plugin.settings.mcpVaultWrites)

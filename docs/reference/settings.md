@@ -58,7 +58,7 @@ UI labels in the table below match exactly what the plugin renders, so a setting
 | MCP port | `28080` | Host port for the MCP HTTP endpoint. *(requires restart)* |
 | MCP bind address | `127.0.0.1` | IP the MCP HTTP server binds to. Default is host-only. Set it to the docker bridge gateway (e.g. `172.17.0.1`) or `0.0.0.0` to let the sandbox container reach MCP via `host.docker.internal`. `0.0.0.0` exposes MCP to your LAN; bearer-token auth is the only line of defence. *(requires MCP restart)* |
 | Auth token | auto-generated | Regenerable via button. Passed to the container as `OAS_MCP_TOKEN`. *(requires restart)* |
-| Vault-wide writes | `None` | Dropdown: `None` (scoped only), `Reviewed` (writeReviewed tier; diff modal per change), or `Full` (writeVault tier; no review). Mutually exclusive. |
+| Vault-wide writes | `Scoped only` | Dropdown: `Scoped only` (confined to the write directory), `Reviewed` (writeReviewed tier; diff modal per change), or `Full` (writeVault tier; no review). Mutually exclusive. |
 | Escalation tiers | all off | Toggles for `navigate`, `manage`, `extensions`. See `explanation/security-model.md`. |
 | Allowed paths / Blocked paths | `""` | Per-path allowlist/blocklist applied inside MCP tools (not the firewall). A more-specific allow entry overrides a block entry. |
 | Allowlist mode | off | When on, paths not matching "Allowed paths" are denied. When off, the allow list only overrides block entries - all other paths are accessible. |
