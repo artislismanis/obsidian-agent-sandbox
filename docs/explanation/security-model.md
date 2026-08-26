@@ -52,7 +52,7 @@ When `writeReviewed` is enabled, every reviewed-tier write op AND every manage-t
 - For frontmatter edits: JSON-stringified old vs new FM.
 - For rename/move/delete: the operation description plus a list of notes whose wikilinks reference the target (from `resolvedLinks`).
 
-The gate is **structural**: every write handler in `mcp-tools.ts` constructs a `runWrite` call, so there's no path that mutates without passing through the review step. Adding a new write op requires opting out of review, not the default.
+The gate is **structural**: every write handler in `mcp-tools-registrars/write-factory.ts` constructs a `runWrite` call, so there's no path that mutates without passing through the review step. Adding a new write op requires opting out of review, not the default.
 
 `vault_batch_frontmatter` uses the per-item checkbox `BatchReviewModal` so the user can approve a subset of matched files in one pass.
 
