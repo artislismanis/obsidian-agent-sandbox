@@ -11,7 +11,7 @@
 import type { App, TFile } from "obsidian";
 import { TFile as TFileClass, moment } from "obsidian";
 import { z } from "zod/v4";
-import type { McpToolDef, PathFilter, PermissionTier, ReviewFn } from "./mcp-tools";
+import type { PathFilter, ReviewFn, ToolPusher } from "./mcp-tools-registrars/core";
 import {
 	defineTool,
 	text,
@@ -22,13 +22,12 @@ import {
 	validateNewVaultPath,
 	coercedBoolean,
 	assertUnchangedDuringReview,
-} from "./mcp-tools";
+} from "./mcp-tools-registrars/core";
+import type { PermissionTier } from "./permission-tiers";
 import { logger, errMsg } from "./logger";
 import { getInstalledPlugin, isVaultPathSafe, type MomentFactory } from "./obsidian-internals";
 import { isPathWithinDir, pathHasParentSegment } from "./validation";
 import { assertTemplateDidNotRelocate } from "./templater-adapter";
-
-type ToolPusher = (tool: McpToolDef) => void;
 
 export interface WriteGate {
 	getWriteDir: () => string;

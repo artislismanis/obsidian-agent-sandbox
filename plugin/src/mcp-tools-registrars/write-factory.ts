@@ -11,7 +11,6 @@ import { errMsg } from "../logger";
 import type {
 	ToolBuildContext,
 	ToolPusher,
-	McpToolDef,
 	McpToolResult,
 	PermissionTier,
 	ReviewFn,
@@ -48,7 +47,6 @@ async function ensureParentFolder(app: App, filePath: string): Promise<void> {
 export function registerWriteTools(ctx: ToolBuildContext, push: ToolPusher): void {
 	const { app, getWriteDir, pathFilter, review: reviewFn } = ctx;
 	const { frontmatterSnapshot } = createSharedHelpers(ctx);
-	const tools: McpToolDef[] = [];
 
 	/**
 	 * Review-gate + apply + success wrapper shared by all 8 write handlers.
@@ -131,7 +129,7 @@ export function registerWriteTools(ctx: ToolBuildContext, push: ToolPusher): voi
 	function addWriteTools(cfg: WriteToolConfig): void {
 		const { tier, suffix, scopeLabel, scopeNote, guardPath, resolveForWrite, review } = cfg;
 		const note = ` ${scopeNote}`;
-		tools.push(
+		push(
 			defineTool({
 				name: `vault_create${suffix}`,
 				tier,
@@ -219,7 +217,7 @@ export function registerWriteTools(ctx: ToolBuildContext, push: ToolPusher): voi
 			}),
 		);
 
-		tools.push(
+		push(
 			defineTool({
 				name: `vault_modify${suffix}`,
 				tier,
@@ -250,7 +248,7 @@ export function registerWriteTools(ctx: ToolBuildContext, push: ToolPusher): voi
 			}),
 		);
 
-		tools.push(
+		push(
 			defineTool({
 				name: `vault_append${suffix}`,
 				tier,
@@ -283,7 +281,7 @@ export function registerWriteTools(ctx: ToolBuildContext, push: ToolPusher): voi
 			}),
 		);
 
-		tools.push(
+		push(
 			defineTool({
 				name: `vault_frontmatter_set${suffix}`,
 				tier,
@@ -357,7 +355,7 @@ export function registerWriteTools(ctx: ToolBuildContext, push: ToolPusher): voi
 			}),
 		);
 
-		tools.push(
+		push(
 			defineTool({
 				name: `vault_frontmatter_delete${suffix}`,
 				tier,
@@ -405,7 +403,7 @@ export function registerWriteTools(ctx: ToolBuildContext, push: ToolPusher): voi
 			}),
 		);
 
-		tools.push(
+		push(
 			defineTool({
 				name: `vault_search_replace${suffix}`,
 				tier,
@@ -542,7 +540,7 @@ export function registerWriteTools(ctx: ToolBuildContext, push: ToolPusher): voi
 			}),
 		);
 
-		tools.push(
+		push(
 			defineTool({
 				name: `vault_prepend${suffix}`,
 				tier,
@@ -591,7 +589,7 @@ export function registerWriteTools(ctx: ToolBuildContext, push: ToolPusher): voi
 			}),
 		);
 
-		tools.push(
+		push(
 			defineTool({
 				name: `vault_patch${suffix}`,
 				tier,
@@ -778,6 +776,4 @@ export function registerWriteTools(ctx: ToolBuildContext, push: ToolPusher): voi
 		guardPath: () => null,
 		resolveForWrite: resolveAnywhere,
 	});
-
-	for (const tool of tools) push(tool);
 }

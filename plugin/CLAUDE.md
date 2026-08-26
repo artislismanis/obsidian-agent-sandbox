@@ -49,7 +49,7 @@ main.ts (Plugin entry, commands, lifecycle, context menu, firewall toggle)
 └── logger.ts            : Levelled logger + errMsg() helper
 ```
 
-`main.ts` wires the leaves together. Most leaves are independent, but a few have intentional in-tree dependencies. For example, `mcp-tools.ts` re-exports `gateVaultWrite` to `mcp-extensions.ts`, `activity.ts` uses `view-types.ts` to talk about terminal leaves without importing `terminal-view.ts`, and several MCP modules share `obsidian-internals.ts`. `validation.ts` and `logger.ts` are leaf-of-leaves, used everywhere.
+`main.ts` wires the leaves together. Most leaves are independent, but a few have intentional in-tree dependencies. For example, `mcp-extensions.ts` imports its registration primitives (`gateVaultWrite`, `defineTool`, etc.) from `mcp-tools-registrars/core.ts` rather than from `mcp-tools.ts` - `mcp-tools.ts` imports `registerExtensionTools` from `mcp-extensions.ts`, so routing the other direction through the barrel would have made the two files import each other. `activity.ts` uses `view-types.ts` to talk about terminal leaves without importing `terminal-view.ts`, and several MCP modules share `obsidian-internals.ts`. `validation.ts` and `logger.ts` are leaf-of-leaves, used everywhere.
 
 ### `mcp-tools-registrars/`
 
@@ -71,6 +71,10 @@ file+directory pair (`mcp-tools.ts` next to `mcp-tools/`) resolves correctly (fi
 in both Node and esbuild resolution) but is a needless trap for anyone browsing the tree.
 `mcp-tools.ts` re-exports the full original public surface (types + `gateVaultWrite`,
 `DEFAULT_SESSION_KEY`, etc.) unchanged, so every existing `from "./mcp-tools"` import is unaffected.
+`buildTools()` calls the registrars read → write → manage → misc → extensions; within each
+registrar, tool order is unchanged from before the split, but this cross-tier order is not
+contractual - `mcp-server.ts` buckets the result by tier for the capabilities payload, and
+nothing else depends on array order.
 
 ## Key patterns
 
