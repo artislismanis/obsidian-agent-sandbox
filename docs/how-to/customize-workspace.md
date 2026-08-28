@@ -68,6 +68,22 @@ Subagent and slash-command definitions respectively. **Not shipped in this repo*
 
 Lists MCP servers Claude Code connects to. The Obsidian plugin's MCP server is pre-configured here.
 
+## Optional plugin skills (Tier 2)
+
+Skills specific to one Obsidian plugin (e.g. Tandem Comments) don't ship in
+`workspace/.claude/skills/`, since that would assume every vault mounted here has
+that plugin installed. Install them from a marketplace instead, into Tier 2:
+
+```bash
+claude plugin marketplace add artislismanis/my-agent-skills
+claude plugin install obsidian-tandem-comments@my-agent-skills
+```
+
+This lands in the `oas-claude-config` volume, so it survives `docker compose build`
+and container restarts. Use the shell form, not `/plugin install`: the slash form
+prompts for scope, and choosing "project" would write to `workspace/.claude/settings.json`,
+which is git-tracked and shared by every clone.
+
 ## Promotion path
 
 Changes here live in git (under `workspace/`), so they ship with the repo. Personal tweaks you don't want to commit: use `.claude/settings.local.json` (gitignored) or `git update-index --skip-worktree <file>`.
