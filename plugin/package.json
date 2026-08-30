@@ -37,8 +37,8 @@
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
 		"@types/node": "^24.13.3",
-		"@typescript-eslint/eslint-plugin": "^8.67.0",
-		"@typescript-eslint/parser": "^8.67.0",
+		"@typescript-eslint/eslint-plugin": "^8.68.0",
+		"@typescript-eslint/parser": "^8.68.0",
 		"@vitest/coverage-v8": "^4.1.11",
 		"@wdio/cli": "^9.31.1",
 		"@wdio/globals": "^9.31.1",
@@ -56,7 +56,7 @@
 		"prettier": "^3.9.6",
 		"tslib": "^2.8.1",
 		"typescript": "^6.0.3",
-		"typescript-eslint": "^8.67.0",
+		"typescript-eslint": "^8.68.0",
 		"vitest": "^4.1.2",
 		"wdio-obsidian-reporter": "^3.2.0",
 		"wdio-obsidian-service": "^3.2.0"
