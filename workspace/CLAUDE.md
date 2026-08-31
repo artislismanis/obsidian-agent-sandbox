@@ -77,6 +77,15 @@ The vault at `/workspace/vault/` is **read-only** at the filesystem level. The o
 - Prefer non-destructive operations: create new files or append rather than overwriting
 - For bulk operations, describe scope and show a sample (3-5 files) before executing
 
+### Bypassing the filesystem restriction: the `writeVault` MCP tier
+
+The filesystem restriction above applies only to Write/Edit. The Obsidian MCP server writes anywhere in the vault when its `writeVault` tier is enabled. Check with `mcp__obsidian__mcp_capabilities`: if `enabledTiers` includes `writeVault`, the `*_anywhere` tools (`vault_create_anywhere`, `vault_modify_anywhere`, `vault_frontmatter_set_anywhere`, `vault_search_replace_anywhere`, etc.) write to any path in the vault, not just `$OAS_VAULT_WRITE_DIR`.
+
+- Call `mcp_capabilities` before assuming the write-dir-only workflow applies; `writeVault` is per-session and not guaranteed on
+- When it's on, prefer the `*_anywhere` MCP tool over the copy-to-write-dir workaround: it edits the real file in place, no host-side move needed
+- When it's off, fall back to the copy-to-write-dir workflow described above
+- `manage`-tier tools (`vault_rename`, `vault_move`, `vault_delete`) also bypass the restriction when enabled; still never delete vault files without explicit user confirmation
+
 ## Agent write workflow
 
 You can only create or edit files inside `vault/$OAS_VAULT_WRITE_DIR/`. If you are unsure where this points, run `verify.sh` and look for the writable vault subfolder mount.
