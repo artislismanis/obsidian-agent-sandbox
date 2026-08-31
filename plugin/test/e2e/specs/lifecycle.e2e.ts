@@ -247,10 +247,13 @@ describe("Container lifecycle wiring (QA 2.1 / 2.2 / 2.3 / 2.5 / 2.11a / 1.7a)",
 			timeoutMsg: "plugin did not disable",
 		});
 
-		const stopDetachedCalls = await browser.executeObsidian(
-			() => window.__oasStopDetached ?? -1,
+		// onunload() awaits mcpLifecycle.shutdown() + saveData() before calling
+		// stopDetached() - Obsidian's Plugin.unload() doesn't await onunload()'s
+		// returned promise, so isEnabled() can flip false before stopDetached() runs.
+		await browser.waitUntil(
+			async () => (await browser.executeObsidian(() => window.__oasStopDetached ?? -1)) === 1,
+			{ timeout: 5000, timeoutMsg: "stopDetached was not called exactly once" },
 		);
-		expect(stopDetachedCalls).toBe(1);
 
 		// Restore for any later specs in the run.
 		await obsidianPage.enablePlugin(PLUGIN_ID);
