@@ -944,7 +944,19 @@ export class TerminalView extends ItemView {
 			this.fitAddon = null;
 		}
 		if (this.term) {
-			this.term.dispose();
+			// Deferred, not synchronous: xterm's Viewport schedules an internal
+			// `setTimeout(() => this.syncScrollArea())` from term.open() (see
+			// @xterm/xterm's browser/Viewport.ts) to run once ICharSizeService
+			// is ready. If a leaf is closed within that same tick (e.g. another
+			// plugin's startup leaf-launch racing our own), disposing here
+			// synchronously clears RenderService's renderer before that
+			// callback fires, and it throws reading `.dimensions` off the
+			// cleared renderer - an uncaught TypeError outside any try/catch.
+			// Queuing our dispose via setTimeout(0) always lands after xterm's
+			// same-delay timeout (registered earlier, in term.open()), so the
+			// scroll-area sync runs against a still-live terminal first.
+			const term = this.term;
+			window.setTimeout(() => term.dispose(), 0);
 			this.term = null;
 		}
 		this.contentEl.empty();
