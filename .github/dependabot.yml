@@ -126,6 +126,16 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      # Exception to the majors-stay-separate rule: @vitest/coverage-v8 pins
+      # an exact vitest peer, so split major PRs each fail npm ci with
+      # ERESOLVE (#330, #331). Still apart from the minor/patch group above.
+      vitest-major:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "@vitest-*"
+        update-types:
+          - "major"
       wdio:
         patterns:
           - "@wdio/*"
