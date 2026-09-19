@@ -3,7 +3,10 @@ updates:
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: weekly
+      # Dependabot has no fortnightly interval; the 1st and 15th of each month
+      # is the closest cron can express (day-of-week steps silently run weekly).
+      interval: cron
+      cronjob: "0 6 1,15 * *"
     labels:
       - dependencies
       - github-actions
@@ -23,7 +26,14 @@ updates:
     # bumps (actions are git-tag pinned, not strict semver, anyway).
     cooldown:
       default-days: 3
-    # Group all minor/patch action bumps into one weekly PR so reviewers
+    # Patch bumps are below the noise floor at this cadence. Written as an
+    # update-types rule on purpose: those apply to version updates only, so
+    # Dependabot security updates still open PRs for patch-level advisories.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-patch"
+    # Group the remaining action bumps into one PR per run so reviewers
     # see a coherent bump set instead of one PR per action. Majors stay
     # ungrouped; they may have breaking API or input changes that
     # deserve their own review path.
@@ -37,9 +47,12 @@ updates:
 
   - package-ecosystem: npm
     directory: "/plugin"
-    # Weekly batches with grouping; daily-per-dep churn was unreviewable.
+    # Fortnightly batches with grouping; daily-per-dep churn was unreviewable.
     schedule:
-      interval: weekly
+      # Dependabot has no fortnightly interval; the 1st and 15th of each month
+      # is the closest cron can express (day-of-week steps silently run weekly).
+      interval: cron
+      cronjob: "0 6 1,15 * *"
     labels:
       - dependencies
       - npm
@@ -60,6 +73,11 @@ updates:
     # Minor/patch bumps still flow normally. Lift each rule when the noted
     # blocker resolves.
     ignore:
+      # Patch bumps are below the noise floor at this cadence; security
+      # updates are unaffected (update-types rules are version-updates only).
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-patch"
       # @types/node: track the runtime Node major (currently 24 LTS). Types
       # 25 surfaces APIs that don't exist at runtime. Lift on Node 26 LTS
       # (or when we ship a non-LTS runtime). Pinned by explicit version range
@@ -173,7 +191,10 @@ updates:
   - package-ecosystem: docker
     directory: "/container"
     schedule:
-      interval: weekly
+      # Dependabot has no fortnightly interval; the 1st and 15th of each month
+      # is the closest cron can express (day-of-week steps silently run weekly).
+      interval: cron
+      cronjob: "0 6 1,15 * *"
     labels:
       - dependencies
       - docker
@@ -183,8 +204,9 @@ updates:
     assignees:
       - artislismanis
     # The docker ecosystem doesn't expose semver granularity to cooldown, so
-    # a single default-days applies. Majors and interims are blocked by the
-    # ignore rule below, so the cooldown only governs the 24.04.x patch tags.
+    # a single default-days applies. It currently governs nothing: majors and
+    # interims are blocked below, and the patch ignore covers the 24.04.x tags,
+    # which leaves this entry inert until one of those rules is lifted.
     cooldown:
       default-days: 3
     # Ubuntu base image: pin to the 24.04 LTS line (supported to April 2029).
@@ -194,6 +216,9 @@ updates:
     # Only 24.04.x patch tags flow. Lift / re-target when adopting the next
     # LTS (26.04), after auditing that every apt-installed tool still resolves.
     ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-patch"
       - dependency-name: "ubuntu"
         update-types:
           - "version-update:semver-major"
