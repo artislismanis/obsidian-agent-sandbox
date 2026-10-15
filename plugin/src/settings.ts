@@ -1127,7 +1127,7 @@ export class AgentSandboxSettingTab extends PluginSettingTab {
 				new SecretComponent(this.app, c)
 					.setValue(this.plugin.settings.sudoSecretId)
 					.onChange((value) => {
-						this.plugin.settings.sudoSecretId = value;
+						this.plugin.settings.sudoSecretId = value ?? "";
 						this.plugin.saveSettings();
 						sudoIndicator.style.display = this.isSudoRestartDirty() ? "" : "none";
 					}),
