@@ -58,8 +58,8 @@
 		"typescript": "^6.0.3",
 		"typescript-eslint": "^8.71.1",
 		"vitest": "^5.0.0",
-		"wdio-obsidian-reporter": "^3.2.0",
-		"wdio-obsidian-service": "^3.2.0"
+		"wdio-obsidian-reporter": "^3.3.0",
+		"wdio-obsidian-service": "^3.3.0"
 	},
 	"overrides": {
 		"lodash": "4.18.1",
